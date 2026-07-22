@@ -9,5 +9,8 @@ Read in this order:
 3. `03-data-model-and-ai-contracts.md`
 4. `04-scaffolding-plan.md`
 5. `05-risks-and-demo-strategy.md`
+6. `06-reconciled-technical-plan.md`
 
 These documents are intentionally practical. They are meant to guide implementation, not replace the broader product/design brief.
+
+If Claude's opinion docs are present, treat `06-reconciled-technical-plan.md` as the final merged recommendation.
