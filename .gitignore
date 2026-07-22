@@ -1,0 +1,14 @@
+.DS_Store
+**/.DS_Store
+
+# Local document render QA outputs
+sage/product-docs/rendered/
+
+# Common local/dev artifacts
+node_modules/
+.next/
+dist/
+build/
+.env
+.env.*
+!.env.example
