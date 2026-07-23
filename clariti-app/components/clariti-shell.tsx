@@ -6,8 +6,8 @@ import { FileText, History, Home, Settings } from "lucide-react";
 
 const nav = [
   ["Home", "/", Home],
-  ["Documents", "/documents", FileText],
   ["History", "/history", History],
+  ["Documents", "/documents", FileText],
   ["Settings", "/settings", Settings],
 ] as const;
 
@@ -47,52 +47,22 @@ export function ClaritiShell({ children }: { children: React.ReactNode }) {
       )}
 
       <style jsx global>{`
-        .clariti-shell-mobile-nav {
-          display: none !important;
-        }
-
+        .clariti-shell-mobile-nav { display: none !important; }
         @media (max-width: 760px) {
           .clariti-shell-mobile-nav {
-            position: fixed;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 95;
-            display: grid !important;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            min-height: 68px;
-            padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
-            background: rgba(255, 255, 255, 0.98);
-            backdrop-filter: blur(18px);
-            border-top: 1px solid #e4ebe7;
-            box-shadow: 0 -8px 24px rgba(31, 52, 45, 0.05);
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 95;
+            display: grid !important; grid-template-columns: repeat(4,minmax(0,1fr));
+            min-height: 68px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+            background: rgba(255,255,255,.98); backdrop-filter: blur(18px);
+            border-top: 1px solid #e4ebe7; box-shadow: 0 -8px 24px rgba(31,52,45,.05);
           }
-
           .clariti-shell-mobile-nav a {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            min-width: 0;
-            border-radius: 12px;
-            text-decoration: none;
-            color: #7a8884;
-            font-size: 9px;
-            font-weight: 700;
-            padding: 6px 4px;
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            gap:4px; min-width:0; border-radius:12px; text-decoration:none; color:#7a8884;
+            font-size:9px; font-weight:700; padding:6px 4px;
           }
-
-          .clariti-shell-mobile-nav a svg {
-            width: 19px;
-            height: 19px;
-            stroke-width: 1.9;
-          }
-
-          .clariti-shell-mobile-nav a.active {
-            color: #2f6e66;
-            background: #edf5f2;
-          }
+          .clariti-shell-mobile-nav a svg { width:19px; height:19px; stroke-width:1.9; }
+          .clariti-shell-mobile-nav a.active { color:#2f6e66; background:#edf5f2; }
         }
       `}</style>
     </main>
