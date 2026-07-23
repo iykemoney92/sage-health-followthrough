@@ -1,7 +1,7 @@
 # Project Structure
 
 ```text
-clariti/
+clariti-app/
   app/
     (workspace)/workspace/     Three-panel app shell route
     api/                       Future document, session, and artifact APIs
@@ -26,6 +26,7 @@ clariti/
     migrations/                Database schema
   types/
     clariti.ts                 Shared product types
+../clariti/
   ui:ux/                       Product design image references
 ```
 

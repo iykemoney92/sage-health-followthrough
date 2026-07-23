@@ -4,7 +4,7 @@ Clariti is a consumer health document copilot for explaining confusing healthcar
 
 ## Product Surface
 
-The UI source of truth is the image set in `ui:ux/`. This scaffold intentionally avoids inventing final screen design. It only creates the technical surfaces needed to implement those screens.
+The UI source of truth is the image set in `../clariti/ui:ux/`. This scaffold intentionally avoids inventing final screen design. It only creates the technical surfaces needed to implement those screens.
 
 Planned user flow:
 

@@ -1,6 +1,6 @@
 # UI Implementation Notes
 
-The `ui:ux/` images are the design reference for Clariti.
+The `../clariti/ui:ux/` images are the design reference for Clariti.
 
 ## Do Now
 

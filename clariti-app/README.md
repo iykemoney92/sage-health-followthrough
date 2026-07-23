@@ -2,7 +2,7 @@
 
 Clariti is a consumer health document copilot scaffold.
 
-This folder is intentionally separate from Sage. It contains the technical foundation for building Clariti from the existing product design references in `ui:ux/`.
+This folder is intentionally separate from Sage. It contains the technical foundation for building Clariti from the existing product design references in `../clariti/ui:ux/`.
 
 ## Stack
 
