@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./followthrough.css";
 import "./clariti-entry.css";
+import "./mobile.css";
 
 export const metadata: Metadata = {
   title: "Clariti",
