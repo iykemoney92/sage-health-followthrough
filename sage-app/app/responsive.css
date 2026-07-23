@@ -1,0 +1,97 @@
+@media (max-width: 900px) {
+  .landing { overflow-x: clip; }
+  .page-width { width: min(100% - 32px, 680px); }
+
+  .site-header { height: 76px; }
+  .nav-inner nav { gap: 16px; }
+  .nav-inner nav > a:not(.top-cta) { display: none; }
+  .wordmark strong { font-size: 30px; }
+  .sage-logo { width: 24px; height: 29px; }
+  .top-cta { padding: 11px 18px; font-size: 13px !important; }
+
+  .hero { min-height: auto; background: linear-gradient(180deg,#fbfaf6 0%,#fbfaf6 45%,#eef2e9 100%); }
+  .hero-grid { min-height: auto; grid-template-columns: 1fr; padding: 50px 0 34px; }
+  .hero-copy { text-align: left; padding: 0; }
+  .eyebrow { margin-bottom: 18px; font-size: 10px; letter-spacing: .13em; }
+  .hero h1 { font-size: clamp(42px, 10.7vw, 56px); line-height: 1.05; letter-spacing: -1.2px; }
+  .hero-copy > p { width: 100%; max-width: 540px; margin-top: 22px; font-size: 16px; line-height: 1.6; }
+  .desktop-break { display: none; }
+  .hero-actions { flex-direction: column; gap: 10px; margin-top: 25px; }
+  .primary-button,.outline-button { width: 100%; max-width: 360px; }
+  .assurance { flex-wrap: wrap; row-gap: 8px; margin-top: 20px; }
+
+  .hero-product { width: 100%; height: 650px; margin-top: 28px; }
+  .botanical { right: -28px; top: 0; opacity: .09; }
+  .phone-mock { left: 50%; top: 4px; width: 250px; height: 526px; transform: translateX(-62%); }
+  .plan-card { right: 50%; top: 252px; width: 228px; min-height: 326px; transform: translateX(89%); padding: 18px 16px; }
+
+  .how { padding: 48px 0 44px; }
+  .how h2,.manage h2 { font-size: 30px; line-height: 1.2; margin-bottom: 34px; }
+  .steps { grid-template-columns: 1fr; gap: 18px; }
+  .step { max-width: 360px; margin: 0 auto; }
+  .step-arrow { transform: rotate(90deg); margin: 0 auto; }
+  .step h3 { font-size: 16px; }
+  .step p { font-size: 13px; }
+
+  .manage { padding: 24px 18px 26px; margin-bottom: 20px; }
+  .category-grid { grid-template-columns: repeat(3,1fr); gap: 12px; }
+  .category { height: 118px; }
+
+  .trust { padding: 24px 20px 0; }
+  .trust-top { grid-template-columns: 1fr; gap: 20px; }
+  .trust-title { align-items: flex-start; }
+  .trust h2 { font-size: 28px; }
+  .trust-top > p { font-size: 14px; }
+  .trust-controls { grid-template-columns: 1fr; padding: 14px 0; gap: 0; }
+  .trust-controls div { justify-content: flex-start; min-height: 48px; }
+  .trust-controls div + div { border-left: 0; border-top: 1px solid #dddcd6; }
+
+  .final-cta { grid-template-columns: 1fr; gap: 24px; padding: 30px 24px; text-align: left; }
+  .final-cta h2 { font-size: 31px; }
+  .final-cta > div { align-items: stretch; }
+  .final-cta .primary-button { width: 100%; max-width: none; }
+  .final-cta small { text-align: center; }
+
+  .footer { height: auto; padding: 26px 0 34px; flex-direction: column; align-items: flex-start; gap: 22px; }
+  .footer-brand { flex-direction: column; align-items: flex-start; gap: 10px; }
+}
+
+@media (max-width: 640px) {
+  .page-width { width: calc(100% - 28px); }
+  .site-header { height: 70px; }
+  .wordmark strong { font-size: 28px; }
+  .top-cta { padding: 10px 16px; }
+
+  .hero-grid { padding-top: 42px; }
+  .eyebrow { max-width: 310px; line-height: 1.45; }
+  .hero h1 { font-size: clamp(39px, 11.8vw, 49px); }
+  .hero-copy > p { font-size: 15px; }
+  .hero-actions { width: 100%; }
+  .primary-button,.outline-button { max-width: none; min-height: 50px; }
+  .assurance { font-size: 12px; gap: 9px; }
+
+  .hero-product { height: 690px; margin-top: 20px; }
+  .phone-mock { top: 8px; width: 236px; height: 500px; transform: translateX(-50%); }
+  .plan-card { top: 445px; left: 50%; right: auto; width: min(92%, 330px); min-height: auto; transform: translateX(-50%); }
+  .plan-title h3 { font-size: 17px; }
+  .plan-task b { font-size: 14px; }
+
+  .how { padding-top: 42px; }
+  .how h2,.manage h2 { font-size: 27px; }
+  .category-grid { grid-template-columns: repeat(2,1fr); }
+  .category { height: 108px; }
+
+  .trust h2 { font-size: 25px; }
+  .final-cta h2 { font-size: 28px; }
+  .footer nav { gap: 22px; flex-wrap: wrap; }
+}
+
+@media (max-width: 390px) {
+  .hero h1 { font-size: 38px; }
+  .hero-product { height: 665px; }
+  .phone-mock { width: 220px; height: 468px; }
+  .plan-card { top: 420px; width: 94%; }
+  .category-grid { gap: 9px; }
+  .category { height: 102px; }
+  .category b { font-size: 12px; }
+}
