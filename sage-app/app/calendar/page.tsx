@@ -1,110 +1,37 @@
 "use client";
 
-import { CalendarClock, ChevronLeft, ChevronRight, MessageCircle } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Link2, MessageCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell, ChannelPill } from "@/components/app-shell";
 import { PrototypeAction } from "@/components/prototype-action";
 
-type CalendarEvent = {
-  id: string;
-  date: string;
-  title: string;
-  time: string;
-  plan: string;
-  tone?: "green" | "blue";
-  description: string;
-};
-
+type CalendarEvent = { id:string; date:string; title:string; time:string; plan:string; tone?:"green"|"blue"; description:string; conflict?:boolean };
 const EVENTS: CalendarEvent[] = [
-  { id:"jun-29", date:"2026-06-29", title:"Medication + mood", time:"8:00 PM", plan:"Stabilise My Week", description:"A short check-in on your medication routine and how the day felt." },
-  { id:"jul-23", date:"2026-07-23", title:"Sleep reset", time:"7:00 PM", plan:"Stabilise My Week", description:"A short Sage check-in focused on keeping today manageable and helping you follow through." },
-  { id:"jul-24", date:"2026-07-24", title:"10-minute walk", time:"10:00 AM", plan:"Stabilise My Week", tone:"blue", description:"A gentle movement check-in to help you follow through on today’s 10-minute walk." },
-  { id:"jul-27", date:"2026-07-27", title:"Reflection", time:"6:30 PM", plan:"Stabilise My Week", description:"A calm reflection on what helped, what felt heavy, and what to carry into the next day." },
-  { id:"aug-03", date:"2026-08-03", title:"Weekly reset", time:"8:30 AM", plan:"Better Sleep Routine", description:"A short reset for the week ahead, focused on sleep rhythm and energy." },
-  { id:"aug-06", date:"2026-08-06", title:"Wind-down check-in", time:"9:00 PM", plan:"Better Sleep Routine", tone:"blue", description:"A gentle evening check-in to support a steadier wind-down routine." },
+ {id:"jun-29",date:"2026-06-29",title:"Medication + mood",time:"8:00 PM",plan:"Stabilise My Week",description:"A short check-in on your medication routine and how the day felt."},
+ {id:"jul-23",date:"2026-07-23",title:"Sleep reset",time:"7:00 PM",plan:"Stabilise My Week",description:"A short Sage check-in focused on keeping today manageable and helping you follow through.",conflict:true},
+ {id:"jul-24",date:"2026-07-24",title:"10-minute walk",time:"10:00 AM",plan:"Stabilise My Week",tone:"blue",description:"A gentle movement check-in to help you follow through on today’s 10-minute walk."},
+ {id:"jul-27",date:"2026-07-27",title:"Reflection",time:"6:30 PM",plan:"Stabilise My Week",description:"A calm reflection on what helped, what felt heavy, and what to carry into the next day."},
+ {id:"aug-03",date:"2026-08-03",title:"Weekly reset",time:"8:30 AM",plan:"Better Sleep Routine",description:"A short reset for the week ahead, focused on sleep rhythm and energy."},
+ {id:"aug-06",date:"2026-08-06",title:"Wind-down check-in",time:"9:00 PM",plan:"Better Sleep Routine",tone:"blue",description:"A gentle evening check-in to support a steadier wind-down routine."},
 ];
-
-const WEEKDAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-
-function isoDate(year:number, month:number, day:number){
-  return `${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-}
-
-function buildMonth(year:number, month:number){
-  const first = new Date(year, month, 1);
-  const start = new Date(year, month, 1 - first.getDay());
-  return Array.from({length:42},(_,i)=>{
-    const d = new Date(start);
-    d.setDate(start.getDate()+i);
-    return { year:d.getFullYear(), month:d.getMonth(), day:d.getDate(), iso:isoDate(d.getFullYear(),d.getMonth(),d.getDate()), inMonth:d.getMonth()===month };
-  });
-}
-
+const WEEKDAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+function isoDate(year:number,month:number,day:number){return `${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`}
+function buildMonth(year:number,month:number){const first=new Date(year,month,1);const start=new Date(year,month,1-first.getDay());return Array.from({length:42},(_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);return{year:d.getFullYear(),month:d.getMonth(),day:d.getDate(),iso:isoDate(d.getFullYear(),d.getMonth(),d.getDate()),inMonth:d.getMonth()===month}})}
 export default function CalendarPage(){
-  const [view,setView]=useState<"week"|"month">("month");
-  const [cursor,setCursor]=useState(new Date(2026,6,1));
-  const [selectedDate,setSelectedDate]=useState("2026-07-23");
-  const [selectedEventId,setSelectedEventId]=useState<string|undefined>("jul-23");
-
-  const cells=useMemo(()=>buildMonth(cursor.getFullYear(),cursor.getMonth()),[cursor]);
-  const selectedEvent=EVENTS.find(e=>e.id===selectedEventId);
-  const selectedDateObj=new Date(`${selectedDate}T12:00:00`);
-
-  function moveMonth(delta:number){
-    const next=new Date(cursor.getFullYear(),cursor.getMonth()+delta,1);
-    setCursor(next);
-    const firstOfMonth=isoDate(next.getFullYear(),next.getMonth(),1);
-    const firstEvent=EVENTS.find(e=>e.date.startsWith(firstOfMonth.slice(0,7)));
-    if(firstEvent){setSelectedDate(firstEvent.date);setSelectedEventId(firstEvent.id);}else{setSelectedDate(firstOfMonth);setSelectedEventId(undefined);}
-  }
-
-  function selectDate(date:string,eventId?:string){
-    setSelectedDate(date);
-    setSelectedEventId(eventId);
-  }
-
-  const weekStart=useMemo(()=>{
-    const d=new Date(`${selectedDate}T12:00:00`);
-    d.setDate(d.getDate()-d.getDay());
-    return d;
-  },[selectedDate]);
-
-  const weekDays=Array.from({length:7},(_,i)=>{
-    const d=new Date(weekStart);d.setDate(weekStart.getDate()+i);
-    const iso=isoDate(d.getFullYear(),d.getMonth(),d.getDate());
-    return {date:d,iso,events:EVENTS.filter(e=>e.date===iso)};
-  });
-
-  return <AppShell active="Calendar"><section className="app-width app-main">
-    <div className="section-head"><div><div className="page-eyebrow">CHECK-INS & REMINDERS</div><h1 className="page-title">Calendar</h1><p className="page-subtitle">See every Sage session across your plans in one calm view.</p></div><div className="tabs" style={{margin:0}}><button className={view==="week"?"active":""} onClick={()=>setView("week")}>Week</button><button className={view==="month"?"active":""} onClick={()=>setView("month")}>Month</button></div></div>
-    <div className="calendar-shell">
-      <section className="panel calendar-panel">
-        <div className="calendar-toolbar"><button className="app-btn outline" onClick={()=>moveMonth(-1)} aria-label="Previous month"><ChevronLeft/></button><h2 style={{fontFamily:'var(--font-display)',fontSize:28,margin:0}}>{MONTHS[cursor.getMonth()]} {cursor.getFullYear()}</h2><button className="app-btn outline" onClick={()=>moveMonth(1)} aria-label="Next month"><ChevronRight/></button></div>
-        {view==="month"?<>
-          <div className="calendar-weekday-row">{WEEKDAYS.map(d=><div key={d}>{d}</div>)}</div>
-          <div className="calendar-grid">{cells.map(cell=>{
-            const dayEvents=EVENTS.filter(e=>e.date===cell.iso);
-            const isSelected=selectedDate===cell.iso;
-            return <button type="button" className={`cal-cell ${!cell.inMonth?'muted-cell':''} ${isSelected?'selected-day':''}`} key={cell.iso} onClick={()=>selectDate(cell.iso,dayEvents[0]?.id)}>
-              <b>{cell.day}</b>
-              {dayEvents.map(event=><span key={event.id} className={`event ${event.tone==='blue'?'blue':''}`} onClick={(ev)=>{ev.stopPropagation();selectDate(cell.iso,event.id);}}>{event.time} · {event.title}</span>)}
-            </button>;
-          })}</div>
-        </>:<div className="prototype-week-view">{weekDays.map(({date,iso,events})=><button key={iso} className={`prototype-week-day ${selectedDate===iso?'active':''}`} onClick={()=>selectDate(iso,events[0]?.id)}><b>{WEEKDAYS[date.getDay()]} {date.getDate()}</b>{events.length?events.map(e=><span key={e.id} onClick={(ev)=>{ev.stopPropagation();selectDate(iso,e.id)}}>{e.time} · {e.title}</span>):<span>No check-in</span>}</button>)}</div>}
-      </section>
-
-      <aside className="panel calendar-detail">
-        <div className="panel-label">{selectedEvent?"SELECTED CHECK-IN":"SELECTED DATE"}</div>
-        {selectedEvent?<>
-          <h3>{selectedEvent.title}</h3><p className="muted">{selectedEvent.plan}</p><div className="plan-meta-row"><CalendarClock/> {selectedEvent.time}</div><ChannelPill/><p style={{lineHeight:1.6,marginTop:18}}>{selectedEvent.description}</p>
-          <PrototypeAction className="app-btn primary" label={<><MessageCircle/> Start check-in</>} title={`Start ${selectedEvent.title}`} description="This opens the check-in experience in the frontend prototype."/>
-          <PrototypeAction className="app-btn outline" label="Reschedule" title="Reschedule check-in" description="Choose another time for this check-in in the live product."><div className="prototype-choice-row"><button>Later today</button><button>Tomorrow</button><button>Pick a time</button></div></PrototypeAction>
-          <PrototypeAction className="app-btn outline" label="Cancel" title="Cancel this check-in?" description="The prototype keeps the event in place; the live integration will update the schedule."/>
-        </>:<>
-          <h3>{selectedDateObj.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}</h3><p className="muted">No Sage check-ins scheduled for this date.</p><div className="calendar-empty-state"><CalendarClock/><p>Your calendar is clear. You can keep the day light, or start a new plan when you’re ready.</p></div>
-        </>}
-      </aside>
-    </div>
-  </section></AppShell>;
+ const [view,setView]=useState<"week"|"month">("month"); const [cursor,setCursor]=useState(new Date(2026,6,1)); const [selectedDate,setSelectedDate]=useState("2026-07-23"); const [selectedEventId,setSelectedEventId]=useState<string|undefined>("jul-23"); const [conflictResolved,setConflictResolved]=useState(false);
+ const cells=useMemo(()=>buildMonth(cursor.getFullYear(),cursor.getMonth()),[cursor]); const selectedEvent=EVENTS.find(e=>e.id===selectedEventId); const selectedDateObj=new Date(`${selectedDate}T12:00:00`);
+ function moveMonth(delta:number){const next=new Date(cursor.getFullYear(),cursor.getMonth()+delta,1);setCursor(next);const firstOfMonth=isoDate(next.getFullYear(),next.getMonth(),1);const firstEvent=EVENTS.find(e=>e.date.startsWith(firstOfMonth.slice(0,7)));if(firstEvent){setSelectedDate(firstEvent.date);setSelectedEventId(firstEvent.id)}else{setSelectedDate(firstOfMonth);setSelectedEventId(undefined)}}
+ function selectDate(date:string,eventId?:string){setSelectedDate(date);setSelectedEventId(eventId)}
+ const weekStart=useMemo(()=>{const d=new Date(`${selectedDate}T12:00:00`);d.setDate(d.getDate()-d.getDay());return d},[selectedDate]);
+ const weekDays=Array.from({length:7},(_,i)=>{const d=new Date(weekStart);d.setDate(weekStart.getDate()+i);const iso=isoDate(d.getFullYear(),d.getMonth(),d.getDate());return{date:d,iso,events:EVENTS.filter(e=>e.date===iso)}});
+ return <AppShell active="Calendar"><section className="app-width app-main">
+  <div className="section-head"><div><div className="page-eyebrow">CHECK-INS & REMINDERS</div><h1 className="page-title">Calendar</h1><p className="page-subtitle">See every Sage session across your plans in one calm view.</p></div><div className="calendar-top-actions"><Link href="/calendar/connect" className="app-btn outline"><Link2/> Connect calendar</Link><div className="tabs" style={{margin:0}}><button className={view==="week"?"active":""} onClick={()=>setView("week")}>Week</button><button className={view==="month"?"active":""} onClick={()=>setView("month")}>Month</button></div></div></div>
+  {!conflictResolved&&<section className="calendar-conflict-banner"><AlertTriangle/><div><b>Your schedule changed</b><span>Sleep reset at 7:00 PM now overlaps with a personal calendar event.</span></div><PrototypeAction className="app-btn primary small" label="Resolve conflict" title="Your schedule changed" description="Sage checked your connected calendar and found conflict-free alternatives."><div className="conflict-options"><button onClick={()=>setConflictResolved(true)}><b>8:30 PM tonight</b><span>Free · Recommended by Sage</span></button><button onClick={()=>setConflictResolved(true)}><b>7:30 PM tomorrow</b><span>Free</span></button><button onClick={()=>setConflictResolved(true)}><b>Keep 7:00 PM</b><span>Keep the original time</span></button></div></PrototypeAction></section>}
+  {conflictResolved&&<section className="calendar-resolved-banner"><CalendarClock/><div><b>Conflict resolved</b><span>Sage will use your updated availability when suggesting future check-ins.</span></div></section>}
+  <div className="calendar-shell"><section className="panel calendar-panel"><div className="calendar-toolbar"><button className="app-btn outline" onClick={()=>moveMonth(-1)} aria-label="Previous month"><ChevronLeft/></button><h2 style={{fontFamily:'var(--font-display)',fontSize:28,margin:0}}>{MONTHS[cursor.getMonth()]} {cursor.getFullYear()}</h2><button className="app-btn outline" onClick={()=>moveMonth(1)} aria-label="Next month"><ChevronRight/></button></div>
+   {view==="month"?<><div className="calendar-weekday-row">{WEEKDAYS.map(d=><div key={d}>{d}</div>)}</div><div className="calendar-grid">{cells.map(cell=>{const dayEvents=EVENTS.filter(e=>e.date===cell.iso);const isSelected=selectedDate===cell.iso;return <button type="button" className={`cal-cell ${!cell.inMonth?'muted-cell':''} ${isSelected?'selected-day':''}`} key={cell.iso} onClick={()=>selectDate(cell.iso,dayEvents[0]?.id)}><b>{cell.day}</b>{dayEvents.map(event=><span key={event.id} className={`event ${event.tone==='blue'?'blue':''} ${event.conflict&&!conflictResolved?'conflict-event':''}`} onClick={(ev)=>{ev.stopPropagation();selectDate(cell.iso,event.id)}}>{event.time} · {event.title}{event.conflict&&!conflictResolved?' · Conflict':''}</span>)}</button>})}</div></>:<div className="prototype-week-view">{weekDays.map(({date,iso,events})=><button key={iso} className={`prototype-week-day ${selectedDate===iso?'active':''}`} onClick={()=>selectDate(iso,events[0]?.id)}><b>{WEEKDAYS[date.getDay()]} {date.getDate()}</b>{events.length?events.map(e=><span key={e.id} onClick={(ev)=>{ev.stopPropagation();selectDate(iso,e.id)}}>{e.time} · {e.title}</span>):<span>No check-in</span>}</button>)}</div>}
+  </section><aside className="panel calendar-detail"><div className="panel-label">{selectedEvent?"SELECTED CHECK-IN":"SELECTED DATE"}</div>{selectedEvent?<><h3>{selectedEvent.title}</h3><p className="muted">{selectedEvent.plan}</p><div className="plan-meta-row"><CalendarClock/> {selectedEvent.time}</div><ChannelPill/><p style={{lineHeight:1.6,marginTop:18}}>{selectedEvent.description}</p><PrototypeAction className="app-btn primary" label={<><MessageCircle/> Start check-in</>} title={`Start ${selectedEvent.title}`} description="This opens the check-in experience in the frontend prototype."/><PrototypeAction className="app-btn outline" label="Reschedule" title="Reschedule check-in" description="Sage would first check your connected calendar and recommend conflict-free options."><div className="conflict-options"><button><b>8:30 PM tonight</b><span>Free · Recommended</span></button><button><b>7:30 PM tomorrow</b><span>Free</span></button><button><b>Pick another time</b><span>Open availability</span></button></div></PrototypeAction><PrototypeAction className="app-btn outline" label="Cancel" title="Cancel this check-in?" description="The prototype keeps the event in place; the live integration will update the schedule."/></>:<><h3>{selectedDateObj.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}</h3><p className="muted">No Sage check-ins scheduled for this date.</p><div className="calendar-empty-state"><CalendarClock/><p>Your calendar is clear. Sage can use this availability when planning future check-ins.</p></div></>}</aside></div>
+ </section></AppShell>
 }
