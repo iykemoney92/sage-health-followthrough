@@ -1,39 +1,44 @@
+"use client";
+
 import Link from "next/link";
-import { ArrowUp, FileText, Paperclip, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowUp, FileText, Image as ImageIcon, Paperclip, ShieldCheck } from "lucide-react";
+import { useState } from "react";
 import { ClaritiShell } from "@/components/clariti-shell";
 
 const starters = [
-  "Explain this medical bill",
-  "Help me understand my radiology report",
-  "What does this insurance EOB mean?",
+  { title: "Explain a medical bill", meta: "Charges, flags and what to ask next" },
+  { title: "Understand a radiology report", meta: "Findings, anatomy and clinician questions" },
+  { title: "Decode an insurance EOB", meta: "What was billed, covered and left to you" },
 ];
 
 export default function Home() {
+  const [attached,setAttached]=useState(false);
+
   return (
     <ClaritiShell>
-      <section className="clariti-empty-page">
-        <div className="clariti-empty-inner">
-          <div className="clariti-orb"><Sparkles /></div>
-          <p className="clariti-kicker">YOUR HEALTH DOCUMENT COPILOT</p>
-          <h1>Health documents are confusing.<br/><span>Clariti makes them clear.</span></h1>
-          <p className="clariti-lead">Upload a medical bill, insurance EOB, radiology report, discharge note or other health document. Clariti explains what it says, what matters, and what you can do next.</p>
+      <section className="clariti-entry-page">
+        <div className="clariti-entry-inner">
+          <div className="clariti-entry-mark">C</div>
+          <h1>What can I help you understand?</h1>
+          <p className="clariti-entry-sub">Ask a question or add a health document. Clariti turns confusing information into a clear, visual workspace you can act on.</p>
 
-          <div className="clariti-composer-card">
-            <textarea aria-label="Ask Clariti" placeholder="Ask Clariti about a health document…" />
-            <div className="clariti-composer-actions">
-              <div>
-                <button type="button"><Paperclip/> Attach document</button>
-                <span>PDF, JPG or PNG</span>
+          <div className="clariti-entry-composer">
+            {attached&&<div className="entry-attachment"><FileText/><span><b>health-document.pdf</b><small>Ready to analyse · Demo file</small></span><button onClick={()=>setAttached(false)}>Remove</button></div>}
+            <textarea aria-label="Ask Clariti" placeholder="Ask Clariti anything about a health document…" />
+            <div className="entry-composer-footer">
+              <div className="entry-tools">
+                <button type="button" onClick={()=>setAttached(true)}><Paperclip/> Add document</button>
+                <button type="button" onClick={()=>setAttached(true)}><ImageIcon/> Add image</button>
               </div>
-              <Link href="/workspace" className="clariti-send" aria-label="Start Clariti demo"><ArrowUp/></Link>
+              <Link href="/workspace" className="clariti-entry-send" aria-label="Send to Clariti"><ArrowUp/></Link>
             </div>
           </div>
 
-          <div className="clariti-starters">
-            {starters.map((starter)=><Link href="/workspace" key={starter}><FileText/>{starter}</Link>)}
+          <div className="clariti-entry-starters">
+            {starters.map((starter)=><Link href="/workspace" key={starter.title}><FileText/><span><b>{starter.title}</b><small>{starter.meta}</small></span></Link>)}
           </div>
 
-          <div className="clariti-trust"><ShieldCheck/><span>Clariti explains and organises your information. It does not diagnose or replace a healthcare professional.</span></div>
+          <div className="clariti-entry-trust"><ShieldCheck/><span>Your documents stay private and under your control. Clariti explains and organises information; it does not diagnose.</span></div>
         </div>
       </section>
     </ClaritiShell>
