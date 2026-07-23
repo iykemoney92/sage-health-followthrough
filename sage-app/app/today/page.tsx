@@ -5,7 +5,7 @@ export default function TodayPage() {
   return (
     <main className="min-h-screen bg-[#faf8f3] text-[#17382f]">
       <header className="border-b border-[#e2e7e2] bg-[#fbfaf6]">
-        <div className="mx-auto flex h-20 w-[min(1120px,calc(100%-32px))] items-center justify-between px-4">
+        <div className="mx-auto flex h-20 w-full max-w-5xl items-center justify-between px-5">
           <Link href="/" className="font-[var(--font-display)] text-3xl font-semibold">Sage</Link>
           <nav className="flex items-center gap-6 text-sm">
             <Link className="font-semibold text-[#47785e]" href="/today">Today</Link>
