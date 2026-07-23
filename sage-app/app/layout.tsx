@@ -3,6 +3,7 @@ import { Cormorant_Garamond, Inter } from "next/font/google";
 import "./globals.css";
 import "./mobile-v2.css";
 import "./auth.css";
+import "./dashboard.css";
 
 const display = Cormorant_Garamond({
   subsets: ["latin"],
