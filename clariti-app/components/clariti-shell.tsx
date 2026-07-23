@@ -21,6 +21,14 @@ export function ClaritiShell({ children }: { children: React.ReactNode }) {
         <button className="clariti-avatar" aria-label="Profile">IA</button>
       </header>
       {children}
+      <nav className="clariti-global-mobile-nav" aria-label="Clariti navigation">
+        {nav.map(([label, href, Icon]) => (
+          <Link key={href} href={href} className={pathname === href ? "active" : ""}>
+            <Icon />
+            <span>{label}</span>
+          </Link>
+        ))}
+      </nav>
     </main>
   );
 }
