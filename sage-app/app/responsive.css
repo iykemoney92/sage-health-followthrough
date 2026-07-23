@@ -70,9 +70,27 @@
   .primary-button,.outline-button { max-width: none; min-height: 50px; }
   .assurance { font-size: 12px; gap: 9px; }
 
-  .hero-product { height: 690px; margin-top: 20px; }
-  .phone-mock { top: 8px; width: 236px; height: 500px; transform: translateX(-50%); }
-  .plan-card { top: 445px; left: 50%; right: auto; width: min(92%, 330px); min-height: auto; transform: translateX(-50%); }
+  /* Mobile product mockup: keep the WhatsApp composer fully visible and place plan card below it. */
+  .hero-product { height: 930px; margin-top: 24px; }
+  .botanical { display: none; }
+  .phone-mock {
+    top: 0;
+    left: 50%;
+    width: 248px;
+    height: 524px;
+    transform: translateX(-50%);
+    z-index: 3;
+  }
+  .plan-card {
+    top: 560px;
+    left: 50%;
+    right: auto;
+    width: min(94%, 350px);
+    min-height: auto;
+    transform: translateX(-50%);
+    z-index: 2;
+    padding: 19px 17px;
+  }
   .plan-title h3 { font-size: 17px; }
   .plan-task b { font-size: 14px; }
 
@@ -88,9 +106,9 @@
 
 @media (max-width: 390px) {
   .hero h1 { font-size: 38px; }
-  .hero-product { height: 665px; }
-  .phone-mock { width: 220px; height: 468px; }
-  .plan-card { top: 420px; width: 94%; }
+  .hero-product { height: 900px; }
+  .phone-mock { width: 230px; height: 486px; }
+  .plan-card { top: 522px; width: 96%; }
   .category-grid { gap: 9px; }
   .category { height: 102px; }
   .category b { font-size: 12px; }
