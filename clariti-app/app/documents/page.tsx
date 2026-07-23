@@ -1,8 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import {
   ChevronRight,
   FileHeart,
-  FileText,
   Plus,
   ReceiptText,
   Search,
