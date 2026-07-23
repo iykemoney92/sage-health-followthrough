@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, Bell, CalendarDays, CheckCircle2, FileText, Flag, Image as ImageIcon, Mail, MessageSquareText, Mic, MoreHorizontal, Paperclip, Pause, Phone, Plus, Send, ShieldCheck, Sparkles, Stethoscope } from "lucide-react";
+import { ArrowLeft, Bell, CalendarDays, CheckCircle2, FileText, Flag, Image as ImageIcon, Mail, MessageSquareText, Mic, MoreHorizontal, Paperclip, Pause, Phone, Plus, Send, ShieldCheck, Sparkles, Stethoscope, MessagesSquare, PanelRight } from "lucide-react";
 import Link from "next/link";
 
 const sessions = [
@@ -14,6 +14,7 @@ type SessionId = "bill"|"radiology"|"eob";
 type CanvasTab = "summary"|"detail"|"actions";
 type ModalMode = "none"|"call"|"followup"|"calling"|"summary";
 type FollowChannel = "notification"|"email"|"voice";
+type MobilePanel = "messages"|"chat"|"canvas";
 
 const followupCopy:Record<SessionId,{title:string;options:string[];defaultTask:string}>={
  bill:{title:"Stay on top of this bill",options:["Remind me to call the billing team","Check whether I received a corrected bill","Follow up after I contact my insurer"],defaultTask:"Check whether City Hospital replied about the £185 facility fee."},
@@ -29,12 +30,13 @@ export default function WorkspacePage() {
   const [followOption,setFollowOption]=useState(0);
   const [followScheduled,setFollowScheduled]=useState(false);
   const [followDone,setFollowDone]=useState(false);
+  const [mobilePanel,setMobilePanel]=useState<MobilePanel>("chat");
   const session=sessions.find(s=>s.id===active)!;
   const follow=followupCopy[active];
-  const chooseSession=(id:SessionId)=>{setActive(id);setCanvasTab("summary");setFollowScheduled(false);setFollowDone(false);setModal("none")};
+  const chooseSession=(id:SessionId)=>{setActive(id);setCanvasTab("summary");setFollowScheduled(false);setFollowDone(false);setModal("none");setMobilePanel("chat")};
 
   return (
-    <main className="clariti-workspace">
+    <main className={`clariti-workspace mobile-active-${mobilePanel}`}>
       <aside className="clariti-left-panel">
         <div className="workspace-brand-row"><Link href="/" className="clariti-brand"><span className="clariti-mark">C</span><strong>Clariti</strong></Link><Link href="/" className="workspace-new" aria-label="New conversation"><Plus/></Link></div>
         <div className="conversation-label">MESSAGES</div>
@@ -49,7 +51,7 @@ export default function WorkspacePage() {
           {active==="bill"&&<><div className="clariti-user-message"><span className="attached-file"><FileText/><span><b>hospital-bill-july.pdf</b><small>2 pages · 384 KB</small></span></span><p>Can you explain this bill and tell me if anything looks unusual?</p></div><div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>I’ve gone through the bill. The total is <b>£1,248.60</b>, and <b>£930.00 appears to be your responsibility</b>.</p><p>I’ve broken down the charges on the canvas and flagged one item worth clarifying.</p><div className="clariti-inline-note"><Flag/> One charge may need clarification</div></div></div></>}
           {active==="radiology"&&<><div className="clariti-user-message"><span className="attached-file"><FileText/><span><b>MRI-lumbar-spine-report.pdf</b><small>Radiology report · 3 pages</small></span></span><p>Can you explain what this MRI report means in plain English?</p></div><div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>The report describes <b>mild degenerative changes in your lower back</b>, most noticeable at L4–L5.</p><p>The radiologist also says there is <b>no severe spinal canal narrowing</b>. I’ve separated the findings, anatomy and useful questions on the canvas.</p><div className="clariti-inline-note radiology-note"><Stethoscope/> This is an explanation of the report, not a diagnosis</div></div></div></>}
           {active==="eob"&&<><div className="clariti-user-message"><span className="attached-file"><FileText/><span><b>insurance-eob-8472.pdf</b><small>Explanation of Benefits · 4 pages</small></span></span><p>What did insurance actually pay, and do I owe the rest?</p></div><div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>This EOB shows what was <b>billed, allowed, paid by your insurer, and assigned to you</b>. An EOB is not itself a bill.</p><p>I’ve mapped the claim flow and highlighted the amount marked as your responsibility.</p></div></div></>}
-          <div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>I can stay with you beyond this explanation. We can talk through the document now, or I can follow up later so the next step doesn’t get forgotten.</p><div className="clariti-quick-actions"><button onClick={()=>setModal("call")}>Discuss with AI</button><button onClick={()=>setModal("followup")}>Set a follow-up</button></div></div></div>
+          <div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>I can stay with you beyond this explanation. We can talk through the document now, or I can follow up later so the next step doesn’t get forgotten.</p><div className="clariti-quick-actions"><button onClick={()=>setModal("call")}>Discuss with AI</button><button onClick={()=>setModal("followup")}>Set a follow-up</button><button className="mobile-insight-cta" onClick={()=>setMobilePanel("canvas")}>View insights</button></div></div></div>
         </div>
         <div className="clariti-workspace-composer"><button aria-label="Attach"><Paperclip/></button><input placeholder="Ask a follow-up question…"/><button className="send"><Send/></button></div>
       </section>
@@ -60,25 +62,21 @@ export default function WorkspacePage() {
         {active==="bill"&&<BillCanvas tab={canvasTab}/>} 
         {active==="radiology"&&<RadiologyCanvas tab={canvasTab}/>} 
         {active==="eob"&&<EobCanvas tab={canvasTab}/>} 
-
-        <section className="canvas-continuity">
-          <div><p className="canvas-kicker">CONTINUE WITH CLARITI</p><h3>Don’t stop at understanding.</h3><p>Talk this through now or let Clariti check back when it matters.</p></div>
-          <div className="continuity-actions"><button onClick={()=>setModal("call")}><Phone/> Discuss with AI</button><button onClick={()=>setModal("followup")}><Bell/> Set a follow-up</button></div>
-        </section>
-
+        <section className="canvas-continuity"><div><p className="canvas-kicker">CONTINUE WITH CLARITI</p><h3>Don’t stop at understanding.</h3><p>Talk this through now or let Clariti check back when it matters.</p></div><div className="continuity-actions"><button onClick={()=>setModal("call")}><Phone/> Discuss with AI</button><button onClick={()=>setModal("followup")}><Bell/> Set a follow-up</button></div></section>
         {followScheduled&&!followDone&&<section className="followup-active-card"><div className="followup-status"><CheckCircle2/><span>Clariti is following up</span></div><h3>Next check-in · Tomorrow, 10:00 AM</h3><p>{follow.defaultTask}</p><div className="followup-meta"><span>{followChannel==="voice"?<Phone/>:followChannel==="email"?<Mail/>:<Bell/>}{followChannel==="voice"?"AI voice call":followChannel==="email"?"Email":"Browser notification"}</span></div><div className="followup-controls"><button onClick={()=>setModal("followup")}>Change</button><button><Pause/> Pause</button><button onClick={()=>{setFollowDone(true);setModal("summary")}}>Preview completed follow-up</button></div></section>}
-
         {followDone&&<section className="followup-complete-card"><div className="followup-status"><CheckCircle2/><span>Follow-up completed</span></div><h3>{followChannel==="voice"?"AI call · 8 min":"Check-in completed"}</h3><p>Clariti reviewed this document, your saved questions and the follow-up goal with you.</p><button onClick={()=>setModal("summary")}><MessageSquareText/> View follow-up summary</button></section>}
-
         <footer className="canvas-footer">Clariti explains and organises your document. It does not replace your clinician, insurer, billing team or other relevant professional.</footer>
       </aside>
 
+      <nav className="clariti-mobile-nav" aria-label="Workspace navigation">
+        <button className={mobilePanel==="messages"?"active":""} onClick={()=>setMobilePanel("messages")}><MessagesSquare/><span>Messages</span></button>
+        <button className={mobilePanel==="chat"?"active":""} onClick={()=>setMobilePanel("chat")}><MessageSquareText/><span>Chat</span></button>
+        <button className={mobilePanel==="canvas"?"active":""} onClick={()=>setMobilePanel("canvas")}><PanelRight/><span>Insights</span></button>
+      </nav>
+
       {modal==="call"&&<Modal close={()=>setModal("none")} icon={<Phone/>} kicker="DISCUSS THIS DOCUMENT" title={`Talk through this ${session.tag.toLowerCase()}`} description="Clariti’s AI agent will already have this document, the current conversation, highlighted insights and your saved questions as context."><div className="call-mode-grid"><button onClick={()=>setModal("calling")}><Mic/><b>Start AI voice call now</b><span>Talk in real time in the browser.</span></button><button><Phone/><b>Call my phone now</b><span>Outbound AI voice call to your verified number.</span></button><button><CalendarDays/><b>Schedule a call</b><span>Choose a convenient date and time.</span></button></div></Modal>}
-
       {modal==="calling"&&<Modal close={()=>setModal("none")} icon={<Mic/>} kicker="AI VOICE CALL" title="Clariti is ready to talk" description={active==="radiology"?"I see you wanted to understand the L4–L5 finding in your MRI. Shall we start there?":active==="bill"?"You wanted to discuss the £185 facility fee. I can walk you through what Clariti found.":"You wanted to understand Claim 8472 and the £320 marked as your responsibility. Shall we go through it?"}><div className="voice-call-state"><div className="voice-orb">||||</div><span>AI agent connected · document context loaded</span></div><div className="modal-actions"><button onClick={()=>setModal("none")}>End call</button><button className="primary" onClick={()=>{setFollowChannel("voice");setFollowDone(true);setModal("summary")}}>Complete demo call</button></div></Modal>}
-
       {modal==="followup"&&<Modal close={()=>setModal("none")} icon={<Bell/>} kicker="PROACTIVE FOLLOW-UP" title={follow.title} description="Choose what Clariti should check back on, how you want to hear from us, and when."><div className="followup-builder"><div className="builder-label">What should Clariti follow up on?</div>{follow.options.map((o,i)=><button key={o} className={`follow-choice ${followOption===i?"selected":""}`} onClick={()=>setFollowOption(i)}>{followOption===i?<CheckCircle2/>:<span/>}<b>{o}</b></button>)}<div className="builder-label">How should Clariti follow up?</div><div className="channel-grid"><button className={followChannel==="notification"?"selected":""} onClick={()=>setFollowChannel("notification")}><Bell/><b>Notification</b><span>Simple reminder</span></button><button className={followChannel==="email"?"selected":""} onClick={()=>setFollowChannel("email")}><Mail/><b>Email</b><span>Summary + reminder</span></button><button className={followChannel==="voice"?"selected premium":"premium"} onClick={()=>setFollowChannel("voice")}><Phone/><b>AI voice call</b><span>Clariti calls you with context</span></button></div><div className="builder-label">When?</div><div className="time-grid"><button className="selected">Tomorrow · 10:00 AM</button><button>In 3 days</button><button>Next week</button><button>Choose date & time</button></div></div><div className="modal-actions"><button onClick={()=>setModal("none")}>Cancel</button><button className="primary" onClick={()=>{setFollowScheduled(true);setFollowDone(false);setModal("none")}}>Schedule follow-up</button></div></Modal>}
-
       {modal==="summary"&&<Modal close={()=>setModal("none")} icon={<CheckCircle2/>} kicker="FOLLOW-UP SUMMARY" title="You followed through" description="Clariti keeps a lightweight record of what changed so the document stays useful over time."><div className="summary-grid"><div><span>Follow-up</span><b>{followChannel==="voice"?"AI voice call · 8 min":"Completed check-in"}</b></div><div><span>Document</span><b>{session.title}</b></div><div><span>Outcome</span><b>{active==="bill"?"Billing question clarified":active==="radiology"?"3 clinician questions reviewed":"Claim next step confirmed"}</b></div></div><div className="canvas-card"><h3>What changed</h3><p>{active==="bill"?"You confirmed the facility fee needs clarification and saved a billing-team question list.":active==="radiology"?"You reviewed the L4–L5 finding and saved three questions for your clinician appointment.":"You confirmed that the EOB is not a bill and saved a reminder to compare it with the provider statement."}</p></div><div className="modal-actions"><button onClick={()=>setModal("none")}>Close</button><button className="primary" onClick={()=>setModal("followup")}>Schedule another follow-up</button></div></Modal>}
     </main>
   );
