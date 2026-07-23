@@ -1,5 +1,9 @@
-import { CalendarClock, LockKeyhole, MessageCircle, PhoneCall, ShieldCheck } from "lucide-react";
+import { CalendarClock, LockKeyhole, MessageCircle, Phone, PhoneCall, ShieldCheck } from "lucide-react";
 import { OnboardingShell, PrivacyNote, SageMark } from "../components";
+
+function WhatsAppMark() {
+  return <span className="ob-whatsapp-mark" aria-hidden="true"><MessageCircle className="ob-whatsapp-bubble"/><Phone className="ob-whatsapp-phone"/></span>;
+}
 
 function WhyWhatsApp() {
   const items = [
@@ -18,7 +22,7 @@ export default function ConnectWhatsAppPage() {
       <h1 className="ob-title">Let Sage check in<br/>where you already are.</h1>
       <p className="ob-subtitle">Sage uses WhatsApp to send your check-ins, reminders and voice messages at the times you choose.</p>
       <div className="ob-whatsapp-visual">
-        <div className="ob-wa-logo">◔</div>
+        <div className="ob-wa-logo"><WhatsAppMark/></div>
         <div className="ob-wa-phone">
           <div className="ob-wa-head"><span className="ob-wa-avatar"><SageMark/></span><div><b>Sage</b><div style={{fontSize:8,color:'#849087'}}>Online</div></div></div>
           <div className="ob-wa-bubble">Hi Ike! 👋<br/>Time for your check-in.</div>
