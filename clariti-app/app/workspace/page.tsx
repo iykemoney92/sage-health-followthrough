@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, Bell, CalendarDays, CheckCircle2, FileText, Flag, Image as ImageIcon, Mail, MessageSquareText, Mic, MoreHorizontal, Paperclip, Pause, Phone, Plus, Send, ShieldCheck, Sparkles, Stethoscope, MessagesSquare, PanelRight } from "lucide-react";
+import { ArrowLeft, Bell, CalendarDays, CheckCircle2, FileText, Flag, Image as ImageIcon, Mail, MessageSquareText, Mic, MoreHorizontal, Paperclip, Pause, Phone, Plus, Send, Settings, ShieldCheck, Sparkles, Stethoscope, MessagesSquare, PanelRight } from "lucide-react";
 import Link from "next/link";
 
 const sessions = [
@@ -72,6 +72,8 @@ export default function WorkspacePage() {
         <button className={mobilePanel==="messages"?"active":""} onClick={()=>setMobilePanel("messages")}><MessagesSquare/><span>Messages</span></button>
         <button className={mobilePanel==="chat"?"active":""} onClick={()=>setMobilePanel("chat")}><MessageSquareText/><span>Chat</span></button>
         <button className={mobilePanel==="canvas"?"active":""} onClick={()=>setMobilePanel("canvas")}><PanelRight/><span>Insights</span></button>
+        <Link href="/documents"><FileText/><span>Documents</span></Link>
+        <Link href="/settings"><Settings/><span>Settings</span></Link>
       </nav>
 
       {modal==="call"&&<Modal close={()=>setModal("none")} icon={<Phone/>} kicker="DISCUSS THIS DOCUMENT" title={`Talk through this ${session.tag.toLowerCase()}`} description="Clariti’s AI agent will already have this document, the current conversation, highlighted insights and your saved questions as context."><div className="call-mode-grid"><button onClick={()=>setModal("calling")}><Mic/><b>Start AI voice call now</b><span>Talk in real time in the browser.</span></button><button><Phone/><b>Call my phone now</b><span>Outbound AI voice call to your verified number.</span></button><button><CalendarDays/><b>Schedule a call</b><span>Choose a convenient date and time.</span></button></div></Modal>}
