@@ -16,7 +16,7 @@ export function ClaritiShell({ children }: { children: React.ReactNode }) {
   const isWorkspace = pathname.startsWith("/workspace");
 
   return (
-    <main className="clariti-app-shell">
+    <main className="clariti-app-shell" data-shell-version="mobile-nav-fixed-v2">
       <header className="clariti-topbar">
         <Link href="/" className="clariti-brand">
           <span className="clariti-mark">C</span>
