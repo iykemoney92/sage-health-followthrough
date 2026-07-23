@@ -17,16 +17,17 @@ const conversations = [
   {
     title: "Medical bill",
     question: "Can you explain this bill and tell me if anything looks unusual?",
-    time: "Today · 10:42 AM",
+    time: "10:42 AM",
+    date: "Today",
     tags: ["Bill analysis", "Review"],
     tone: "sage",
     icon: ReceiptText,
-    fresh: true,
   },
   {
     title: "Radiology report",
     question: "What does mild disc degeneration mean?",
-    time: "Yesterday · 6:18 PM",
+    time: "6:18 PM",
+    date: "Yesterday",
     tags: ["Radiology", "Explanation"],
     tone: "blue",
     icon: FileHeart,
@@ -34,7 +35,8 @@ const conversations = [
   {
     title: "Insurance EOB",
     question: "Why does this say I may owe £420?",
-    time: "15 Jul · 8:03 PM",
+    time: "8:03 PM",
+    date: "15 Jul",
     tags: ["Insurance", "EOB review"],
     tone: "violet",
     icon: ShieldCheck,
@@ -42,7 +44,8 @@ const conversations = [
   {
     title: "Medication question",
     question: "Is it safe to take ibuprofen with my other meds?",
-    time: "12 Jul · 11:27 AM",
+    time: "11:27 AM",
+    date: "12 Jul",
     tags: ["Medication", "Safety"],
     tone: "mint",
     icon: FileText,
@@ -52,53 +55,58 @@ const conversations = [
 export default function HistoryPage() {
   return (
     <ClaritiShell>
-      <main className="history-page">
-        <section className="history-hero">
+      <main className="history-page history-page-v3">
+        <section className="history-hero-v3">
           <div>
-            <p className="clariti-kicker">YOUR CONVERSATIONS</p>
             <h1>History</h1>
-            <p>Past conversations and explanations, ready whenever you want to pick up where you left off.</p>
+            <p>Your conversations with Clariti.<br />Pick up where you left off.</p>
           </div>
-          <button type="button" className="history-filter"><Filter /> <span>Filter</span></button>
+          <button type="button" className="history-filter-v3" aria-label="Filter conversations">
+            <Filter /> <span>Filter</span>
+          </button>
         </section>
 
-        <label className="history-search">
+        <label className="history-search-v3">
           <Search />
           <input aria-label="Search conversations" placeholder="Search conversations..." />
         </label>
 
-        <section className="history-list-section">
-          <div className="history-section-head">
-            <h2>Recent conversations</h2>
-            <button type="button">See all <ChevronRight /></button>
-          </div>
+        <section className="history-list-section-v3">
+          <h2>Recent conversations</h2>
 
-          <div className="history-list">
-            {conversations.map(({ title, question, time, tags, tone, icon: Icon, fresh }) => (
-              <Link href="/workspace" className="history-card" key={title}>
-                <span className={`history-art history-art-${tone}`}><Icon /></span>
-                <span className="history-card-main">
-                  <span className="history-label-line">
-                    <span className={`history-dot history-dot-${tone}`} />
+          <div className="history-list-v3">
+            {conversations.map(({ title, question, time, date, tags, tone, icon: Icon }) => (
+              <Link href="/workspace" className="history-card-v3" key={title}>
+                <span className={`history-art-v3 history-art-${tone}`}><Icon /></span>
+
+                <span className="history-card-main-v3">
+                  <span className="history-label-v3">
+                    <span className={`history-dot-v3 history-dot-${tone}`} />
                     <span>{title}</span>
-                    {fresh ? <em>New</em> : null}
                   </span>
                   <strong>{question}</strong>
-                  <span className="history-time"><Clock3 /> {time}</span>
-                  <span className="history-tags">
+                  <span className="history-tags-v3">
                     {tags.map((tag) => <span key={tag}>{tag}</span>)}
                   </span>
                 </span>
-                <ChevronRight className="history-chevron" />
+
+                <span className="history-card-side-v3">
+                  <span className="history-card-time-v3"><Clock3 /> {time}</span>
+                  <span className="history-card-date-v3">{date}</span>
+                  <ChevronRight />
+                </span>
               </Link>
             ))}
           </div>
+
+          <Link href="/history" className="history-view-all-v3"><FileText /> View all conversations</Link>
         </section>
       </main>
 
       <style jsx global>{`
-        .history-page{max-width:980px;margin:0 auto;padding:44px 28px 110px}.history-hero{display:flex;align-items:end;justify-content:space-between;gap:24px}.history-hero h1{font:500 40px/1.05 Georgia,"Times New Roman",serif;letter-spacing:-.035em;margin:8px 0 10px;color:#21332f}.history-hero>div>p:last-child{max-width:620px;margin:0;color:#6e7d78;font-size:14px;line-height:1.65}.history-filter{border:1px solid #dce4e0;background:#fff;border-radius:12px;padding:10px 13px;display:flex;align-items:center;gap:7px;color:#465954;font-size:12px;font-weight:700}.history-filter svg{width:16px}.history-search{height:50px;margin:28px 0 30px;border:1px solid #dfe6e3;background:#fff;border-radius:14px;display:flex;align-items:center;gap:10px;padding:0 14px;box-shadow:0 4px 14px rgba(35,63,55,.025)}.history-search svg{width:19px;color:#75837e}.history-search input{flex:1;border:0;outline:0;background:transparent;font-size:14px;color:#243531}.history-section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}.history-section-head h2{font-size:17px;margin:0;letter-spacing:-.01em}.history-section-head button{border:0;background:transparent;color:#2f786c;font-size:12px;font-weight:800;display:flex;align-items:center;gap:2px}.history-section-head svg{width:15px}.history-list{display:grid;gap:12px}.history-card{display:grid;grid-template-columns:74px minmax(0,1fr) 22px;gap:17px;align-items:center;text-decoration:none;background:#fff;border:1px solid #e0e6e3;border-radius:18px;padding:17px;box-shadow:0 5px 20px rgba(35,63,55,.035)}.history-card:hover{border-color:#c7d8d2;transform:translateY(-1px);box-shadow:0 10px 26px rgba(35,63,55,.06)}.history-art{width:74px;height:74px;border-radius:17px;display:grid;place-items:center}.history-art svg{width:31px;height:31px;stroke-width:1.7}.history-art-sage{background:#edf7f3;color:#388679}.history-art-blue{background:#eef5fb;color:#4d82b7}.history-art-violet{background:#f4f0fb;color:#7c62b8}.history-art-mint{background:#eff8f2;color:#4d9a70}.history-card-main{display:block;min-width:0}.history-label-line{display:flex;align-items:center;gap:7px;color:#485a55;font-size:11px;font-weight:750}.history-label-line em{margin-left:auto;font-style:normal;padding:4px 8px;border-radius:999px;background:#e8f7ed;color:#2c8050;font-size:9px}.history-dot{width:7px;height:7px;border-radius:50%;flex:none}.history-dot-sage{background:#4db78f}.history-dot-blue{background:#4c9ced}.history-dot-violet{background:#8065dd}.history-dot-mint{background:#56b981}.history-card strong{display:block;margin:7px 0 7px;font-size:15px;line-height:1.45;color:#21332f;letter-spacing:-.01em}.history-time{display:flex;align-items:center;gap:6px;color:#7c8985;font-size:10px}.history-time svg{width:13px}.history-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.history-tags>span{padding:5px 8px;border-radius:999px;background:#f1f5f3;color:#50625c;font-size:9px}.history-chevron{width:18px;color:#82908b}.history-list-section{padding-bottom:20px}
-        @media(max-width:760px){.history-page{padding:30px 18px 104px}.history-hero{align-items:flex-start;gap:10px}.history-hero h1{font-size:31px;margin-top:7px}.history-hero>div>p:last-child{font-size:13px;line-height:1.55;max-width:320px}.history-filter{padding:9px 10px;border-radius:11px;margin-top:18px}.history-filter span{display:none}.history-search{margin:22px 0 26px;height:48px;border-radius:13px}.history-section-head h2{font-size:16px}.history-card{grid-template-columns:58px minmax(0,1fr) 16px;gap:13px;padding:14px;border-radius:16px;align-items:start}.history-art{width:58px;height:58px;border-radius:15px}.history-art svg{width:25px;height:25px}.history-card strong{font-size:14px;line-height:1.4;margin:6px 0 7px}.history-label-line{font-size:10px}.history-label-line em{font-size:8px;padding:3px 7px}.history-tags{margin-top:8px}.history-tags>span{font-size:8.5px;padding:4px 7px}.history-chevron{margin-top:25px;width:16px}.history-time{font-size:9.5px}}
+        .history-page-v3{max-width:980px;margin:0 auto;padding:46px 28px 112px}.history-hero-v3{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}.history-hero-v3 h1{font:600 42px/1.02 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:-.045em;margin:0 0 13px;color:#1f2f2c}.history-hero-v3 p{margin:0;color:#6f7d79;font-size:16px;line-height:1.55}.history-filter-v3{border:1px solid #d8e1dd;background:#fff;border-radius:14px;padding:11px 14px;display:flex;align-items:center;gap:8px;color:#30423d;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(31,52,45,.025)}.history-filter-v3 svg{width:17px;height:17px}.history-search-v3{height:54px;margin:29px 0 38px;border:1px solid #dce4e1;background:#fff;border-radius:14px;display:flex;align-items:center;gap:12px;padding:0 16px;box-shadow:0 5px 18px rgba(35,63,55,.025)}.history-search-v3 svg{width:21px;color:#65736f}.history-search-v3 input{flex:1;border:0;outline:0;background:transparent;font-size:15px;color:#243531}.history-search-v3 input::placeholder{color:#9ba6a2}.history-list-section-v3 h2{font-size:18px;margin:0 0 16px;color:#20302d;letter-spacing:-.015em}.history-list-v3{display:grid;gap:14px}.history-card-v3{display:grid;grid-template-columns:92px minmax(0,1fr) 110px;gap:20px;align-items:center;text-decoration:none;background:#fff;border:1px solid #dfe6e3;border-radius:20px;padding:20px 22px;box-shadow:0 6px 22px rgba(31,52,45,.035);transition:.18s ease}.history-card-v3:hover{border-color:#c5d7d0;transform:translateY(-1px);box-shadow:0 12px 30px rgba(31,52,45,.06)}.history-art-v3{width:92px;height:92px;border-radius:19px;display:grid;place-items:center}.history-art-v3 svg{width:39px;height:39px;stroke-width:1.7}.history-art-sage{background:#edf7f3;color:#388679}.history-art-blue{background:#eef5fb;color:#3e7dc3}.history-art-violet{background:#f4f0fb;color:#7355b4}.history-art-mint{background:#eef8f2;color:#479a70}.history-card-main-v3{min-width:0}.history-label-v3{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:750;color:#30423d}.history-dot-v3{width:8px;height:8px;border-radius:50%;flex:none}.history-dot-sage{background:#43b88d}.history-dot-blue{background:#3d83d6}.history-dot-violet{background:#7655c5}.history-dot-mint{background:#42af7d}.history-card-main-v3 strong{display:block;color:#172724;font-size:18px;line-height:1.38;letter-spacing:-.02em;margin:8px 0 12px}.history-tags-v3{display:flex;gap:7px;flex-wrap:wrap}.history-tags-v3>span{padding:6px 10px;border-radius:9px;background:#f0f5f3;color:#3f5750;font-size:10px;font-weight:650}.history-card-side-v3{height:100%;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;color:#596864}.history-card-time-v3{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:650}.history-card-time-v3 svg{width:14px;height:14px}.history-card-date-v3{font-size:11px;margin-top:6px}.history-card-side-v3>svg{width:18px;height:18px;margin-top:18px;color:#6f7d78}.history-view-all-v3{width:max-content;margin:24px auto 0;display:flex;align-items:center;gap:8px;text-decoration:none;color:#2f786c;font-size:12px;font-weight:800}.history-view-all-v3 svg{width:16px}
+        @media(max-width:760px){.history-page-v3{padding:38px 18px 105px}.history-hero-v3 h1{font-size:31px;margin-bottom:10px}.history-hero-v3 p{font-size:13px;line-height:1.55}.history-filter-v3{padding:10px 12px;margin-top:8px;border-radius:12px}.history-filter-v3 span{display:inline}.history-search-v3{height:50px;margin:25px 0 31px;border-radius:13px;padding:0 13px}.history-list-section-v3 h2{font-size:16px;margin-bottom:14px}.history-list-v3{gap:12px}.history-card-v3{grid-template-columns:76px minmax(0,1fr) 72px;gap:14px;padding:14px 13px;border-radius:17px;align-items:center}.history-art-v3{width:76px;height:76px;border-radius:17px}.history-art-v3 svg{width:31px;height:31px}.history-label-v3{font-size:10.5px;gap:6px}.history-dot-v3{width:7px;height:7px}.history-card-main-v3 strong{font-size:15px;line-height:1.38;margin:6px 0 9px}.history-tags-v3{gap:5px}.history-tags-v3>span{padding:5px 8px;border-radius:8px;font-size:8.5px}.history-card-side-v3{align-items:flex-end;justify-content:center}.history-card-time-v3{font-size:9px;white-space:nowrap}.history-card-time-v3 svg{width:12px;height:12px}.history-card-date-v3{font-size:9px;margin-top:4px}.history-card-side-v3>svg{width:16px;height:16px;margin-top:13px}.history-view-all-v3{margin-top:20px;font-size:11px}}
+        @media(max-width:430px){.history-page-v3{padding-left:14px;padding-right:14px}.history-card-v3{grid-template-columns:68px minmax(0,1fr) 62px;gap:11px;padding:12px 11px}.history-art-v3{width:68px;height:68px;border-radius:15px}.history-art-v3 svg{width:28px;height:28px}.history-card-main-v3 strong{font-size:14px}.history-tags-v3>span{font-size:8px;padding:4px 7px}.history-card-time-v3,.history-card-date-v3{font-size:8.5px}}
       `}</style>
     </ClaritiShell>
   );
