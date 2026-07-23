@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, Inter } from "next/font/google";
+import { PrototypeNavigationBridge } from "@/components/prototype-navigation";
 import "./globals.css";
 import "./mobile-v2.css";
 import "./auth.css";
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${display.variable} ${sans.variable}`}>
-      <body>{children}</body>
+      <body><PrototypeNavigationBridge />{children}</body>
     </html>
   );
 }
