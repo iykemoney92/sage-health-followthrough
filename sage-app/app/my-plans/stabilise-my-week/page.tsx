@@ -1,0 +1,20 @@
+import { Check, Download, MessageCircle, Mic } from "lucide-react";
+import { AppShell, ChannelPill, PrimaryActions } from "@/components/app-shell";
+
+const journey=[
+ ["Start gently","Set the tone for a manageable week.","Completed","done"],
+ ["Medication + mood","Check in on medication and how you’re feeling.","Completed","done"],
+ ["Sleep reset","Look at what’s affecting your sleep.","Today · 7:00 PM","current"],
+ ["10-minute walk","Move a little, breathe a little.","Tomorrow",""],
+ ["Relationship reflection","Reflect on what matters and what feels heavy.","Upcoming",""],
+ ["GP note review","Review your GP advice and what to focus on.","Upcoming",""],
+ ["Weekly summary","Celebrate progress and plan next steps.","Upcoming",""]
+] as const;
+export default function PlanDetail(){return <AppShell active="My Plans"><section className="app-width app-main">
+ <div className="page-eyebrow">WELLBEING + HEALTH FOLLOW-UP</div><h1 className="page-title">Stabilise My Week</h1><p className="page-subtitle">A gentle 7-day plan created from your goals, GP advice and the context you shared with Sage.</p>
+ <div className="plan-detail-layout" style={{marginTop:30}}>
+  <section className="panel journey-panel"><div className="section-head"><div><div className="panel-label">YOUR JOURNEY</div><h2>7-day plan</h2></div><strong>43%</strong></div><div className="progress-line"><i/></div>
+  {journey.map(([title,desc,status,state],i)=><div className={`journey-row ${state}`} key={title}><div className="journey-dot">{state==="done"?<Check size={14}/>:i+1}</div><div><b>{title}</b><span>{desc}</span></div><span>{status}</span></div>)}</section>
+  <aside className="detail-side"><section className="panel"><div className="panel-label">CURRENT SESSION</div><h3 style={{fontFamily:'var(--font-display)',fontSize:27,margin:'10px 0 5px'}}>Sleep reset</h3><p className="muted">Today · 7:00 PM</p><ChannelPill/><PrimaryActions/></section><section className="panel"><div className="panel-label">THIS WEEK’S FOCUS</div><p style={{lineHeight:1.6}}>Keep things manageable: protect sleep, keep your medication routine visible, and add one gentle movement goal.</p></section><section className="panel"><div className="panel-label">SOURCE CONTEXT</div><p className="muted">WhatsApp intake · GP advice · Your goals</p><button className="app-btn outline" style={{marginTop:12}}><Download/> Export summary</button></section></aside>
+ </div>
+ </section></AppShell>}
