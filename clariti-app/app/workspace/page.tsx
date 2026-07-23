@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, Bell, CalendarDays, CheckCircle2, FileText, Flag, Image as ImageIcon, Mail, MessageSquareText, Mic, MoreHorizontal, Paperclip, Pause, Phone, Plus, Send, Settings, ShieldCheck, Sparkles, Stethoscope, MessagesSquare, PanelRight } from "lucide-react";
+import { ArrowLeft, Bell, CalendarDays, CheckCircle2, FileText, Flag, History, Home, Image as ImageIcon, Mail, Menu, MessageSquareText, Mic, MoreHorizontal, Paperclip, Pause, Phone, Plus, Send, Settings, ShieldCheck, Sparkles, Stethoscope, X } from "lucide-react";
 import Link from "next/link";
 
 const sessions = [
@@ -14,7 +14,7 @@ type SessionId = "bill"|"radiology"|"eob";
 type CanvasTab = "summary"|"detail"|"actions";
 type ModalMode = "none"|"call"|"followup"|"calling"|"summary";
 type FollowChannel = "notification"|"email"|"voice";
-type MobilePanel = "messages"|"chat"|"canvas";
+type MobileView = "chat"|"canvas";
 
 const followupCopy:Record<SessionId,{title:string;options:string[];defaultTask:string}>={
  bill:{title:"Stay on top of this bill",options:["Remind me to call the billing team","Check whether I received a corrected bill","Follow up after I contact my insurer"],defaultTask:"Check whether City Hospital replied about the £185 facility fee."},
@@ -30,34 +30,41 @@ export default function WorkspacePage() {
   const [followOption,setFollowOption]=useState(0);
   const [followScheduled,setFollowScheduled]=useState(false);
   const [followDone,setFollowDone]=useState(false);
-  const [mobilePanel,setMobilePanel]=useState<MobilePanel>("chat");
+  const [mobileView,setMobileView]=useState<MobileView>("chat");
+  const [messagesOpen,setMessagesOpen]=useState(false);
   const session=sessions.find(s=>s.id===active)!;
   const follow=followupCopy[active];
-  const chooseSession=(id:SessionId)=>{setActive(id);setCanvasTab("summary");setFollowScheduled(false);setFollowDone(false);setModal("none");setMobilePanel("chat")};
+  const chooseSession=(id:SessionId)=>{setActive(id);setCanvasTab("summary");setFollowScheduled(false);setFollowDone(false);setModal("none");setMobileView("chat");setMessagesOpen(false)};
 
   return (
-    <main className={`clariti-workspace mobile-active-${mobilePanel}`}>
-      <aside className="clariti-left-panel">
-        <div className="workspace-brand-row"><Link href="/" className="clariti-brand"><span className="clariti-mark">C</span><strong>Clariti</strong></Link><Link href="/" className="workspace-new" aria-label="New conversation"><Plus/></Link></div>
-        <div className="conversation-label">MESSAGES</div>
+    <main className={`clariti-workspace mobile-view-${mobileView}`}>
+      <aside className={`clariti-left-panel ${messagesOpen?"mobile-drawer-open":""}`}>
+        <div className="workspace-brand-row"><Link href="/" className="clariti-brand"><span className="clariti-mark">C</span><strong>Clariti</strong></Link><div className="workspace-brand-actions"><Link href="/" className="workspace-new" aria-label="New conversation"><Plus/></Link><button className="mobile-drawer-close" onClick={()=>setMessagesOpen(false)} aria-label="Close conversations"><X/></button></div></div>
+        <div className="conversation-label">RECENT CONVERSATIONS</div>
         <nav className="clariti-conversations">{sessions.map(item=><button key={item.id} className={active===item.id?"active":""} onClick={()=>chooseSession(item.id as SessionId)}><span className="file-icon"><FileText/></span><span><b>{item.title}</b><small>{item.meta}</small></span><MoreHorizontal/></button>)}</nav>
         <div className="left-panel-note"><ShieldCheck/><p>Your documents stay private and under your control.</p></div>
       </aside>
+      {messagesOpen&&<button className="mobile-drawer-backdrop" aria-label="Close conversations" onClick={()=>setMessagesOpen(false)}/>} 
 
       <section className="clariti-chat-panel">
-        <header className="workspace-chat-header"><div><Link href="/" className="back-link"><ArrowLeft/> Back</Link><h1>{session.title}</h1><p>{session.meta}</p></div><div className="workspace-header-actions"><button onClick={()=>setModal("call")}><Phone/> Discuss with AI</button><span className="doc-chip">{session.tag}</span></div></header>
+        <header className="workspace-chat-header">
+          <div className="mobile-header-left"><button className="mobile-menu-button" onClick={()=>setMessagesOpen(true)} aria-label="Open conversations"><Menu/></button><div><h1>{session.title}</h1><p>{session.meta}</p></div></div>
+          <div className="workspace-header-actions"><button onClick={()=>setModal("call")}><Phone/> Discuss with AI</button><span className="doc-chip">{session.tag}</span></div>
+        </header>
+        <div className="mobile-view-switch" aria-label="Workspace view"><button className={mobileView==="chat"?"active":""} onClick={()=>setMobileView("chat")}>Chat</button><button className={mobileView==="canvas"?"active":""} onClick={()=>setMobileView("canvas")}>Insights</button></div>
         <div className="clariti-chat-scroll">
           <div className="clariti-date-chip">Today</div>
           {active==="bill"&&<><div className="clariti-user-message"><span className="attached-file"><FileText/><span><b>hospital-bill-july.pdf</b><small>2 pages · 384 KB</small></span></span><p>Can you explain this bill and tell me if anything looks unusual?</p></div><div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>I’ve gone through the bill. The total is <b>£1,248.60</b>, and <b>£930.00 appears to be your responsibility</b>.</p><p>I’ve broken down the charges on the canvas and flagged one item worth clarifying.</p><div className="clariti-inline-note"><Flag/> One charge may need clarification</div></div></div></>}
           {active==="radiology"&&<><div className="clariti-user-message"><span className="attached-file"><FileText/><span><b>MRI-lumbar-spine-report.pdf</b><small>Radiology report · 3 pages</small></span></span><p>Can you explain what this MRI report means in plain English?</p></div><div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>The report describes <b>mild degenerative changes in your lower back</b>, most noticeable at L4–L5.</p><p>The radiologist also says there is <b>no severe spinal canal narrowing</b>. I’ve separated the findings, anatomy and useful questions on the canvas.</p><div className="clariti-inline-note radiology-note"><Stethoscope/> This is an explanation of the report, not a diagnosis</div></div></div></>}
           {active==="eob"&&<><div className="clariti-user-message"><span className="attached-file"><FileText/><span><b>insurance-eob-8472.pdf</b><small>Explanation of Benefits · 4 pages</small></span></span><p>What did insurance actually pay, and do I owe the rest?</p></div><div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>This EOB shows what was <b>billed, allowed, paid by your insurer, and assigned to you</b>. An EOB is not itself a bill.</p><p>I’ve mapped the claim flow and highlighted the amount marked as your responsibility.</p></div></div></>}
-          <div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>I can stay with you beyond this explanation. We can talk through the document now, or I can follow up later so the next step doesn’t get forgotten.</p><div className="clariti-quick-actions"><button onClick={()=>setModal("call")}>Discuss with AI</button><button onClick={()=>setModal("followup")}>Set a follow-up</button><button className="mobile-insight-cta" onClick={()=>setMobilePanel("canvas")}>View insights</button></div></div></div>
+          <div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>I can stay with you beyond this explanation. We can talk through the document now, or I can follow up later so the next step doesn’t get forgotten.</p><div className="clariti-quick-actions"><button onClick={()=>setModal("call")}>Discuss with AI</button><button onClick={()=>setModal("followup")}>Set a follow-up</button><button className="mobile-insight-cta" onClick={()=>setMobileView("canvas")}>View insights</button></div></div></div>
         </div>
         <div className="clariti-workspace-composer"><button aria-label="Attach"><Paperclip/></button><input placeholder="Ask a follow-up question…"/><button className="send"><Send/></button></div>
       </section>
 
       <aside className={`clariti-canvas canvas-${active}`}>
         <header><div><p className="canvas-kicker">{active==="bill"?"BILL INTELLIGENCE":active==="radiology"?"RADIOLOGY INTELLIGENCE":"CLAIM INTELLIGENCE"}</p><h2>{active==="bill"?"Your bill, made clearer":active==="radiology"?"Your MRI, in plain English":"Your claim, made clearer"}</h2></div>{active==="radiology"?<ImageIcon/>:<Sparkles/>}</header>
+        <div className="mobile-canvas-top"><button onClick={()=>setMobileView("chat")}><ArrowLeft/> Back to chat</button></div>
         <div className="canvas-tabs"><button className={canvasTab==="summary"?"active":""} onClick={()=>setCanvasTab("summary")}>Summary</button><button className={canvasTab==="detail"?"active":""} onClick={()=>setCanvasTab("detail")}>{active==="bill"?"Charges":active==="radiology"?"Findings":"Claim"}</button><button className={canvasTab==="actions"?"active":""} onClick={()=>setCanvasTab("actions")}>Next steps</button></div>
         {active==="bill"&&<BillCanvas tab={canvasTab}/>} 
         {active==="radiology"&&<RadiologyCanvas tab={canvasTab}/>} 
@@ -68,12 +75,8 @@ export default function WorkspacePage() {
         <footer className="canvas-footer">Clariti explains and organises your document. It does not replace your clinician, insurer, billing team or other relevant professional.</footer>
       </aside>
 
-      <nav className="clariti-mobile-nav" aria-label="Workspace navigation">
-        <button className={mobilePanel==="messages"?"active":""} onClick={()=>setMobilePanel("messages")}><MessagesSquare/><span>Messages</span></button>
-        <button className={mobilePanel==="chat"?"active":""} onClick={()=>setMobilePanel("chat")}><MessageSquareText/><span>Chat</span></button>
-        <button className={mobilePanel==="canvas"?"active":""} onClick={()=>setMobilePanel("canvas")}><PanelRight/><span>Insights</span></button>
-        <Link href="/documents"><FileText/><span>Documents</span></Link>
-        <Link href="/settings"><Settings/><span>Settings</span></Link>
+      <nav className="clariti-workspace-global-nav" aria-label="Clariti navigation">
+        <Link href="/"><Home/><span>Home</span></Link><Link href="/documents"><FileText/><span>Documents</span></Link><Link href="/history"><History/><span>History</span></Link><Link href="/settings"><Settings/><span>Settings</span></Link>
       </nav>
 
       {modal==="call"&&<Modal close={()=>setModal("none")} icon={<Phone/>} kicker="DISCUSS THIS DOCUMENT" title={`Talk through this ${session.tag.toLowerCase()}`} description="Clariti’s AI agent will already have this document, the current conversation, highlighted insights and your saved questions as context."><div className="call-mode-grid"><button onClick={()=>setModal("calling")}><Mic/><b>Start AI voice call now</b><span>Talk in real time in the browser.</span></button><button><Phone/><b>Call my phone now</b><span>Outbound AI voice call to your verified number.</span></button><button><CalendarDays/><b>Schedule a call</b><span>Choose a convenient date and time.</span></button></div></Modal>}
