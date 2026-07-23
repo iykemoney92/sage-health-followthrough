@@ -4,6 +4,7 @@ import "./globals.css";
 import "./mobile-v2.css";
 import "./auth.css";
 import "./dashboard.css";
+import "./settings-tabs.css";
 
 const display = Cormorant_Garamond({
   subsets: ["latin"],
