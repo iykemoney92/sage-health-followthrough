@@ -13,22 +13,25 @@ const nav = [
 
 export function ClaritiShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+
   return (
     <main className="clariti-app-shell">
       <header className="clariti-topbar">
-        <Link href="/" className="clariti-brand"><span className="clariti-mark">C</span><strong>Clariti</strong></Link>
-        <nav>{nav.map(([label, href, Icon]) => <Link key={href} href={href} className={pathname === href ? "active" : ""}><Icon />{label}</Link>)}</nav>
+        <Link href="/" className="clariti-brand">
+          <span className="clariti-mark">C</span>
+          <strong>Clariti</strong>
+        </Link>
+        <nav>
+          {nav.map(([label, href, Icon]) => (
+            <Link key={href} href={href} className={pathname === href ? "active" : ""}>
+              <Icon />
+              {label}
+            </Link>
+          ))}
+        </nav>
         <button className="clariti-avatar" aria-label="Profile">IA</button>
       </header>
       {children}
-      <nav className="clariti-global-mobile-nav" aria-label="Clariti navigation">
-        {nav.map(([label, href, Icon]) => (
-          <Link key={href} href={href} className={pathname === href ? "active" : ""}>
-            <Icon />
-            <span>{label}</span>
-          </Link>
-        ))}
-      </nav>
     </main>
   );
 }
