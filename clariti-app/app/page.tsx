@@ -1,61 +1,41 @@
-import { ArrowRight, FileText, MessageSquare, PanelsTopLeft } from "lucide-react";
 import Link from "next/link";
+import { ArrowUp, FileText, Paperclip, ShieldCheck, Sparkles } from "lucide-react";
+import { ClaritiShell } from "@/components/clariti-shell";
 
-const scaffoldAreas = [
-  {
-    title: "Document intake",
-    copy: "Upload, classify, and prepare bills, EOBs, reports, and other healthcare documents for structured reasoning.",
-    icon: FileText,
-  },
-  {
-    title: "Chat session",
-    copy: "Keep the central conversation as the control surface for user questions, assistant turns, and clarifying prompts.",
-    icon: MessageSquare,
-  },
-  {
-    title: "Adaptive canvas",
-    copy: "Render task-specific artifacts beside the chat: line items, report explainers, glossary cards, and follow-up actions.",
-    icon: PanelsTopLeft,
-  },
+const starters = [
+  "Explain this medical bill",
+  "Help me understand my radiology report",
+  "What does this insurance EOB mean?",
 ];
 
 export default function Home() {
   return (
-    <main className="min-h-screen px-6 py-8">
-      <div className="mx-auto flex max-w-6xl flex-col gap-8">
-        <header className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-[var(--accent)]">
-              Clariti scaffold
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold">Consumer health document copilot</h1>
+    <ClaritiShell>
+      <section className="clariti-empty-page">
+        <div className="clariti-empty-inner">
+          <div className="clariti-orb"><Sparkles /></div>
+          <p className="clariti-kicker">YOUR HEALTH DOCUMENT COPILOT</p>
+          <h1>Health documents are confusing.<br/><span>Clariti makes them clear.</span></h1>
+          <p className="clariti-lead">Upload a medical bill, insurance EOB, radiology report, discharge note or other health document. Clariti explains what it says, what matters, and what you can do next.</p>
+
+          <div className="clariti-composer-card">
+            <textarea aria-label="Ask Clariti" placeholder="Ask Clariti about a health document…" />
+            <div className="clariti-composer-actions">
+              <div>
+                <button type="button"><Paperclip/> Attach document</button>
+                <span>PDF, JPG or PNG</span>
+              </div>
+              <Link href="/workspace" className="clariti-send" aria-label="Start Clariti demo"><ArrowUp/></Link>
+            </div>
           </div>
-          <Link
-            href="/workspace"
-            className="inline-flex items-center gap-2 rounded-md bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-white"
-          >
-            Open shell
-            <ArrowRight size={16} aria-hidden="true" />
-          </Link>
-        </header>
 
-        <section className="grid gap-4 md:grid-cols-3">
-          {scaffoldAreas.map((area) => {
-            const Icon = area.icon;
+          <div className="clariti-starters">
+            {starters.map((starter)=><Link href="/workspace" key={starter}><FileText/>{starter}</Link>)}
+          </div>
 
-            return (
-              <article
-                key={area.title}
-                className="rounded-md border border-[var(--border)] bg-[var(--panel)] p-5"
-              >
-                <Icon className="text-[var(--accent)]" size={22} aria-hidden="true" />
-                <h2 className="mt-4 text-lg font-semibold">{area.title}</h2>
-                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{area.copy}</p>
-              </article>
-            );
-          })}
-        </section>
-      </div>
-    </main>
+          <div className="clariti-trust"><ShieldCheck/><span>Clariti explains and organises your information. It does not diagnose or replace a healthcare professional.</span></div>
+        </div>
+      </section>
+    </ClaritiShell>
   );
 }
