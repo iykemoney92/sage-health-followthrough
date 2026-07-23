@@ -16,7 +16,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body data-ui-version="mobile-nav-v2">{children}</body>
     </html>
   );
 }
