@@ -22,11 +22,11 @@ export function ClaritiShell({ children }: { children: React.ReactNode }) {
           <span className="clariti-mark">C</span>
           <strong>Clariti</strong>
         </Link>
-        <nav>
+        <nav className="clariti-desktop-nav" aria-label="Primary navigation">
           {nav.map(([label, href, Icon]) => (
             <Link key={href} href={href} className={pathname === href ? "active" : ""}>
               <Icon />
-              {label}
+              <span>{label}</span>
             </Link>
           ))}
         </nav>
@@ -47,8 +47,48 @@ export function ClaritiShell({ children }: { children: React.ReactNode }) {
       )}
 
       <style jsx global>{`
+        .clariti-desktop-nav {
+          justify-self: center;
+          align-self: stretch;
+          display: flex;
+          align-items: stretch;
+          justify-content: center;
+          gap: 4px;
+        }
+
+        .clariti-desktop-nav a {
+          min-width: 74px;
+          padding: 8px 10px !important;
+          display: flex !important;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 3px;
+          text-align: center;
+          line-height: 1.1;
+        }
+
+        .clariti-desktop-nav a svg {
+          width: 20px;
+          height: 20px;
+          flex: none;
+          stroke-width: 1.9;
+        }
+
+        .clariti-desktop-nav a span {
+          display: block;
+          font-size: 11px;
+        }
+
+        .clariti-desktop-nav a.active {
+          color: #2f6e66;
+          background: #edf5f2;
+        }
+
         .clariti-shell-mobile-nav { display: none !important; }
+
         @media (max-width: 760px) {
+          .clariti-desktop-nav { display: none !important; }
           .clariti-shell-mobile-nav {
             position: fixed; left: 0; right: 0; bottom: 0; z-index: 95;
             display: grid !important; grid-template-columns: repeat(4,minmax(0,1fr));
