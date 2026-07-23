@@ -6,7 +6,7 @@ import "./mobile.css";
 
 export const metadata: Metadata = {
   title: "Clariti",
-  description: "Consumer health document copilot.",
+  description: "Consumer health document copilot — mobile-first prototype.",
 };
 
 export default function RootLayout({
