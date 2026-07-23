@@ -7,6 +7,7 @@ import "./auth.css";
 import "./dashboard.css";
 import "./settings-tabs.css";
 import "./prototype.css";
+import "./product-states.css";
 
 const display = Cormorant_Garamond({
   subsets: ["latin"],
