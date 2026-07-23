@@ -1,41 +1,34 @@
-/* Product-design fidelity pass for onboarding, with Step 5 plan creation matched most tightly. */
+/* Product-design fidelity pass for onboarding. */
 
 .ob-plan-creating-screen .ob-subtitle{max-width:720px;margin-bottom:8px}
 .ob-plan-creating-screen{min-height:640px}
 .ob-plan-creating-screen .ob-title{font-size:50px;line-height:1.04;max-width:520px}
-
 .ob-loader-stage{position:relative;min-height:365px;margin:8px auto 10px;display:flex;align-items:center;justify-content:center;max-width:980px}
-
 .ob-pulse-loader{position:relative;width:230px;height:230px;display:grid;place-items:center}
 .ob-pulse-wave,.ob-pulse-orbit,.ob-pulse-core{position:absolute;border-radius:50%}
 .ob-pulse-wave{inset:0;border:1px solid rgba(103,145,117,.28);background:rgba(235,244,235,.22);animation:sagePulse 3.2s ease-out infinite}
-.ob-pulse-wave.wave-two{inset:20px;animation-delay:.8s}
-.ob-pulse-wave.wave-three{inset:40px;animation-delay:1.6s}
+.ob-pulse-wave.wave-two{inset:20px;animation-delay:.8s}.ob-pulse-wave.wave-three{inset:40px;animation-delay:1.6s}
 .ob-pulse-orbit{inset:40px;border:2px dashed #8fb19b;animation:sageOrbit 18s linear infinite}
 .ob-pulse-core{width:92px;height:92px;background:#4d7b63;display:grid;place-items:center;box-shadow:0 12px 32px rgba(57,96,75,.16);animation:sageBreathe 2.4s ease-in-out infinite}
 .ob-pulse-core .ob-logo-mark{width:44px;height:52px;color:white;position:relative;z-index:2}
-
 @keyframes sagePulse{0%{transform:scale(.72);opacity:.1}35%{opacity:.62}100%{transform:scale(1.14);opacity:0}}
-@keyframes sageOrbit{to{transform:rotate(360deg)}}
-@keyframes sageBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
-
+@keyframes sageOrbit{to{transform:rotate(360deg)}}@keyframes sageBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
 .ob-plan-creating-screen .ob-callout{display:flex;align-items:center;gap:6px;padding:10px 14px;font-size:10px;border-color:#d6e1d9;box-shadow:0 8px 22px rgba(45,72,59,.06);white-space:nowrap}
-.ob-loader-stage .ob-callout.top{top:18px;left:50%;transform:translateX(-50%)}
-.ob-loader-stage .ob-callout.left{left:5.5%;top:50%;transform:translateY(-50%)}
-.ob-loader-stage .ob-callout.right{right:5.5%;top:50%;transform:translateY(-50%)}
-.ob-loader-stage .ob-callout.bottom{bottom:10px;left:50%;transform:translateX(-50%)}
-.ob-plan-creating-screen .ob-loader-note{margin-top:0;padding:14px 18px;border-radius:12px;background:#eef5ec;font-size:11px}
-.ob-preview-link{text-align:center;margin-top:16px}.ob-preview-link a{font-size:11px;color:#6c7d74}
+.ob-loader-stage .ob-callout.top{top:18px;left:50%;transform:translateX(-50%)}.ob-loader-stage .ob-callout.left{left:5.5%;top:50%;transform:translateY(-50%)}.ob-loader-stage .ob-callout.right{right:5.5%;top:50%;transform:translateY(-50%)}.ob-loader-stage .ob-callout.bottom{bottom:10px;left:50%;transform:translateX(-50%)}
+.ob-plan-creating-screen .ob-loader-note{margin-top:0;padding:14px 18px;border-radius:12px;background:#eef5ec;font-size:11px}.ob-preview-link{text-align:center;margin-top:16px}.ob-preview-link a{font-size:11px;color:#6c7d74}
 
-/* Shared geometry corrections based on the green/cream six-step product-design screens. */
+/* Shared geometry from the six-step green/cream product design. */
 .ob-shell{width:min(1160px,calc(100% - 52px));padding-top:18px}.ob-header{height:52px}.ob-stepper{max-width:820px;margin:14px auto 26px}.ob-card{border-radius:22px;padding:38px 44px;min-height:540px}.ob-footer{min-height:66px}
 
-/* Step 1 exact visual structure from the product-design reference. */
-.ob-welcome-pd .ob-title{font-size:49px;line-height:1.02}.ob-title-leaf{font-family:initial;font-size:.7em;vertical-align:.08em}.ob-welcome-pd .ob-subtitle{max-width:590px;margin-bottom:16px}.ob-welcome-illustration{height:255px;border-radius:22px;background:#eef4ea;position:relative;overflow:hidden;margin:8px 0 18px}.ob-illustration-halo{position:absolute;width:280px;height:280px;border-radius:50%;background:#e1ecdf;left:50%;top:52%;transform:translate(-50%,-50%)}.ob-person{position:absolute;width:310px;height:250px;left:50%;bottom:-8px;transform:translateX(-50%);z-index:2}.ob-float-icon{position:absolute;width:44px;height:44px;border-radius:50%;background:#fff;display:grid;place-items:center;color:#4d7b63;box-shadow:0 8px 20px rgba(49,82,66,.08);z-index:3}.ob-float-chat{left:18%;top:27%}.ob-float-heart{right:18%;top:22%}.ob-float-calendar{right:16%;bottom:17%}.ob-sprig{position:absolute;width:36px;height:64px;border-radius:80% 0 80% 0;background:#bfd2be;opacity:.72}.ob-sprig-left{left:8%;bottom:13%;transform:rotate(-24deg)}.ob-sprig-right{right:8%;top:15%;transform:rotate(38deg)}.ob-welcome-benefits{display:grid;grid-template-columns:1fr 1fr;gap:12px 22px}.ob-welcome-benefits>div{display:flex;align-items:center;gap:9px;font-size:12px;color:#44584f}.ob-welcome-benefits svg{color:#4d7b63;flex:none}
-.ob-moments h3{font-family:var(--font-display),Georgia,serif;font-size:28px;line-height:1.1;margin:4px 0 26px}.ob-moment-row{display:flex;gap:13px;padding:15px 0;border-bottom:1px solid #d8e3d9}.ob-moment-row:last-child{border-bottom:0}.ob-moment-row i{width:42px;height:42px;border-radius:50%;background:#fff;display:grid;place-items:center;color:#4d7b63;font-style:normal;flex:none}.ob-moment-row b{font-size:12px;display:block;color:#244a3a}.ob-moment-row span{display:block;margin-top:4px;font-size:11px;line-height:1.45;color:#6d7973}
+/* Step 4: match the product-design WhatsApp artwork instead of using a generic symbol. */
+.ob-whatsapp-visual{height:258px;margin:8px 0 26px;background:#edf4e9;border-radius:22px;overflow:hidden}
+.ob-wa-logo{left:16%;top:70px;width:62px;height:62px;background:#25D366;box-shadow:0 12px 26px rgba(37,211,102,.16)}
+.ob-whatsapp-mark{position:relative;width:38px;height:38px;display:block;color:#fff}
+.ob-whatsapp-bubble{position:absolute;inset:0;width:38px;height:38px;stroke-width:2.3}
+.ob-whatsapp-phone{position:absolute;width:18px;height:18px;left:10px;top:9px;transform:rotate(-18deg);stroke-width:2.8}
+.ob-wa-phone{width:180px;height:236px;top:22px;border-color:#3f7258;border-radius:26px;box-shadow:none}
+.ob-wa-avatar{background:#4d7b63}.ob-wa-bubble{background:#d9efdc}.ob-wa-bubble.white{background:#f5f5f1}
 
-@media(max-width:900px){.ob-plan-creating-screen{min-height:0}.ob-plan-creating-screen .ob-title{font-size:44px}.ob-loader-stage{min-height:430px;max-width:620px}.ob-loader-stage .ob-callout.left{left:0}.ob-loader-stage .ob-callout.right{right:0}.ob-welcome-benefits{grid-template-columns:1fr}.ob-welcome-illustration{height:235px}}
-
-@media(max-width:700px){.ob-shell{width:calc(100% - 20px);padding-top:10px}.ob-card{padding:26px 18px;border-radius:18px}.ob-plan-creating-screen .ob-title{font-size:39px;line-height:1.03}.ob-plan-creating-screen .ob-subtitle{font-size:14px;line-height:1.55}.ob-loader-stage{min-height:540px;display:block;margin-top:6px}.ob-pulse-loader{position:absolute;left:50%;top:145px;transform:translateX(-50%);width:205px;height:205px}.ob-pulse-core{width:84px;height:84px}.ob-loader-stage .ob-callout.top{top:36px}.ob-loader-stage .ob-callout.left{left:50%;top:370px;transform:translateX(-50%)}.ob-loader-stage .ob-callout.right{right:auto;left:50%;top:420px;transform:translateX(-50%)}.ob-loader-stage .ob-callout.bottom{bottom:18px}.ob-plan-creating-screen .ob-callout{font-size:9px;max-width:95%;white-space:normal;text-align:center}.ob-plan-creating-screen .ob-loader-note{font-size:10px;line-height:1.5}.ob-welcome-pd .ob-title{font-size:39px}.ob-welcome-illustration{height:220px}.ob-person{width:280px}.ob-float-chat{left:8%}.ob-float-heart{right:8%}.ob-float-calendar{right:8%}.ob-welcome-benefits{gap:10px}}
-
+@media(max-width:900px){.ob-plan-creating-screen{min-height:0}.ob-plan-creating-screen .ob-title{font-size:44px}.ob-loader-stage{min-height:430px;max-width:620px}.ob-loader-stage .ob-callout.left{left:0}.ob-loader-stage .ob-callout.right{right:0}}
+@media(max-width:700px){.ob-shell{width:calc(100% - 20px);padding-top:10px}.ob-card{padding:26px 18px;border-radius:18px}.ob-plan-creating-screen .ob-title{font-size:39px;line-height:1.03}.ob-plan-creating-screen .ob-subtitle{font-size:14px;line-height:1.55}.ob-loader-stage{min-height:540px;display:block;margin-top:6px}.ob-pulse-loader{position:absolute;left:50%;top:145px;transform:translateX(-50%);width:205px;height:205px}.ob-pulse-core{width:84px;height:84px}.ob-loader-stage .ob-callout.top{top:36px}.ob-loader-stage .ob-callout.left{left:50%;top:370px;transform:translateX(-50%)}.ob-loader-stage .ob-callout.right{right:auto;left:50%;top:420px;transform:translateX(-50%)}.ob-loader-stage .ob-callout.bottom{bottom:18px}.ob-plan-creating-screen .ob-callout{font-size:9px;max-width:95%;white-space:normal;text-align:center}.ob-plan-creating-screen .ob-loader-note{font-size:10px;line-height:1.5}.ob-wa-logo{left:8%;transform:scale(.9)}}
 @media(prefers-reduced-motion:reduce){.ob-pulse-wave,.ob-pulse-orbit,.ob-pulse-core{animation:none}.ob-pulse-wave{opacity:.32}}
