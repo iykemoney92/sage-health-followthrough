@@ -62,8 +62,8 @@ export default function Home() {
           <a className="wordmark" href="#"><SageMark /><strong>Sage</strong></a>
           <nav>
             <a href="#how">How it works</a>
-            <a href="#">Log in</a>
-            <a className="top-cta" href="#start">Get started</a>
+            <a href="/auth/sign-in">Log in</a>
+            <a className="top-cta" href="/auth/sign-up">Get started</a>
           </nav>
         </div>
       </header>
@@ -75,7 +75,7 @@ export default function Home() {
             <h1>Turn health advice<br />into a plan you can<br /><span>actually follow.</span></h1>
             <p>Sage turns what you’re dealing with and the guidance you’ve received into a simple plan — then checks in through WhatsApp to help you keep going.</p>
             <div className="hero-actions">
-              <a className="primary-button" href="#start">Get started <ArrowRight /></a>
+              <a className="primary-button" href="/auth/sign-up">Get started <ArrowRight /></a>
               <a className="outline-button" href="#how">See how Sage works</a>
             </div>
             <div className="assurance"><ShieldCheck /><span>No complicated tracking</span><i /><span>You stay in control</span></div>
@@ -156,7 +156,7 @@ export default function Home() {
 
       <section id="start" className="final-cta page-width">
         <h2>You already know what you need to do.<br /><span>Sage helps you keep going.</span></h2>
-        <div><a className="primary-button" href="#">Get started with Sage <ArrowRight /></a><small>Start by telling Sage what’s going on.</small></div>
+        <div><a className="primary-button" href="/auth/sign-up">Get started with Sage <ArrowRight /></a><small>Start by telling Sage what’s going on.</small></div>
       </section>
 
       <footer className="page-width footer">
