@@ -16,7 +16,7 @@ export default function Home() {
 
   return (
     <ClaritiShell>
-      <section className="clariti-entry-page">
+      <section className="clariti-entry-page" data-ui-version="clariti-preview-latest">
         <div className="clariti-entry-inner">
           <div className="clariti-entry-mark">C</div>
           <h1>What can I help you understand?</h1>
