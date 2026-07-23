@@ -38,10 +38,10 @@ export default function SignUpPage() {
           <span>I agree to Sage’s <Link href="#">Terms</Link> and acknowledge the <Link href="#">Privacy Policy</Link>.</span>
         </label>
 
-        <button className="auth-primary" type="button">Create account <ArrowRight /></button>
+        <Link className="auth-primary" href="/onboarding/welcome">Create account <ArrowRight /></Link>
 
         <div className="auth-divider">or</div>
-        <button className="auth-secondary" type="button">Continue with Google</button>
+        <Link className="auth-secondary" href="/onboarding/welcome">Continue with Google</Link>
         <p className="auth-note">Sage supports health and wellbeing follow-through. It does not diagnose conditions or replace professional care.</p>
       </form>
 
