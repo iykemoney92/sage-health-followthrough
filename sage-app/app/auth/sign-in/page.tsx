@@ -28,10 +28,10 @@ export default function SignInPage() {
           </div>
         </div>
 
-        <button className="auth-primary" type="button">Sign in <ArrowRight /></button>
+        <Link className="auth-primary" href="/today">Sign in <ArrowRight /></Link>
 
         <div className="auth-divider">or</div>
-        <button className="auth-secondary" type="button">Continue with Google</button>
+        <Link className="auth-secondary" href="/today">Continue with Google</Link>
       </form>
 
       <p className="auth-switch">New to Sage? <Link href="/auth/sign-up">Create an account</Link></p>
