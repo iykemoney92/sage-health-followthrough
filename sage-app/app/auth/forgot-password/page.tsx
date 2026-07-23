@@ -18,7 +18,7 @@ export default function ForgotPasswordPage() {
           </div>
         </div>
 
-        <button className="auth-primary" type="button">Send reset link <ArrowRight /></button>
+        <Link className="auth-primary" href="/auth/check-email">Send reset link <ArrowRight /></Link>
       </form>
 
       <p className="auth-switch">Remembered it? <Link href="/auth/sign-in">Back to sign in</Link></p>
