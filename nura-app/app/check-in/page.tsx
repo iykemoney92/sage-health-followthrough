@@ -1,0 +1,8 @@
+"use client";
+import { useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, Mic, Smile, Meh, Frown, HelpCircle, CheckCircle2 } from "lucide-react";
+import { NuraLogo } from "@/components/nura-logo";
+
+const moods=[{label:"Better",Icon:Smile},{label:"About the same",Icon:Meh},{label:"Worse",Icon:Frown},{label:"Not sure",Icon:HelpCircle}];
+export default function CheckInPage(){const [selected,setSelected]=useState("About the same");const [done,setDone]=useState(false);return <main className="focused-flow"><header className="focused-header"><Link href="/today"><ArrowLeft/></Link><NuraLogo compact href="/today"/><span/></header><section className="checkin-card">{done?<div className="completion-state"><CheckCircle2/><h1>Check-in complete</h1><p>Thanks for sharing. Nura has added this update to your Headaches Thread and kept the context for your next follow-up.</p><Link href="/summary" className="primary-cta">View updated summary</Link><Link href="/today" className="text-link">Back to Today</Link></div>:<><div className="flow-kicker">CHECK-IN · HEADACHES</div><h1>How have your headaches been since we last spoke?</h1><p>Select the closest answer. You can add more context below.</p><div className="answer-list">{moods.map(({label,Icon})=><button key={label} className={selected===label?"selected":""} onClick={()=>setSelected(label)}><Icon/><span>{label}</span></button>)}</div><label className="thought-box"><span>Anything else you&apos;d like to add?</span><div><textarea placeholder="Type your thoughts…"/><Mic/></div></label><button className="primary-cta full" onClick={()=>setDone(true)}>Continue</button></>}</section></main>}
