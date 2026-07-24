@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BellRing, CalendarDays, Cross, FileText, HeartPulse, LockKeyhole, MessageCircle, Pill, Sparkles, Stethoscope, UsersRound } from "lucide-react";
+import { ArrowRight, BellRing, CalendarDays, Cross, FileText, HeartPulse, LockKeyhole, MessageCircle, Pill, Stethoscope, UsersRound } from "lucide-react";
 
 const features = [
   [MessageCircle,"Conversations that feel natural","Talk, type, send a voice note, or upload context. Nura understands and keeps the important parts."],
@@ -10,7 +10,7 @@ const features = [
 ] as const;
 
 const careContexts = [
-  {label:"NHS care",sub:"Appointments & follow-up",kind:"nhs"},
+  {label:"NHS care",sub:"Appointments & follow-up",kind:"nhs" as const},
   {label:"GP care",sub:"Visits & reviews",Icon:Stethoscope},
   {label:"Pharmacy",sub:"Medication context",Icon:Pill},
   {label:"Wellbeing",sub:"Everyday support",Icon:HeartPulse},
@@ -35,7 +35,7 @@ export default function LandingPage() {
       </div>
     </section>
 
-    <section className="care-context-strip" aria-label="Care contexts Nura is designed around"><p>Designed for people navigating everyday health across</p><div className="care-context-row">{careContexts.map((item)=>{const Icon="Icon" in item?item.Icon:null;return <div className="care-context-item" key={item.label}>{item.kind==="nhs"?<span className="nhs-wordmark" aria-label="NHS">NHS</span>:Icon?<span className="care-context-icon"><Icon/></span>:null}<span><b>{item.label}</b><small>{item.sub}</small></span></div>})}</div></section>
+    <section className="care-context-strip" aria-label="Care contexts Nura is designed around"><p>Designed for people navigating everyday health across</p><div className="care-context-row">{careContexts.map((item)=>{const Icon="Icon" in item?item.Icon:null;const isNhs="kind" in item&&item.kind==="nhs";return <div className="care-context-item" key={item.label}>{isNhs?<span className="nhs-wordmark" aria-label="NHS">NHS</span>:Icon?<span className="care-context-icon"><Icon/></span>:null}<span><b>{item.label}</b><small>{item.sub}</small></span></div>})}</div></section>
 
     <section id="how" className="how-section reconciled-how"><div className="section-intro"><span>HOW NURA WORKS</span><h2>Help for real life, not just data.</h2><p>Nura turns everyday health context into something you can actually keep up with.</p></div><div id="features" className="feature-grid five-up">{features.map(([Icon,title,copy])=><article key={title}><span className="feature-icon"><Icon/></span><h3>{title}</h3><p>{copy}</p></article>)}</div></section>
 
