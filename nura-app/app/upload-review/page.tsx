@@ -1,0 +1,7 @@
+"use client";
+import { useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, CheckCircle2, FileText } from "lucide-react";
+import { NuraLogo } from "@/components/nura-logo";
+const points=["Monitor headaches for 3 weeks","Keep a record of frequency and triggers","Take paracetamol if needed","Review in 3 weeks","Contact sooner if symptoms get worse"];
+export default function UploadReviewPage(){const [checked,setChecked]=useState(points);return <main className="focused-flow"><header className="focused-header"><Link href="/today"><ArrowLeft/></Link><NuraLogo compact href="/today"/><span/></header><section className="review-card"><div className="file-summary"><FileText/><div><b>GP Consultation Note.pdf</b><small>Uploaded today · 2 pages</small></div></div><div className="flow-kicker">REVIEW UPLOADED NOTE</div><h1>Nura found these important points</h1><p>Choose what you want to keep with your Headaches Thread. Nothing is added until you confirm.</p><div className="review-points">{points.map(p=><button key={p} onClick={()=>setChecked(v=>v.includes(p)?v.filter(x=>x!==p):[...v,p])} className={checked.includes(p)?"selected":""}><CheckCircle2/><span>{p}</span></button>)}</div><div className="review-actions"><Link href="/plans/headaches" className="primary-cta">Add to Headaches Thread</Link><Link href="/today" className="text-link">Not now</Link></div></section></main>}
