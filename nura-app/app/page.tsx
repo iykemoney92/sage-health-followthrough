@@ -1,72 +1,26 @@
-"use client";
-
 import Link from "next/link";
-import { ArrowUp, FileText, Mic, MessageCircle, Paperclip, ShieldCheck } from "lucide-react";
-import { useState } from "react";
-import { NuraShell } from "@/components/nura-shell";
+import { ArrowRight, BellRing, CalendarDays, FileText, HeartPulse, LockKeyhole, MessageCircle, Sparkles } from "lucide-react";
 
-const starters = [
-  "I went to my GP today and need to monitor symptoms.",
-  "My therapist asked me to notice anxiety triggers.",
-  "I started a new medication and need help following instructions.",
-] as const;
+export default function LandingPage() {
+  return <main className="landing">
+    <header className="landing-nav"><Link href="/" className="brand"><span className="brand-mark">N</span><span><b>Nura</b><small>Your AI health companion</small></span></Link><nav><a href="#how">How it works</a><a href="#why">Why Nura</a><a href="#security">Privacy</a></nav><div className="nav-actions"><Link href="/login" className="text-link">Sign in</Link><Link href="/signup" className="primary-cta">Get started</Link></div></header>
 
-export default function Home() {
-  const [message, setMessage] = useState("");
-  const [attached, setAttached] = useState(false);
+    <section className="hero-section"><div className="hero-copy"><span className="eyebrow-pill"><Sparkles/> A companion for the moments between appointments</span><h1>Your health.<br/><span>Organised. Remembered.</span><br/><em>Followed through.</em></h1><p>Nura listens to what is happening in your health and life, keeps the important things together, and gently follows up when it matters.</p><div className="hero-actions"><Link href="/signup" className="primary-cta large">Get started for free <ArrowRight/></Link><a href="#how" className="secondary-cta">See how Nura works</a></div><div className="trust-line"><LockKeyhole/> Private by design. You stay in control of what Nura remembers.</div></div>
+      <div className="hero-product"><div className="phone-card"><div className="phone-top"><span className="mini-mark">N</span><b>Nura</b><small>online</small></div><div className="chat-thread"><div className="ai-bubble">Good evening, Ike. How was your day?</div><div className="user-bubble">Pretty stressful at work today and I didn&apos;t sleep well last night.</div><div className="ai-bubble">I&apos;ll keep this with your Work Stress thread. Would you like me to check in tonight?</div><div className="chips"><span>Yes, please</span><span>Not tonight</span></div></div><div className="message-bar">Message Nura <MessageCircle/></div></div>
+        <div className="dashboard-preview"><div className="preview-sidebar"><div className="mini-brand">Nura</div><span className="active">Today</span><span>Threads</span><span>Calendar</span><span>Me</span></div><div className="preview-main"><p>Good evening, Ike</p><h3>Here&apos;s what needs your attention today.</h3><div className="preview-grid"><article className="preview-focus"><small>Next check-in</small><h4>Work Stress</h4><p>Today, 7:30 PM · WhatsApp voice</p><button>Start now</button></article><article><small>Upcoming</small><b>GP appointment</b><span>14 Aug, 10:00 AM</span><b>Blood test</b><span>16 Aug, 8:30 AM</span></article></div><h4 className="section-label">Active threads</h4><div className="preview-threads"><span>Work Stress</span><span>Headaches</span><span>New Medication</span></div></div></div>
+      </div>
+    </section>
 
-  return (
-    <NuraShell>
-      <section className="nura-entry-page">
-        <div className="nura-entry-inner">
-          <p className="nura-kicker">TODAY</p>
-          <h1>What happened in your health today?</h1>
-          <p className="nura-entry-sub">
-            Tell Nura naturally, add a note, or start a voice check-in. Nura organises the context
-            into living Plans and follows up when it matters.
-          </p>
+    <section id="how" className="how-section"><div className="section-intro"><span>HOW NURA WORKS</span><h2>Help for real life, not just data.</h2><p>Nura turns everyday health context into something you can actually keep up with.</p></div><div className="feature-grid">{[
+      [MessageCircle,"Talk naturally","Message, voice note, or upload something. Start anywhere."],
+      [HeartPulse,"Nura organises","Important topics become living Threads that stay together over time."],
+      [BellRing,"Nura follows up","Gentle check-ins arrive at useful moments instead of waiting for you to remember."],
+      [FileText,"Clear summaries","Get a clean picture of what changed before appointments or reviews."],
+    ].map(([Icon,title,copy])=><article key={String(title)}><span className="feature-icon"><Icon/></span><h3>{title as string}</h3><p>{copy as string}</p></article>)}</div></section>
 
-          <div className="nura-composer">
-            {attached && (
-              <div className="nura-attachment">
-                <FileText />
-                <span>
-                  <b>demo-gp-note.pdf</b>
-                  <small>Ready to extract instructions</small>
-                </span>
-                <button type="button" onClick={() => setAttached(false)}>Remove</button>
-              </div>
-            )}
-            <textarea
-              aria-label="Message Nura"
-              placeholder="Message Nura about symptoms, routines, appointments, medication instructions, stress, sleep, or recovery..."
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-            />
-            <div className="nura-composer-footer">
-              <div className="nura-tools">
-                <button type="button" onClick={() => setAttached(true)}><Paperclip /> Add note</button>
-                <button type="button"><Mic /> Voice</button>
-              </div>
-              <Link href="/workspace" className="nura-send" aria-label="Create plan"><ArrowUp /></Link>
-            </div>
-          </div>
+    <section id="why" className="story-section"><div><span className="section-kicker">WHY NURA</span><h2>Healthcare happens in moments.<br/>Life happens in between.</h2><p>You leave an appointment with advice. You start a medication. You notice a symptom. Work gets stressful. Sleep changes. Nura helps keep those fragments connected so the next step does not disappear into everyday life.</p><Link href="/signup" className="text-arrow">Start with what&apos;s happening today <ArrowRight/></Link></div><div className="story-cards"><article><CalendarDays/><b>After a GP visit</b><p>Keep advice, questions, symptoms and the next review together.</p></article><article><HeartPulse/><b>When something changes</b><p>Tell Nura once. It remembers the context and can check back in later.</p></article></div></section>
 
-          <div className="nura-starters" aria-label="Quick starts">
-            {starters.map((starter) => (
-              <button type="button" key={starter} onClick={() => setMessage(starter)}>
-                <MessageCircle />
-                <span>{starter}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="nura-trust">
-            <ShieldCheck />
-            <span>Nura organises and follows through. It does not diagnose, prescribe, or replace professional care.</span>
-          </div>
-        </div>
-      </section>
-    </NuraShell>
-  );
+    <section id="security" className="security-section"><LockKeyhole/><div><span>PRIVATE BY DESIGN</span><h2>Your health context belongs to you.</h2><p>Nura is designed around transparent memory, user control and clear boundaries. It organises and follows through — it does not diagnose, prescribe or replace professional care.</p></div><Link href="/signup" className="primary-cta">Create your Nura</Link></section>
+    <footer><div className="brand"><span className="brand-mark">N</span><b>Nura</b></div><p>Your AI health companion.</p><span>© 2026 Nura</span></footer>
+  </main>;
 }
