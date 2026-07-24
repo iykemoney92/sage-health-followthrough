@@ -1,37 +1,7 @@
 "use client";
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, HeartPulse, Home, ListChecks, Settings } from "lucide-react";
+import { Bell, CalendarDays, Home, MessageCircle, Settings } from "lucide-react";
 
-const nav = [
-  ["Today", "/", Home],
-  ["My Plans", "/plans", ListChecks],
-  ["Calendar", "/calendar", CalendarDays],
-  ["Me", "/me", Settings],
-] as const;
-
-export function NuraShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-
-  return (
-    <main className="nura-app-shell">
-      <header className="nura-topbar">
-        <Link href="/" className="nura-brand">
-          <span className="nura-mark"><HeartPulse /></span>
-          <strong>Nura</strong>
-        </Link>
-        <nav className="nura-nav" aria-label="Primary navigation">
-          {nav.map(([label, href, Icon]) => (
-            <Link key={href} href={href} className={pathname === href ? "active" : ""}>
-              <Icon />
-              <span>{label}</span>
-            </Link>
-          ))}
-        </nav>
-        <button className="nura-avatar" aria-label="Profile">IA</button>
-      </header>
-      {children}
-    </main>
-  );
-}
+const nav=[["Today","/today",Home],["Threads","/plans",MessageCircle],["Calendar","/calendar",CalendarDays],["Me","/me",Settings]] as const;
+export function NuraShell({children}:{children:React.ReactNode}){const pathname=usePathname();return <main className="app-shell"><aside className="app-sidebar"><Link href="/today" className="brand"><span className="brand-mark">N</span><span><b>Nura</b><small>Your AI health companion</small></span></Link><nav>{nav.map(([label,href,Icon])=><Link key={href} href={href} className={pathname.startsWith(href)?"active":""}><Icon/><span>{label}</span></Link>)}</nav><Link href="/workspace" className="message-nura"><MessageCircle/> Message Nura</Link><div className="between-card"><b>Nura is here for the moments between appointments.</b><p>Tell it what&apos;s happening. It&apos;ll help keep the thread.</p></div></aside><section className="app-main"><header className="app-topbar"><div></div><div className="app-user"><button><Bell/></button><span className="avatar">IA</span><b>Ike Okonkwo</b></div></header>{children}</section><nav className="mobile-nav">{nav.map(([label,href,Icon])=><Link key={href} href={href} className={pathname.startsWith(href)?"active":""}><Icon/><span>{label}</span></Link>)}</nav></main>}
