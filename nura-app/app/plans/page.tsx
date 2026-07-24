@@ -1,33 +1,5 @@
-import { Bell, CalendarDays, CheckCircle2, FileText } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, HeartPulse, Plus } from "lucide-react";
 import { NuraShell } from "@/components/nura-shell";
-
-const plans = [
-  ["Stabilise My Week", "Active", "GP note, stress, sleep, walking", Bell],
-  ["Headache Follow-Up", "Paused", "Frequency, severity, triggers", CalendarDays],
-  ["Therapy Follow-Through", "Draft", "Trigger reflections between sessions", FileText],
-] as const;
-
-export default function PlansPage() {
-  return (
-    <NuraShell>
-      <section className="nura-library">
-        <p className="nura-kicker">MY PLANS</p>
-        <h1>Living Plans</h1>
-        <p className="nura-library-lead">
-          Plans collect conversations, uploaded context, reminders, check-ins, and summaries into
-          one ongoing health thread.
-        </p>
-        <div className="nura-grid">
-          {plans.map(([title, status, copy, Icon]) => (
-            <article className="plan-card" key={title}>
-              <Icon />
-              <h3>{title}</h3>
-              <p>{copy}</p>
-              <small><CheckCircle2 /> {status}</small>
-            </article>
-          ))}
-        </div>
-      </section>
-    </NuraShell>
-  );
-}
+const threads=[['Work Stress','Wellbeing','Last talked about yesterday','Nura will check in tonight','wellbeing'],['Headaches','Health','2 updates this week','GP review in 18 days','health'],['New Medication','Medication','Started 5 days ago','Next check-in tomorrow','medication'],['Sleep','Wellbeing','Mentioned across 4 conversations','Last update: Poor night','sleep'],['Back Pain','Health','Last updated 5 days ago','No follow-up scheduled','health'],['Recovery After Surgery','Health','Last updated 2 weeks ago','Check-in Saturday','health']] as const;
+export default function ThreadsPage(){return <NuraShell><div className="dashboard-page"><div className="library-heading"><div><span className="auth-kicker">THREADS</span><h1>Everything Nura is helping you keep together.</h1><p>Threads grow naturally from conversations, notes, appointments and things worth following up.</p></div><button className="primary-cta"><Plus/> New Thread</button></div><div className="thread-tabs"><button className="active">Active</button><button>Archived</button><button>All</button></div><section className="thread-list">{threads.map(([title,tag,meta,next,tone])=><Link href={title==='Headaches'?'/plans/headaches':'/plans'} key={title} className="thread-row"><span className={`thread-icon ${tone}`}><HeartPulse/></span><div><span className={`tag ${tone}`}>{tag}</span><h3>{title}</h3><p>{meta}</p></div><div className="thread-next"><small>Next follow-up</small><b>{next}</b></div><ChevronRight/></Link>)}</section></div></NuraShell>}
