@@ -1,33 +1,4 @@
-import { Bell, CalendarDays, Footprints, Phone } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, MessageCircle, Pill, Stethoscope } from "lucide-react";
 import { NuraShell } from "@/components/nura-shell";
-
-const events = [
-  ["Tomorrow 19:30", "Message check-in", "Sleep, stress, walking", Bell],
-  ["Friday 08:00", "Routine reminder", "Daily walk prompt", Footprints],
-  ["12 Aug", "GP review prep", "Generate appointment summary", CalendarDays],
-  ["Optional", "Voice check-in", "Talk through the Plan", Phone],
-] as const;
-
-export default function CalendarPage() {
-  return (
-    <NuraShell>
-      <section className="nura-library">
-        <p className="nura-kicker">CALENDAR</p>
-        <h1>Follow-up schedule</h1>
-        <p className="nura-library-lead">
-          Check-ins, reminders, voice sessions, and appointment reviews will live here.
-        </p>
-        <div className="nura-grid">
-          {events.map(([time, title, copy, Icon]) => (
-            <article className="plan-card" key={`${time}-${title}`}>
-              <Icon />
-              <h3>{time}</h3>
-              <p><b>{title}</b></p>
-              <small>{copy}</small>
-            </article>
-          ))}
-        </div>
-      </section>
-    </NuraShell>
-  );
-}
+const events=[['Mon 5','7:30 PM','Work Stress','WhatsApp voice','wellbeing'],['Tue 6','8:00 AM','Medication reminder','Amlodipine 5mg','medication'],['Wed 7','6:30 PM','Headaches check-in','WhatsApp message','health'],['Thu 8','10:30 AM','GP appointment','Dr. Patel','appointment'],['Fri 9','7:30 PM','Sleep check-in','WhatsApp message','sleep'],['Sun 11','6:00 PM','Weekly summary','Headaches','document']] as const;
+export default function CalendarPage(){return <NuraShell><div className="dashboard-page"><div className="library-heading"><div><span className="auth-kicker">CALENDAR</span><h1>Your follow-ups, all in one place.</h1><p>Appointments, reminders and Nura check-ins across your Threads.</p></div></div><div className="calendar-toolbar"><button><ChevronLeft/></button><b>5 – 11 Aug 2026</b><button><ChevronRight/></button></div><div className="calendar-shell"><section className="calendar-events">{events.map(([day,time,title,meta,tone])=><article key={title} className={`calendar-item ${tone}`}><div><small>{day}</small><b>{time}</b></div><span>{tone==='medication'?<Pill/>:tone==='appointment'?<Stethoscope/>:tone==='wellbeing'||tone==='sleep'?<MessageCircle/>:<CalendarDays/>}</span><div><h3>{title}</h3><p>{meta}</p></div></article>)}</section><aside className="calendar-detail"><span className="auth-kicker">EVENT DETAILS</span><Stethoscope/><h2>GP appointment</h2><p>Wednesday, 7 Aug · 10:30 AM</p><hr/><small>Related Thread</small><b>Headaches</b><small>Notes</small><p>Follow-up on headache monitoring. Bring any questions Nura prepares with you.</p><button className="secondary-cta">Reschedule</button></aside></div></div></NuraShell>}
