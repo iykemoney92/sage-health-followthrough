@@ -1,6 +1,7 @@
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, MapPin, MessageCircle, Pill, Stethoscope } from "lucide-react";
 import { NuraShell } from "@/components/nura-shell";
 
+const CALENDAR_BUILD = "week-grid-v3";
 const weekDays = ["Mon 5","Tue 6","Wed 7","Thu 8","Fri 9","Sat 10","Sun 11"];
 const hours = ["7 AM","8 AM","9 AM","10 AM","11 AM","12 PM","1 PM","2 PM","3 PM","4 PM","5 PM","6 PM","7 PM","8 PM"];
 
@@ -25,7 +26,7 @@ const mobileEvents = [
 ] as const;
 
 export default function CalendarPage(){
-  return <NuraShell><div className="dashboard-page calendar-page">
+  return <NuraShell><div className="dashboard-page calendar-page" data-build={CALENDAR_BUILD}>
     <div className="calendar-page-head">
       <div><h1>Calendar</h1></div>
       <div className="calendar-view-toggle"><button className="active">Week</button><button>Month</button></div>
