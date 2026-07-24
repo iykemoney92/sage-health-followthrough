@@ -1,9 +1,15 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./followthrough.css";
+import "./clariti-entry.css";
+import "./mobile.css";
+import "./sidebar.css";
+import "./modal.css";
+import "./canvas.css";
 
 export const metadata: Metadata = {
   title: "Clariti",
-  description: "Consumer health document copilot scaffold.",
+  description: "Consumer health document copilot — mobile-first prototype.",
 };
 
 export default function RootLayout({
@@ -13,7 +19,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body data-ui-version="mobile-nav-v2">{children}</body>
     </html>
   );
 }

@@ -7,6 +7,13 @@
       "runtimeArgs": ["--dir", "sage-app", "run", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "clariti-app",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "clariti-app", "run", "dev"],
+      "port": 3001,
+      "autoPort": true
     }
   ]
 }
