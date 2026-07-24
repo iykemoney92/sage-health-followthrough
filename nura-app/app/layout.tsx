@@ -4,6 +4,7 @@ import "./nura-v2.css";
 import "./dashboard-fix.css";
 import "./dashboard-pages.css";
 import "./product-design-overrides.css";
+import "./ui-completion.css";
 
 export const metadata: Metadata = {
   title: "Nura — Your AI health companion",
