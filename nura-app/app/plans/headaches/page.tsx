@@ -1,0 +1,13 @@
+import { CalendarDays, CheckCircle2, ChevronLeft, FileText, MessageCircle, MoreHorizontal, Plus } from "lucide-react";
+import Link from "next/link";
+import { NuraShell } from "@/components/nura-shell";
+
+export default function HeadachesThreadPage(){
+ return <NuraShell><div className="dashboard-page"><div className="thread-detail-head"><Link href="/plans"><ChevronLeft/></Link><div><p className="eyebrow">THREAD</p><div className="title-with-tag"><h1>Headaches</h1><span className="tag health">Health</span></div><p>Started after GP visit · 24 Jul · Nura is tracking this</p></div><button className="icon-button"><MoreHorizontal/></button></div>
+ <div className="thread-detail-layout"><section className="thread-detail-main">
+   <article className="detail-card next-checkin"><small>Next check-in</small><h2>Sunday, 6:00 PM</h2><p><MessageCircle/> WhatsApp message</p><p>How have your headaches been this week?</p><button className="primary-button">Start check-in</button></article>
+   <article className="detail-card"><h3>Summary</h3><p>GP advised monitoring for 3 weeks. Nura is keeping frequency, severity, possible triggers and medication notes together for your review.</p><div className="progress-row"><span>Day 12 of 21</span><b>57%</b></div><div className="progress-track"><span style={{width:'57%'}}/></div></article>
+   <article className="detail-card"><h3>Recent updates</h3><div className="timeline"><div><span/><p><b>Wed 24 Jul</b> Mild headache in the morning <small>Took paracetamol</small></p></div><div><span/><p><b>Mon 22 Jul</b> Headache in the evening <small>After long shift</small></p></div><div><span/><p><b>Sun 21 Jul</b> No headache <small>Slept better</small></p></div></div></article>
+   <article className="detail-card"><div className="section-title-row"><h3>Uploaded notes</h3><button className="text-button"><Plus/> Add</button></div><div className="document-row"><FileText/><span><b>GP Consultation Note.pdf</b><small>Uploaded today · 2 pages</small></span></div></article>
+ </section><aside className="thread-detail-rail"><article className="detail-card"><h3>What Nura is tracking</h3>{['Frequency','Severity','Possible triggers','Medication'].map((x,i)=><div className="tracked-row" key={x}>{i<2?<CheckCircle2/>:<span className="empty-check"/>}<span><b>{x}</b><small>{i===0?'How often it happens':i===1?'Pain level & impact':i===2?'What might be causing it':'What helps'}</small></span></div>)}</article><article className="detail-card soft-card"><CalendarDays/><h3>GP review in 18 days</h3><p>Nura can prepare a concise summary of what you&apos;ve tracked before the appointment.</p><button className="secondary-button">Prepare summary</button></article></aside></div></div></NuraShell>;
+}
