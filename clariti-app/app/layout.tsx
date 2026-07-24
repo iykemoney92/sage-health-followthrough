@@ -3,6 +3,9 @@ import "./globals.css";
 import "./followthrough.css";
 import "./clariti-entry.css";
 import "./mobile.css";
+import "./sidebar.css";
+import "./modal.css";
+import "./canvas.css";
 
 export const metadata: Metadata = {
   title: "Clariti",

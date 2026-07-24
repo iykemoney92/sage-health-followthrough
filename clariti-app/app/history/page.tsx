@@ -31,6 +31,7 @@ const conversations = [
     tags: ["Radiology", "Explanation"],
     tone: "blue",
     icon: FileHeart,
+    fresh: false,
   },
   {
     title: "Insurance EOB",
@@ -40,6 +41,7 @@ const conversations = [
     tags: ["Insurance", "EOB review"],
     tone: "violet",
     icon: ShieldCheck,
+    fresh: false,
   },
   {
     title: "Medication question",
@@ -49,6 +51,7 @@ const conversations = [
     tags: ["Medication", "Safety"],
     tone: "mint",
     icon: FileText,
+    fresh: false,
   },
 ] as const;
 
