@@ -2,36 +2,75 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, HeartPulse, Home, ListChecks, Settings } from "lucide-react";
+import { useState } from "react";
+import { Bell, CalendarDays, ChevronDown, Home, MessageCircle, Search, Settings, UserRound } from "lucide-react";
+import { NuraLogo } from "@/components/nura-logo";
+import { SignOutButton } from "@/components/sign-out-button";
 
 const nav = [
-  ["Today", "/", Home],
-  ["My Plans", "/plans", ListChecks],
+  ["Today", "/today", Home],
+  ["Threads", "/plans", MessageCircle],
   ["Calendar", "/calendar", CalendarDays],
   ["Me", "/me", Settings],
 ] as const;
 
-export function NuraShell({ children }: { children: React.ReactNode }) {
+function initialsFor(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
+}
+
+export function NuraShell({
+  children,
+  userName = "You",
+  userAvatarUrl,
+}: {
+  children: React.ReactNode;
+  userName?: string;
+  userAvatarUrl?: string;
+}) {
   const pathname = usePathname();
+  const userInitials = initialsFor(userName);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   return (
-    <main className="nura-app-shell">
-      <header className="nura-topbar">
-        <Link href="/" className="nura-brand">
-          <span className="nura-mark"><HeartPulse /></span>
-          <strong>Nura</strong>
-        </Link>
-        <nav className="nura-nav" aria-label="Primary navigation">
-          {nav.map(([label, href, Icon]) => (
-            <Link key={href} href={href} className={pathname === href ? "active" : ""}>
-              <Icon />
-              <span>{label}</span>
-            </Link>
-          ))}
+    <main className="app-shell product-shell">
+      <aside className="app-sidebar product-sidebar">
+        <NuraLogo href="/today" compact />
+        <nav>
+          {nav.map(([label, href, Icon]) => {
+            const active = pathname.startsWith(href);
+            return <Link key={href} href={href} className={active ? "active" : ""}><Icon/><span>{label}</span></Link>;
+          })}
         </nav>
-        <button className="nura-avatar" aria-label="Profile">IA</button>
-      </header>
-      {children}
+        <Link href="/workspace" className="message-nura"><MessageCircle/> Message Nura</Link>
+        <div className="between-card"><b>Nura is here for the moments between appointments.</b></div>
+      </aside>
+
+      <section className="app-main product-main">
+        <header className="app-topbar product-topbar">
+          <label className="global-search"><Search/><input placeholder="Search Nura" aria-label="Search Nura" /></label>
+          <div className="app-user">
+            <Link href="/notifications" aria-label="Notifications" className="icon-link"><Bell/></Link>
+            <button className="profile-trigger" type="button" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)}>
+              <span className="avatar" style={userAvatarUrl ? { backgroundImage: `url(${userAvatarUrl})` } : undefined}>{userAvatarUrl ? "" : userInitials}</span>
+              <b>{userName}</b>
+              <ChevronDown/>
+            </button>
+            {profileOpen && (
+              <div className="profile-menu">
+                <Link href="/me/profile" className="profile-menu-item" onClick={() => setProfileOpen(false)}><UserRound/> Profile</Link>
+                <SignOutButton className="profile-menu-item danger" />
+              </div>
+            )}
+          </div>
+        </header>
+        {children}
+      </section>
+
+      <nav className="mobile-nav">
+        {nav.map(([label, href, Icon]) => <Link key={href} href={href} className={pathname.startsWith(href) ? "active" : ""}><Icon/><span>{label}</span></Link>)}
+      </nav>
     </main>
   );
 }

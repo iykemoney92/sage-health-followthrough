@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "NODE_OPTIONS=--max-http-header-size=65536 next dev -H ::",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "demo:reset": "node scripts/seed-demo-personas.mjs",
+    "demo:poll-checkins": "node scripts/trigger-check-ins.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.113.0",

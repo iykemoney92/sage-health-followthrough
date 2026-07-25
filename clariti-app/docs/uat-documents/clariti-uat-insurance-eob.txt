@@ -1,0 +1,57 @@
+SYNTHETIC TEST DOCUMENT - NOT A REAL INSURANCE EOB
+
+Document type: Explanation of Benefits
+Insurer: Clariti Health Plan
+Member: Test Patient
+Claim number: UAT-EOB-8472
+Provider: Clariti Test Clinic
+Service date: 18 Jul 2026
+Processed date: 23 Jul 2026
+
+Important notice
+This Explanation of Benefits is not a bill. It explains how your claim was processed. If payment is due, your provider may send a separate bill.
+
+Claim summary
+Amount billed by provider: $1,286.40
+Plan discount / network adjustment: -$214.40
+Allowed amount: $1,072.00
+Amount paid by plan: $760.00
+Amount applied to deductible: $180.00
+Coinsurance: $132.00
+Copay: $0.00
+Patient responsibility: $312.00
+
+Service line details
+Office consultation
+Amount billed: $180.00
+Allowed amount: $150.00
+Plan paid: $120.00
+Patient responsibility: $30.00
+Remark code: Deductible/coinsurance applied.
+
+Diagnostic imaging
+Amount billed: $405.00
+Allowed amount: $340.00
+Plan paid: $240.00
+Patient responsibility: $100.00
+Remark code: Network adjustment applied.
+
+Laboratory services
+Amount billed: $136.00
+Allowed amount: $112.00
+Plan paid: $80.00
+Patient responsibility: $32.00
+Remark code: Deductible applied.
+
+Facility and supply charges
+Amount billed: $565.40
+Allowed amount: $470.00
+Plan paid: $320.00
+Patient responsibility: $150.00
+Remark code: Review provider bill for itemized details.
+
+Notes
+If you disagree with how this claim was processed, contact Clariti Health Plan within 180 days. If you receive a provider bill that does not match this EOB, contact the provider billing office and the insurer before paying.
+
+Patient question to test
+Please decode this EOB, explain what was billed, what insurance paid, what I may owe, and what I should check before paying a provider bill.

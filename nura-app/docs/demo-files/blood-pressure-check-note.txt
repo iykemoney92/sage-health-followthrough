@@ -1,0 +1,25 @@
+Fictional clinic note for Nura demo use only.
+
+Patient: Sarah Thompson
+Date: 25 July 2026
+Visit type: Blood pressure check and headache follow-up planning.
+
+Context:
+Sarah has been having recurring headaches and poor sleep. The GP asked her to monitor symptoms and consider a blood pressure check if headaches continued.
+
+Clinic note:
+- Blood pressure check should be booked if headaches continue beyond two weeks.
+- Sarah should bring notes on headache frequency, sleep, hydration, skipped meals, and stress.
+- No medication changes were made in this note.
+- Sarah should seek urgent care if headaches become sudden or severe, or if she notices weakness, confusion, fainting, chest pain, or vision changes.
+
+Useful questions for next review:
+- How many headache days happened in the last two weeks?
+- Were headaches worse on days with poor sleep or skipped breakfast?
+- Any dizziness, visual symptoms, weakness, or fainting?
+- Has Sarah been able to try short walks or hydration changes?
+
+Follow-through needed:
+- Check in every few days.
+- Prepare a short two-week symptom summary.
+- Remind Sarah to book a blood pressure check if headaches continue.

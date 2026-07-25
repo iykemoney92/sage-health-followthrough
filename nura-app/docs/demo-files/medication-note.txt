@@ -1,0 +1,22 @@
+Fictional medication follow-up note for Nura demo use only.
+
+Patient: David Carter
+Date: 25 July 2026
+Medication: Amlodipine 5mg once daily.
+
+Context:
+David has recently started blood pressure medication. His GP asked him to take it at the same time each day and keep a simple record of how he is feeling.
+
+GP advice:
+- Take amlodipine 5mg once daily as prescribed.
+- Track dizziness, ankle swelling, headaches, and unusual tiredness.
+- Take a morning blood pressure reading if available.
+- Book a blood pressure check in two weeks.
+- Do not stop or change the dose without speaking to a clinician.
+- Seek urgent help for chest pain, severe breathlessness, fainting, or symptoms that feel severe or worrying.
+
+Follow-through needed:
+- Daily medication reminder.
+- Check-in after a few days about dizziness or swelling.
+- Reminder to book blood pressure check in two weeks.
+- Summary of readings and side effects before GP review.

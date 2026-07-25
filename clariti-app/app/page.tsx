@@ -1,20 +1,24 @@
 "use client";
 
-import Link from "next/link";
 import {
   ArrowUp,
   FileText,
-  Image as ImageIcon,
+  Loader2,
   Paperclip,
   ReceiptText,
   ScanText,
   ShieldCheck,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { ClaritiAuthModal } from "@/components/clariti-auth-modal";
 import { ClaritiShell } from "@/components/clariti-shell";
+
+type StarterKind = "medical_bill" | "insurance_eob" | "radiology_report";
 
 const starters = [
   {
+    kind: "medical_bill",
     title: "Explain a medical bill",
     meta: "Charges, flags and what to ask next",
     prompt: "Please explain this medical bill in plain English, break down the charges, flag anything unusual, and tell me what I should ask next.",
@@ -22,6 +26,7 @@ const starters = [
     Icon: ReceiptText,
   },
   {
+    kind: "radiology_report",
     title: "Understand a radiology report",
     meta: "Findings, anatomy and clinician questions",
     prompt: "Please explain this radiology report in plain English, clarify the findings and anatomy mentioned, and suggest useful questions I can ask my clinician.",
@@ -29,6 +34,7 @@ const starters = [
     Icon: ScanText,
   },
   {
+    kind: "insurance_eob",
     title: "Decode an insurance EOB",
     meta: "What was billed, covered and left to you",
     prompt: "Please decode this insurance EOB, explain what was billed and covered, what I may owe, and flag anything I should query with the insurer or provider.",
@@ -38,24 +44,203 @@ const starters = [
 ] as const;
 
 export default function Home() {
-  const [attached, setAttached] = useState(false);
-  const [message, setMessage] = useState("");
-  const [uploadHint, setUploadHint] = useState<string | null>(null);
-  const composerRef = useRef<HTMLTextAreaElement>(null);
+  return (
+    <Suspense>
+      <HomeContent />
+    </Suspense>
+  );
+}
 
-  const chooseStarter = (prompt: string, hint: string) => {
+function HomeContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [kind, setKind] = useState<StarterKind>("medical_bill");
+  const [message, setMessage] = useState("");
+  const [documentText, setDocumentText] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [authConfigured, setAuthConfigured] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authIntent, setAuthIntent] = useState<"submit" | "navigate" | null>(null);
+  const [authNext, setAuthNext] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const hasDocumentText = documentText.trim().length >= 20;
+  const hasAskText = Boolean(message.trim());
+  const canSubmit = hasAskText && hasDocumentText && !submitting;
+
+  const waitForServerAuth = async () => {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const response = await fetch("/api/auth/status", { cache: "no-store" }).catch(() => null);
+      const payload = response?.ok ? await response.json().catch(() => null) : null;
+      if (payload?.authenticated) return true;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/auth/status")
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!alive || !payload?.ok) return;
+        setAuthConfigured(Boolean(payload.configured));
+        setAuthenticated(Boolean(payload.authenticated));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const next = searchParams.get("next");
+
+    if (searchParams.get("auth") === "1" && !authenticated) {
+      queueMicrotask(() => {
+        setAuthNext(next ?? "/");
+        setAuthIntent("navigate");
+        setAuthOpen(true);
+        requestAnimationFrame(() => composerRef.current?.focus());
+      });
+    }
+  }, [authenticated, searchParams]);
+
+  const chooseStarter = (starterKind: StarterKind, prompt: string) => {
+    setKind(starterKind);
     setMessage(prompt);
-    setUploadHint(hint);
-    setAttached(false);
+    setError(null);
     requestAnimationFrame(() => {
       composerRef.current?.focus();
       composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   };
 
-  const addDocument = () => {
-    setAttached(true);
-    setUploadHint(null);
+  const chooseFile = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    setSelectedFile(file);
+
+    if (file.type.startsWith("text/") || file.name.toLowerCase().endsWith(".txt")) {
+      setDocumentText(await file.text());
+      return;
+    }
+
+    setDocumentText("");
+    setError("For this build, attach a .txt file with the report, bill or EOB text.");
+  };
+
+  const clearFile = () => {
+    setSelectedFile(null);
+    setDocumentText("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+
+    if (!message.trim()) {
+      setError("Ask Clariti a question before sending.");
+      return;
+    }
+
+    if (!authenticated) {
+      setAuthIntent("submit");
+      setAuthNext(null);
+      setAuthOpen(true);
+      return;
+    }
+
+    if (!hasDocumentText) {
+      setError("Attach one text document before analysis.");
+      return;
+    }
+
+    await runJourney();
+  };
+
+  const runJourney = async (authenticatedForRun = authenticated) => {
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const textForAnalysis = documentText.trim();
+      let documentId: string | undefined;
+      if (textForAnalysis.length < 20) {
+        throw new Error("Attach one text document before analysis.");
+      }
+
+      if (selectedFile && authConfigured && authenticatedForRun) {
+        const formData = new FormData();
+        formData.set("file", selectedFile);
+        formData.set("kind", kind);
+        formData.set("extractedText", textForAnalysis);
+
+        const uploadResponse = await fetch("/api/documents/upload", { method: "POST", body: formData });
+        const uploadPayload = await uploadResponse.json();
+        if (!uploadResponse.ok || !uploadPayload.ok) throw new Error(uploadPayload.error ?? "Could not upload document");
+        documentId = uploadPayload.document?.id;
+      }
+
+      const analysisResponse = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind,
+          question: message.trim(),
+          fileName: selectedFile?.name,
+          documentText: textForAnalysis,
+          documentId,
+        }),
+      });
+      const analysisPayload = await analysisResponse.json();
+      if (!analysisResponse.ok || !analysisPayload.ok) throw new Error(analysisPayload.error ?? "Could not analyze document");
+
+      window.localStorage.setItem("clariti-active-request", JSON.stringify({
+        kind,
+        question: message.trim(),
+        documentText: textForAnalysis,
+        fileName: selectedFile?.name,
+        analysis: analysisPayload.analysis,
+        persisted: analysisPayload.persisted,
+      }));
+      const savedSessionId = analysisPayload.persisted?.session?.id;
+      router.push(savedSessionId ? `/workspace?sessionId=${savedSessionId}` : "/workspace");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Clariti could not process this document.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAuthenticated = async () => {
+    setAuthenticated(true);
+    setAuthOpen(false);
+
+    if (authIntent === "submit") {
+      if (!hasDocumentText) {
+        setError("Now attach one text document before analysis.");
+        return;
+      }
+      const serverAuthenticated = await waitForServerAuth();
+      if (!serverAuthenticated) {
+        setError("Sign-in finished, but Clariti could not confirm the secure session yet. Please press send again.");
+        return;
+      }
+      await runJourney(true);
+      return;
+    }
+
+    router.push(authNext ?? "/");
   };
 
   return (
@@ -65,52 +250,53 @@ export default function Home() {
           <div className="clariti-entry-mark">C</div>
           <h1>What can I help you understand?</h1>
           <p className="clariti-entry-sub">
-            Ask a question or add a health document. Clariti turns confusing information into a clear,
-            visual workspace you can act on.
+            Ask a question and attach one health document. Clariti creates a grounded analysis,
+            then opens a workspace for actions, calls and follow-ups.
           </p>
 
           <div className="clariti-entry-composer">
-            {attached && (
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="entry-file-input"
+              accept=".txt,text/plain"
+              onChange={(event) => void handleFileSelected(event.target.files?.[0])}
+            />
+
+            {selectedFile && (
               <div className="entry-attachment">
                 <FileText />
                 <span>
-                  <b>health-document.pdf</b>
-                  <small>Ready to analyse · Demo file</small>
+                  <b>{selectedFile.name}</b>
+                  <small>{hasDocumentText ? "Text extracted or pasted and ready" : "Paste the document text below before analysis."}</small>
                 </span>
-                <button type="button" onClick={() => setAttached(false)}>Remove</button>
+                <button type="button" onClick={clearFile}>Remove</button>
               </div>
             )}
 
             <textarea
               ref={composerRef}
               aria-label="Ask Clariti"
-              placeholder="Ask Clariti anything about a health document…"
+              placeholder="Ask Clariti anything about one health document..."
               value={message}
               onChange={(event) => setMessage(event.target.value)}
             />
 
-            {uploadHint && !attached && (
-              <button type="button" className="entry-upload-nudge" onClick={addDocument}>
-                <Paperclip />
-                <span>
-                  <b>Next, add the relevant document</b>
-                  <small>{uploadHint}</small>
-                </span>
-              </button>
-            )}
+            {error && <p className="entry-error">{error}</p>}
 
             <div className="entry-composer-footer">
               <div className="entry-tools">
-                <button type="button" onClick={addDocument}><Paperclip /> Add document</button>
-                <button type="button" onClick={addDocument}><ImageIcon /> Add image</button>
+                <button type="button" onClick={chooseFile}><Paperclip /> {selectedFile ? "Replace document" : "Attach document"}</button>
               </div>
-              <Link href="/workspace" className="clariti-entry-send" aria-label="Send to Clariti"><ArrowUp /></Link>
+              <button type="button" className="clariti-entry-send" aria-label="Send to Clariti" disabled={!canSubmit} onClick={() => void handleSubmit()}>
+                {submitting ? <Loader2 className="entry-spinner" /> : <ArrowUp />}
+              </button>
             </div>
           </div>
 
           <div className="clariti-entry-starters" aria-label="Quick starts">
-            {starters.map(({ title, meta, prompt, uploadHint: hint, Icon }) => (
-              <button type="button" key={title} onClick={() => chooseStarter(prompt, hint)}>
+            {starters.map(({ kind: starterKind, title, meta, prompt, Icon }) => (
+              <button type="button" key={title} onClick={() => chooseStarter(starterKind, prompt)}>
                 <span className="entry-starter-icon"><Icon /></span>
                 <span className="entry-starter-copy">
                   <b>{title}</b>
@@ -122,10 +308,21 @@ export default function Home() {
 
           <div className="clariti-entry-trust">
             <ShieldCheck />
-            <span>Your documents stay private and under your control. Clariti explains and organises information; it does not diagnose.</span>
+            <span>One document per query keeps Clariti grounded. It explains and organises information; it does not diagnose.</span>
           </div>
         </div>
       </section>
+
+      {authOpen && (
+        <ClaritiAuthModal
+          modeDefault="signin"
+          onClose={() => setAuthOpen(false)}
+          onAuthenticated={handleAuthenticated}
+          kicker={authIntent === "navigate" ? "SIGN IN TO CONTINUE" : "SAVE YOUR DOCUMENT"}
+          title={authIntent === "navigate" ? "Sign in without losing your ask" : undefined}
+          copy={authIntent === "navigate" ? "Create or sign in to Clariti. We will keep you on the Ask Clariti flow and open the page you selected after auth." : undefined}
+        />
+      )}
     </ClaritiShell>
   );
 }

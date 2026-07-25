@@ -20,7 +20,7 @@ export type NuraPlanCategory =
   | "caregiver_support"
   | "general_health";
 
-export type NuraCheckInChannel = "in_app" | "whatsapp" | "voice";
+export type NuraCheckInChannel = "whatsapp" | "in_app" | "voice";
 
 export interface NuraSourceContext {
   id: string;

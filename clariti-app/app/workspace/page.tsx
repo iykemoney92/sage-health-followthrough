@@ -1,85 +1,457 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bell, CheckCircle2, FileDown, FileText, Flag, FolderOpen, History, Image as ImageIcon, Menu, MessageSquareText, MoreHorizontal, Paperclip, Phone, Play, Plus, Send, Settings, ShieldCheck, Sparkles, Stethoscope, X } from "lucide-react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import {
+  ArrowLeft,
+  Bell,
+  CheckCircle2,
+  FileDown,
+  FileText,
+  Flag,
+  FolderOpen,
+  History,
+  Image as ImageIcon,
+  Menu,
+  MessageSquareText,
+  MoreHorizontal,
+  Paperclip,
+  Phone,
+  Play,
+  Plus,
+  RefreshCw,
+  Send,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  Stethoscope,
+  X,
+} from "lucide-react";
+import { claritiAnalysisSchema, type ClaritiAnalysis, type ClaritiAnalysisKind } from "@/lib/ai/clariti-analysis";
+import { buildFallbackAnalysis } from "@/lib/domain/clariti-fallback-analysis";
 
-const sessions = [
-  { id: "bill", title: "Medical bill", meta: "City Hospital · 23 Jul", tag: "Bill" },
-  { id: "radiology", title: "Radiology report", meta: "MRI lumbar spine · 22 Jul", tag: "Report" },
-  { id: "eob", title: "Insurance EOB", meta: "BlueCross · Claim 8472", tag: "EOB" },
-] as const;
-
-type SessionId = (typeof sessions)[number]["id"];
 type Drawer = "chats" | "documents" | "history";
 type CanvasTab = "summary" | "detail" | "actions";
+type Sheet = "call" | "followup" | "source" | null;
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+};
+type GeneratedVideo = {
+  url: string;
+  createdAt: number;
+};
+type FollowUpDraft = {
+  action: string;
+};
+type ClaritiRequest = {
+  kind: ClaritiAnalysisKind;
+  question: string;
+  documentText: string;
+  fileName?: string;
+  analysis?: ClaritiAnalysis;
+  persisted?: unknown;
+};
+type WorkspaceSession = {
+  id: ClaritiAnalysisKind;
+  dbSessionId?: string;
+  title: string;
+  meta: string;
+  tag: string;
+  fileName: string;
+};
+type DbWorkspaceSession = {
+  id: string;
+  title: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  documents: Array<{
+    id: string;
+    file_name: string;
+    kind: string;
+    status: string;
+    extracted_text?: string | null;
+    created_at: string;
+    updated_at: string;
+  }>;
+  messages: Array<{
+    id: string;
+    role: string;
+    content: string;
+    created_at: string;
+  }>;
+  artifacts: Array<{
+    id: string;
+    kind: string;
+    title: string;
+    summary: string;
+    payload: unknown;
+    created_at: string;
+  }>;
+};
 
-const artifactMeta = {
-  bill: { eyebrow: "BILL INTELLIGENCE", title: "Your bill, made clearer", metric: "£930.00", label: "estimated responsibility", note: "1 charge worth checking" },
-  radiology: { eyebrow: "RADIOLOGY INTELLIGENCE", title: "Your MRI, in plain English", metric: "L4–L5", label: "main finding highlighted", note: "No severe canal narrowing described" },
-  eob: { eyebrow: "CLAIM INTELLIGENCE", title: "Your claim, made clearer", metric: "£320.00", label: "patient responsibility", note: "EOB is not itself a bill" },
-} as const;
+const STORAGE_KEY = "clariti-active-request";
+let localMessageCounter = 0;
+
+function createLocalId(prefix: string) {
+  localMessageCounter += 1;
+  return `${prefix}-${localMessageCounter}`;
+}
 
 export default function WorkspacePage() {
-  const [active, setActive] = useState<SessionId>("bill");
+  return (
+    <Suspense>
+      <WorkspaceContent />
+    </Suspense>
+  );
+}
+
+function WorkspaceContent() {
+  const searchParams = useSearchParams();
+  const [active, setActive] = useState<ClaritiAnalysisKind>("medical_bill");
+  const [activeRequest, setActiveRequest] = useState<ClaritiRequest | null>(null);
+  const [dbSessionId, setDbSessionId] = useState<string | null>(null);
+  const [booting, setBooting] = useState(true);
   const [drawer, setDrawer] = useState<Drawer | null>(null);
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [canvasTab, setCanvasTab] = useState<CanvasTab>("summary");
-  const [sheet, setSheet] = useState<"call" | "followup" | null>(null);
+  const [sheet, setSheet] = useState<Sheet>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [analysisByKind, setAnalysisByKind] = useState<Partial<Record<ClaritiAnalysisKind, ClaritiAnalysis>>>({});
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [followUpText, setFollowUpText] = useState("");
+  const [sendingFollowUp, setSendingFollowUp] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [videoScene, setVideoScene] = useState(0);
+  const [generatedVideo, setGeneratedVideo] = useState<GeneratedVideo | null>(null);
+  const [followAction, setFollowAction] = useState("");
+  const [followUpDraft, setFollowUpDraft] = useState<FollowUpDraft | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const session = sessions.find((item) => item.id === active)!;
-  const artifact = artifactMeta[active];
+
+  const session = useMemo(() => activeRequest ? toWorkspaceSession(activeRequest) : null, [activeRequest]);
+  const sessions = useMemo(() => session ? [session] : [], [session]);
+  const analysis = analysisByKind[active] ?? null;
+  const artifact = useMemo(() => analysis ? toArtifactMeta(analysis) : null, [analysis]);
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2800);
+  }, []);
+
+  const analyzeRequest = useCallback(async (request: ClaritiRequest) => {
+    setLoading(true);
+    try {
+      const documentText = request.documentText.trim();
+      if (!documentText) throw new Error("Missing document text");
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...request, documentText }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Analysis failed");
+      setAnalysisByKind((current) => ({ ...current, [request.kind]: payload.analysis as ClaritiAnalysis }));
+      showToast("Clariti generated a source-grounded analysis.");
+    } catch {
+      setAnalysisByKind((current) => ({ ...current, [request.kind]: buildFallbackAnalysis({ ...request, documentText: request.documentText }) }));
+      showToast("Using source-grounded fallback analysis until the AI service is configured.");
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
 
   useEffect(() => {
-    const scrollArea = chatScrollRef.current;
-    if (!scrollArea) return;
+    let alive = true;
 
-    scrollArea.scrollTop = scrollArea.scrollHeight;
-  }, [active]);
+    async function loadWorkspace() {
+      setBooting(true);
+      try {
+        const requestedSessionId = searchParams.get("sessionId");
+        let resolvedSessionId = requestedSessionId;
 
-  const selectSession = (id: SessionId) => {
+        if (!resolvedSessionId) {
+          const listResponse = await fetch("/api/sessions");
+          const listPayload = listResponse.ok ? await listResponse.json() : null;
+          resolvedSessionId = listPayload?.ok ? listPayload.sessions?.[0]?.id ?? null : null;
+        }
+
+        if (resolvedSessionId) {
+          const response = await fetch(`/api/sessions?sessionId=${encodeURIComponent(resolvedSessionId)}`);
+          const payload = response.ok ? await response.json() : null;
+          if (payload?.ok && payload.session) {
+            const dbRequest = requestFromDbSession(payload.session as DbWorkspaceSession);
+            if (dbRequest && alive) {
+              setDbSessionId(payload.session.id);
+              setActiveRequest(dbRequest);
+              setActive(dbRequest.kind);
+              setChatMessages(messagesFromDbSession(payload.session as DbWorkspaceSession));
+              if (dbRequest.analysis) {
+                setAnalysisByKind((current) => ({ ...current, [dbRequest.kind]: dbRequest.analysis! }));
+              } else {
+                void analyzeRequest(dbRequest);
+              }
+              return;
+            }
+          }
+        }
+
+        const stored = window.localStorage.getItem(STORAGE_KEY);
+        const request = parseStoredRequest(stored);
+        if (request && alive) {
+          setDbSessionId(null);
+          setActiveRequest(request);
+          setActive(request.kind);
+          setChatMessages(messagesFromRequest(request));
+          if (request.analysis) {
+            setAnalysisByKind((current) => ({ ...current, [request.kind]: request.analysis! }));
+          } else {
+            void analyzeRequest(request);
+          }
+        }
+      } finally {
+        if (alive) setBooting(false);
+      }
+    }
+
+    window.localStorage.removeItem("clariti-demo-request");
+    void loadWorkspace();
+
+    return () => {
+      alive = false;
+    };
+  }, [analyzeRequest, searchParams]);
+
+  useEffect(() => {
+    chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight });
+  }, [active, analysis, chatMessages, generatedVideo, loading, sendingFollowUp]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (generatedVideo?.url) URL.revokeObjectURL(generatedVideo.url);
+    };
+  }, [generatedVideo?.url]);
+
+  const selectSession = (id: ClaritiAnalysisKind) => {
     setActive(id);
     setCanvasTab("summary");
     setDrawer(null);
     setCanvasOpen(false);
   };
 
-  const showPrototypeToast = (message: string) => {
-    setToast(message);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(null), 2600);
-  };
-
-  const openSheet = (nextSheet: "call" | "followup") => {
+  const openSheet = (nextSheet: Sheet) => {
     setToast(null);
     setSheet(nextSheet);
   };
 
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    };
-  }, []);
+  const handleVideoGenerated = (url: string) => {
+    setGeneratedVideo((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url);
+      return { url, createdAt: Date.now() };
+    });
+    setCanvasOpen(false);
+    showToast("Video explanation added to the chat.");
+  };
 
-  useEffect(() => {
-    if (!sheet) return;
+  const startCall = async () => {
+    if (!analysis) {
+      showToast("Start an analysis before preparing a call.");
+      return;
+    }
+    try {
+      const response = await fetch("/api/voice/report-context", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: dbSessionId ?? `clariti-${active}`, analysis }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error("Call context failed");
+      setSheet(null);
+      showToast(`Call context ready: ${payload.elevenLabs.dynamicVariables.call_goal}`);
+    } catch {
+      showToast("Call Clariti could not prepare the report context.");
+    }
+  };
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSheet(null);
-    };
+  const sendFollowUp = async () => {
+    const content = followUpText.trim();
+    if (!content || !analysis) return;
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [sheet]);
+    const userMessage: ChatMessage = { id: createLocalId("local-user"), role: "user", content };
+    const pendingDraft = followUpDraft;
+    setFollowUpText("");
+    setSendingFollowUp(true);
+    setChatMessages((current) => [...current, userMessage]);
+
+    try {
+      if (!dbSessionId) throw new Error("Missing saved session");
+      const response = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: dbSessionId, content, analysis }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not send message");
+
+      const savedMessages = Array.isArray(payload.messages)
+        ? payload.messages.map((message: { id: string; role: string; content: string }) => ({
+          id: message.id,
+          role: message.role === "assistant" ? "assistant" as const : "user" as const,
+          content: message.content,
+        }))
+        : [
+          userMessage,
+          { id: createLocalId("local-assistant"), role: "assistant" as const, content: payload.assistant as string },
+        ];
+      setChatMessages((current) => [...current.filter((message) => message.id !== userMessage.id), ...savedMessages]);
+      if (pendingDraft) await maybeCaptureFollowUpDetails(content, pendingDraft);
+    } catch {
+      setChatMessages((current) => [
+        ...current,
+        {
+          id: createLocalId("local-assistant"),
+          role: "assistant",
+          content: buildLocalFollowUp(content, analysis),
+        },
+      ]);
+      if (pendingDraft) await maybeCaptureFollowUpDetails(content, pendingDraft);
+      showToast("Follow-up answered locally; it could not be saved.");
+    } finally {
+      setSendingFollowUp(false);
+    }
+  };
+
+  const beginFollowUpConversation = async () => {
+    if (!analysis || !session) return;
+    setSheet(null);
+    const action = followAction || analysis.nextActions[0] || "review the report with my clinician";
+    setFollowUpDraft({ action });
+    const content = `I want to set a phone follow-up about this ${session.tag.toLowerCase()}. Report context: ${analysis.summary}. Suggested action: ${action}. Help me choose the purpose, reason, phone number to call, and a safe time to schedule it.`;
+    const userMessage: ChatMessage = { id: createLocalId("local-followup-user"), role: "user", content };
+    setSendingFollowUp(true);
+    setChatMessages((current) => [...current, userMessage]);
+
+    try {
+      if (!dbSessionId) throw new Error("Missing saved session");
+      const response = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: dbSessionId, content, analysis }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not start follow-up conversation");
+      const savedMessages = Array.isArray(payload.messages)
+        ? payload.messages.map((message: { id: string; role: string; content: string }) => ({
+          id: message.id,
+          role: message.role === "assistant" ? "assistant" as const : "user" as const,
+          content: message.content,
+        }))
+        : [
+          userMessage,
+          { id: createLocalId("local-followup-assistant"), role: "assistant" as const, content: payload.assistant as string },
+        ];
+      setChatMessages((current) => [...current.filter((message) => message.id !== userMessage.id), ...savedMessages]);
+    } catch {
+      setChatMessages((current) => [
+        ...current,
+        { id: createLocalId("local-followup-assistant"), role: "assistant", content: buildFollowUpPlanningReply(analysis, action) },
+      ]);
+      showToast("Follow-up planning started locally; it could not be saved.");
+    } finally {
+      setSendingFollowUp(false);
+    }
+  };
+
+  const maybeCaptureFollowUpDetails = async (content: string, draft: FollowUpDraft) => {
+    if (!analysis) return;
+    const phoneNumber = extractPhoneNumber(content);
+    if (!phoneNumber) {
+      setChatMessages((current) => [
+        ...current,
+        {
+          id: createLocalId("local-phone-needed"),
+          role: "assistant",
+          content: "I can schedule this once I have the phone number to call. Please send the best phone number and your preferred time, for example: +44 7123 456789 tomorrow morning.",
+        },
+      ]);
+      return;
+    }
+
+    const scheduledFor = inferScheduledFor(content);
+    try {
+      const response = await fetch("/api/follow-ups", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionId: dbSessionId ?? `clariti-${active}`,
+          channel: "phone",
+          scheduledFor,
+          phoneNumber,
+          action: draft.action,
+          analysis,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not schedule follow-up");
+      setFollowUpDraft(null);
+      setChatMessages((current) => [
+        ...current,
+        {
+          id: createLocalId("local-followup-scheduled"),
+          role: "assistant",
+          content: `Done. I captured ${phoneNumber} for the phone follow-up and scheduled it for ${new Date(payload.followUp.scheduledFor).toLocaleString()}. Purpose: ${draft.action}. ${analysis.safetyNote}`,
+        },
+      ]);
+    } catch {
+      setChatMessages((current) => [
+        ...current,
+        {
+          id: createLocalId("local-followup-save-failed"),
+          role: "assistant",
+          content: `I captured the phone number ${phoneNumber}, but I could not save the follow-up yet. Please try again or confirm the time once more. ${analysis.safetyNote}`,
+        },
+      ]);
+    }
+  };
+
+  if (booting || !session || !analysis || !artifact) {
+    return (
+      <main className="clariti-workspace clariti-workspace-empty">
+        <section className="clariti-empty-page">
+          <div className="clariti-empty-inner">
+            <div className="clariti-orb"><FileText /></div>
+            <p className="clariti-kicker">WORKSPACE</p>
+            <h1>{booting ? "Loading saved analysis" : "No active analysis yet"}</h1>
+            <p className="clariti-lead">
+              {booting
+                ? "Clariti is loading your saved session, document, messages and analysis from Supabase."
+                : "Ask Clariti about one health document from Home. The workspace will open after there is a saved database session to review."}
+            </p>
+            {!booting && <Link href="/" className="workspace-empty-cta">Start an analysis</Link>}
+          </div>
+        </section>
+        <style jsx>{`
+          .clariti-workspace-empty{display:block;background:#f7f8f7;min-height:100vh;height:auto;overflow:auto}
+          .workspace-empty-cta{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;background:#4d8d83;color:#fff;border-radius:12px;padding:12px 16px;font-size:13px;font-weight:800}
+        `}</style>
+      </main>
+    );
+  }
 
   return (
     <main className={`clariti-workspace ${canvasOpen ? "mobile-canvas-open" : ""}`}>
       <aside className={`clariti-left-panel ${drawer ? "mobile-drawer-open" : ""}`}>
         <div className="workspace-brand-row">
           <Link href="/" className="clariti-brand"><span className="clariti-mark">C</span><strong>Clariti</strong></Link>
-          <div className="workspace-brand-actions"><Link href="/" className="workspace-new"><Plus /></Link><button type="button" className="mobile-drawer-close" onClick={() => setDrawer(null)} aria-label="Close menu"><X /></button></div>
+          <div className="workspace-brand-actions">
+            <Link href="/" className="workspace-new" aria-label="New chat"><Plus /></Link>
+            <button type="button" className="mobile-drawer-close" onClick={() => setDrawer(null)} aria-label="Close menu"><X /></button>
+          </div>
         </div>
         <div className="mobile-drawer-tabs">
           <button className={drawer === "chats" ? "active" : ""} onClick={() => setDrawer("chats")}><MessageSquareText />Chats</button>
@@ -103,15 +475,36 @@ export default function WorkspacePage() {
 
       <section className="clariti-chat-panel">
         <header className="workspace-chat-header">
-          <div className="mobile-header-left"><button type="button" className="mobile-menu-button" onClick={() => setDrawer("chats")} aria-label="Open menu"><Menu /></button><div><h1>{session.title}</h1><p>{session.meta}</p></div></div>
+          <div className="mobile-header-left">
+            <button type="button" className="mobile-menu-button" onClick={() => setDrawer("chats")} aria-label="Open menu"><Menu /></button>
+            <div><h1>{session.title}</h1><p>{session.meta}</p></div>
+          </div>
           <button type="button" className="mobile-call-button" onClick={() => openSheet("call")} aria-label="Discuss with AI"><Phone /></button>
         </header>
 
         <div className="clariti-chat-scroll" ref={chatScrollRef}>
           <div className="clariti-date-chip">Today</div>
-          {active === "bill" && <BillChat />}
-          {active === "radiology" && <RadiologyChat />}
-          {active === "eob" && <EobChat />}
+          {chatMessages.length > 0 ? chatMessages.map((message, index) => (
+            <ChatMessageBubble
+              key={message.id}
+              message={message}
+              session={session}
+              showAttachment={index === 0 && message.role === "user"}
+              showSafetyNote={index === 1 && message.role === "assistant"}
+              safetyNote={analysis.safetyNote}
+              active={active}
+            />
+          )) : (
+            <div className="clariti-ai-message">
+              <span className="clariti-ai-avatar">C</span>
+              <div>
+                <p>{loading ? "I’m reading the document and checking the exact source wording before I explain it." : analysis.summary}</p>
+                <p>{loading ? "This usually takes a moment." : analysis.plainEnglish}</p>
+              </div>
+            </div>
+          )}
+
+          {generatedVideo && <GeneratedVideoResponse video={generatedVideo} analysis={analysis} />}
 
           <button className={`chat-artifact-card artifact-${active}`} onClick={() => setCanvasOpen(true)}>
             <span className="artifact-card-top"><span><small>{artifact.eyebrow}</small><b>{artifact.title}</b></span><Sparkles /></span>
@@ -120,41 +513,641 @@ export default function WorkspacePage() {
             <span className="artifact-card-cta">View full analysis <span>→</span></span>
           </button>
 
-          <div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>I can stay with you beyond this explanation. We can talk through it or set a gentle follow-up so the next step does not get forgotten.</p><div className="clariti-quick-actions"><button onClick={() => openSheet("call")}>Discuss with AI</button><button onClick={() => openSheet("followup")}>Set a follow-up</button></div></div></div>
+          <div className="clariti-ai-message">
+            <span className="clariti-ai-avatar">C</span>
+            <div>
+              <p>I can stay with you beyond this explanation. We can talk through it or set a phone follow-up around one specific next action.</p>
+              <div className="clariti-quick-actions"><button onClick={() => openSheet("call")}>Call Clariti</button><button onClick={() => void beginFollowUpConversation()}>Set phone follow-up</button></div>
+            </div>
+          </div>
         </div>
 
         <div className="clariti-workspace-composer">
-          <button type="button" aria-label="Attach document" onClick={() => showPrototypeToast("Upload flow mocked for the UI prototype.")}><Paperclip /></button>
-          <input placeholder="Ask a follow-up question…" readOnly />
-          <button type="button" className="send" aria-label="Send message" onClick={() => showPrototypeToast("Message composer is UI-only for now.")}><Send /></button>
+          <Link href="/" aria-label="Attach a new document"><Paperclip /></Link>
+          <input
+            placeholder="Ask a follow-up question..."
+            value={followUpText}
+            onChange={(event) => setFollowUpText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void sendFollowUp();
+              }
+            }}
+          />
+          <button type="button" className="send" aria-label="Send message" disabled={!followUpText.trim() || sendingFollowUp} onClick={() => void sendFollowUp()}><Send /></button>
         </div>
       </section>
 
       <aside className={`clariti-canvas canvas-${active}`}>
         <div className="mobile-canvas-bar"><button type="button" onClick={() => setCanvasOpen(false)}><ArrowLeft />Back</button><span>Generated insight</span><button type="button" onClick={() => setCanvasOpen(false)} aria-label="Close insight"><X /></button></div>
-        <header><div><p className="canvas-kicker">{artifact.eyebrow}</p><h2>{artifact.title}</h2></div>{active === "radiology" ? <ImageIcon /> : <Sparkles />}</header>
-        <div className="canvas-tabs"><button className={canvasTab === "summary" ? "active" : ""} onClick={() => setCanvasTab("summary")}>Summary</button><button className={canvasTab === "detail" ? "active" : ""} onClick={() => setCanvasTab("detail")}>{active === "bill" ? "Charges" : active === "radiology" ? "Findings" : "Claim"}</button><button className={canvasTab === "actions" ? "active" : ""} onClick={() => setCanvasTab("actions")}>Next steps</button></div>
-        {active === "bill" && <BillCanvas tab={canvasTab} onPrototypeAction={showPrototypeToast} />}
-        {active === "radiology" && <RadiologyCanvas tab={canvasTab} onPrototypeAction={showPrototypeToast} />}
-        {active === "eob" && <EobCanvas tab={canvasTab} onPrototypeAction={showPrototypeToast} />}
-        <section className="canvas-continuity"><div><p className="canvas-kicker">CONTINUE WITH CLARITI</p><h3>Don’t stop at understanding.</h3><p>Talk this through or let Clariti check back when it matters.</p></div><div className="continuity-actions"><button onClick={() => openSheet("call")}><Phone />Discuss with AI</button><button onClick={() => openSheet("followup")}><Bell />Set a follow-up</button></div></section>
-        <footer className="canvas-footer">Prototype UI only. Clariti explains and organises information; it does not diagnose or replace a healthcare professional.</footer>
+        <header><div><p className="canvas-kicker">{artifact.eyebrow}</p><h2>{analysis.title}</h2></div>{active === "radiology_report" ? <ImageIcon /> : <Sparkles />}</header>
+        <div className="canvas-tabs">
+          <button className={canvasTab === "summary" ? "active" : ""} onClick={() => setCanvasTab("summary")}>Summary</button>
+          <button className={canvasTab === "detail" ? "active" : ""} onClick={() => setCanvasTab("detail")}>{active === "medical_bill" ? "Charges" : active === "radiology_report" ? "Findings" : "Claim"}</button>
+          <button className={canvasTab === "actions" ? "active" : ""} onClick={() => setCanvasTab("actions")}>Next steps</button>
+        </div>
+        <AnalysisCanvas analysis={analysis} tab={canvasTab} videoScene={videoScene} generatedVideoUrl={generatedVideo?.url ?? null} onSceneChange={setVideoScene} onVideoGenerated={handleVideoGenerated} onPrototypeAction={showToast} onOpenSource={() => openSheet("source")} />
+        <section className="canvas-continuity">
+          <div><p className="canvas-kicker">CONTINUE WITH CLARITI</p><h3>Don’t stop at understanding.</h3><p>Talk this through or let Clariti call back when it matters.</p></div>
+          <div className="continuity-actions"><button onClick={() => openSheet("call")}><Phone />Call Clariti</button><button onClick={() => void beginFollowUpConversation()}><Bell />Set follow-up</button></div>
+        </section>
+        <footer className="canvas-footer">{analysis.safetyNote}</footer>
       </aside>
 
       <nav className="clariti-mobile-dock"><button onClick={() => setDrawer("chats")}><MessageSquareText /><span>Chats</span></button><button onClick={() => setDrawer("documents")}><FolderOpen /><span>Documents</span></button><Link href="/"><Plus /><span>New</span></Link><button onClick={() => setDrawer("history")}><History /><span>History</span></button></nav>
 
       {toast && <div className="clariti-ui-toast" role="status">{toast}</div>}
 
-      {sheet && <div className="clariti-modal-backdrop" onMouseDown={() => setSheet(null)}><div className="clariti-modal prototype-sheet" onMouseDown={(e) => e.stopPropagation()}><button type="button" className="sheet-close" onClick={() => setSheet(null)} aria-label="Close options"><X /></button>{sheet === "call" ? <><span className="modal-icon"><Phone /></span><p className="canvas-kicker">DISCUSS THIS DOCUMENT</p><h2>Talk through this {session.tag.toLowerCase()}</h2><p>Prototype options for a contextual AI conversation about this document.</p><div className="prototype-option-list"><button type="button" onClick={() => { setSheet(null); showPrototypeToast("Voice call flow mocked for the UI prototype."); }}><Phone /><span><b>Start AI voice call</b><small>Talk through the current document and insights.</small></span></button><button type="button" onClick={() => { setSheet(null); showPrototypeToast("Scheduling flow mocked for the UI prototype."); }}><Bell /><span><b>Schedule for later</b><small>Choose a convenient time in the future.</small></span></button></div></> : <><span className="modal-icon"><Bell /></span><p className="canvas-kicker">PROACTIVE FOLLOW-UP</p><h2>Stay on top of this</h2><p>Prototype follow-up choices that make Clariti feel proactive after the document is explained.</p><div className="prototype-option-list"><button type="button" onClick={() => { setSheet(null); showPrototypeToast("Reminder flow mocked for the UI prototype."); }}><Bell /><span><b>Browser reminder</b><small>Get a gentle reminder about the next step.</small></span></button><button type="button" onClick={() => { setSheet(null); showPrototypeToast("AI check-in flow mocked for the UI prototype."); }}><Phone /><span><b>AI check-in call</b><small>Have Clariti call back with this document as context.</small></span></button></div></>}</div></div>}
+      {sheet && (
+        <div className="clariti-modal-backdrop" onMouseDown={() => setSheet(null)}>
+          <div className="clariti-modal prototype-sheet" onMouseDown={(event) => event.stopPropagation()}>
+            <button type="button" className="sheet-close" onClick={() => setSheet(null)} aria-label="Close options"><X /></button>
+            {sheet === "source" ? (
+              <>
+                <span className="modal-icon"><FileText /></span>
+                <p className="canvas-kicker">ORIGINAL DOCUMENT TEXT</p>
+                <h2>{session.fileName}</h2>
+                <pre className="source-document-preview">{activeRequest?.documentText ?? "Original document text is not available for this saved session."}</pre>
+              </>
+            ) : sheet === "call" ? (
+              <>
+                <span className="modal-icon"><Phone /></span>
+                <p className="canvas-kicker">CALL CLARITI</p>
+                <h2>Talk through this {session.tag.toLowerCase()}</h2>
+                <p>Clariti will use only this document analysis and its source anchors during the call.</p>
+                <div className="prototype-option-list">
+                  <button type="button" onClick={startCall}><Phone /><span><b>Prepare AI phone call</b><small>Builds a constrained call context from this Clariti analysis.</small></span></button>
+                  <button type="button" onClick={() => showToast("Live telephony can connect here once the ElevenLabs agent ID is configured.")}><ShieldCheck /><span><b>Safety boundary</b><small>No diagnosis, treatment instruction, or final coverage decision.</small></span></button>
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="modal-icon"><Bell /></span>
+                <p className="canvas-kicker">PHONE FOLLOW-UP</p>
+                <h2>Schedule around one action</h2>
+                <p>Choose the action Clariti should call back about tomorrow.</p>
+                <div className="followup-builder">
+                  {analysis.nextActions.map((action) => (
+                    <button key={action} type="button" className={`follow-choice ${followAction === action ? "selected" : ""}`} onClick={() => setFollowAction(action)}>
+                      {followAction === action ? <CheckCircle2 /> : <span />}
+                      <b>{action}</b>
+                    </button>
+                  ))}
+                </div>
+                <div className="prototype-option-list">
+                  <button type="button" onClick={() => void beginFollowUpConversation()}><Bell /><span><b>Discuss and schedule in chat</b><small>Clariti will use the report context, purpose and timing before scheduling.</small></span></button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
 
-function BillChat(){return <><div className="clariti-user-message"><span className="attached-file"><FileText/><span><b>hospital-bill-july.pdf</b><small>2 pages · 384 KB</small></span></span><p>Can you explain this bill and tell me if anything looks unusual?</p></div><div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>I’ve gone through the bill. The total is <b>£1,248.60</b>, and <b>£930.00 appears to be your responsibility</b>.</p><p>I’ve structured the important charges, flags and next steps for you.</p><div className="clariti-inline-note"><Flag/> One charge may need clarification</div></div></div></>}
-function RadiologyChat(){return <><div className="clariti-user-message"><span className="attached-file"><FileText/><span><b>MRI-lumbar-spine-report.pdf</b><small>Radiology report · 3 pages</small></span></span><p>Can you explain what this MRI report means in plain English?</p></div><div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>The report describes <b>mild degenerative changes in your lower back</b>, most noticeable at L4–L5.</p><p>I’ve turned the findings into a visual report with anatomy, reassuring language and clinician questions.</p><div className="clariti-inline-note radiology-note"><Stethoscope/> Explanation only — not a diagnosis</div></div></div></>}
-function EobChat(){return <><div className="clariti-user-message"><span className="attached-file"><FileText/><span><b>insurance-eob-8472.pdf</b><small>Explanation of Benefits · 4 pages</small></span></span><p>What did insurance actually pay, and do I owe the rest?</p></div><div className="clariti-ai-message"><span className="clariti-ai-avatar">C</span><div><p>This EOB shows what was <b>billed, allowed, paid by your insurer, and assigned to you</b>. An EOB is not itself a bill.</p><p>I’ve mapped the claim flow and what may need your attention.</p></div></div></>}
+function AnalysisCanvas({
+  analysis,
+  tab,
+  videoScene,
+  generatedVideoUrl,
+  onSceneChange,
+  onVideoGenerated,
+  onPrototypeAction,
+  onOpenSource,
+}: {
+  analysis: ClaritiAnalysis;
+  tab: CanvasTab;
+  videoScene: number;
+  generatedVideoUrl: string | null;
+  onSceneChange: (scene: number) => void;
+  onVideoGenerated: (url: string) => void;
+  onPrototypeAction: (message: string) => void;
+  onOpenSource: () => void;
+}) {
+  if (tab === "actions") return <Actions items={analysis.nextActions} onPrototypeAction={onPrototypeAction} />;
+  if (tab === "detail") return <Detail analysis={analysis} onOpenSource={onOpenSource} />;
 
-function BillCanvas({tab,onPrototypeAction}:{tab:CanvasTab;onPrototypeAction:(message:string)=>void}){if(tab==="summary")return <div className="canvas-content"><section className="clariti-hero-total"><span>Total billed</span><strong>£1,248.60</strong><small>Your estimated responsibility: £930.00</small></section><section className="canvas-card"><h3>In plain English</h3><p>This bill covers your hospital visit, imaging and specialist review. Most of the amount is linked to imaging services.</p></section><section className="canvas-card flag-card"><div className="card-title"><Flag/><h3>Worth checking</h3></div><p>A £185 facility fee appears separately from the imaging charge.</p></section><section className="canvas-card meta-card"><h3>Document Details</h3><div className="meta-row"><span>Provider</span><b>City Hospital</b></div><div className="meta-row"><span>Bill date</span><b>23 Jul 2025</b></div><div className="meta-row"><span>Account #</span><b>HC-88213</b></div><button type="button" className="meta-link-btn" onClick={() => onPrototypeAction("Original bill viewer mocked for the UI prototype.")}><FileDown/>View original bill</button></section></div>;if(tab==="detail")return <div className="canvas-content"><section className="canvas-card"><h3>Charge breakdown</h3><div className="charge-row"><span>Hospital consultation</span><b>£133.60</b></div><div className="charge-row"><span>MRI imaging</span><b>£780.00</b></div><div className="charge-row flagged"><span>Facility fee <em>Check</em></span><b>£185.00</b></div><div className="charge-row"><span>Specialist review</span><b>£150.00</b></div></section></div>;return <Actions items={["Ask whether the facility fee is separate from the MRI charge","Compare this bill with your insurance EOB","Prepare billing-team questions"]} onPrototypeAction={onPrototypeAction}/>}
-function RadiologyCanvas({tab,onPrototypeAction}:{tab:CanvasTab;onPrototypeAction:(message:string)=>void}){if(tab==="summary")return <div className="canvas-content"><section className="radiology-hero"><div><span className="result-label">OVERALL IMPRESSION</span><h3>Mild L4–L5 changes. No severe narrowing described.</h3><p>The report points to common age or wear-related changes in the lower back, with no urgent severe canal narrowing called out.</p></div><span className="risk-pill">Low concern</span></section><section className="impression-stats"><div><strong>3</strong><span>Key findings</span></div><div><strong>L4–L5</strong><span>Area noted</span></div><div><strong>Low</strong><span>Concern level</span></div></section><section className="canvas-card"><h3>Key Findings</h3><ul className="key-findings-list"><li><CheckCircle2/><span><b>Mild disc bulge at L4–L5</b><small>Common with age, usually not urgent.</small></span></li><li><CheckCircle2/><span><b>No significant canal narrowing</b><small>The main spinal canal remains open.</small></span></li><li><CheckCircle2/><span><b>Other levels normal</b><small>L1–L4 and L5–S1 show no significant abnormality.</small></span></li></ul></section><section className="canvas-card video-explainer-card"><div className="video-explainer-head"><h3><Sparkles/>AI Video Explainer</h3><span className="video-duration-badge">1:48</span></div><div className="video-explainer-media report-preview"><div><span>Plain-English walkthrough</span><b>What this MRI report means</b><small>Highlights findings, reassurance, and questions for your clinician.</small></div><button type="button" className="video-play-btn" aria-label="Play video" onClick={() => onPrototypeAction("Video explainer mocked for the UI prototype.")}><Play/></button></div><div className="video-explainer-foot"><span><Sparkles/>AI generated</span><button type="button" className="video-play-cta" onClick={() => onPrototypeAction("Video explainer mocked for the UI prototype.")}><Play/>Play video</button></div><p className="video-caption">Understand your report without medical jargon</p></section><section className="canvas-card reassuring"><div className="card-title"><CheckCircle2/><h3>Reassuring language</h3></div><p>“No significant spinal canal stenosis” means the report does not describe severe narrowing of the main spinal canal.</p></section><section className="canvas-card meta-card"><h3>Report Summary</h3><div className="meta-row"><span>Exam type</span><b>MRI Lumbar Spine</b></div><div className="meta-row"><span>Date</span><b>22 Jul 2025</b></div><div className="meta-row"><span>Ordered by</span><b>Dr. Chen</b></div><div className="meta-row"><span>Facility</span><b>City Hospital Imaging</b></div><button type="button" className="meta-link-btn" onClick={() => onPrototypeAction("Original report viewer mocked for the UI prototype.")}><FileDown/>View original report</button></section></div>;if(tab==="detail")return <div className="canvas-content"><section className="canvas-card finding-card"><span className="finding-tag">L4–L5</span><h3>Disc desiccation and mild bulge</h3><p>The disc shows some loss of water content and a small outward bulge.</p></section><section className="canvas-card"><h3>Other levels</h3><div className="finding-row"><span>L1–L4</span><b>No significant abnormality described</b></div><div className="finding-row"><span>L5–S1</span><b>Mild degenerative change</b></div></section></div>;return <Actions items={["Ask how these findings relate to your symptoms","Ask whether physiotherapy may be appropriate","Save questions for your follow-up"]} onPrototypeAction={onPrototypeAction}/>}
-function EobCanvas({tab,onPrototypeAction}:{tab:CanvasTab;onPrototypeAction:(message:string)=>void}){if(tab==="summary")return <div className="canvas-content"><section className="eob-flow"><div><span>Provider billed</span><strong>£1,248.60</strong></div><b>→</b><div><span>Insurer allowed</span><strong>£1,080.00</strong></div><b>→</b><div className="accent"><span>Your responsibility</span><strong>£320.00</strong></div></section><section className="canvas-card"><h3>Important</h3><p>An Explanation of Benefits explains how a claim was processed. It is not necessarily a request for payment.</p></section><section className="canvas-card meta-card"><h3>Claim Details</h3><div className="meta-row"><span>Service date</span><b>22 Jul 2025</b></div><div className="meta-row"><span>Provider</span><b>City Hospital</b></div><div className="meta-row"><span>Claim number</span><b>8472</b></div><div className="meta-row"><span>Member ID</span><b>BX-338217</b></div><div className="meta-row"><span>Plan</span><b>BlueCross PPO</b></div></section></div>;if(tab==="detail")return <div className="canvas-content"><section className="canvas-card"><h3>Claim breakdown</h3><div className="charge-row"><span>Amount billed</span><b>£1,248.60</b></div><div className="charge-row"><span>Plan discount</span><b>−£168.60</b></div><div className="charge-row"><span>Insurance paid</span><b>−£760.00</b></div><div className="charge-row flagged"><span>Patient responsibility</span><b>£320.00</b></div></section></div>;return <Actions items={["Compare the provider’s actual bill","Check why £320 was assigned to you","Prepare questions for your insurer"]} onPrototypeAction={onPrototypeAction}/>}
-function Actions({items,onPrototypeAction}:{items:string[];onPrototypeAction:(message:string)=>void}){return <div className="canvas-content"><section className="canvas-card"><h3>Suggested next steps</h3><ol className="action-list">{items.map((item,i)=><li key={item}><span>{i+1}</span><p><b>{item}</b><small>Clariti can turn this into a concise checklist.</small></p></li>)}</ol><button type="button" className="canvas-primary" onClick={() => onPrototypeAction("Question list creation mocked for the UI prototype.")}>Create question list</button></section></div>}
+  const concernMetric = analysis.metrics[1] ?? analysis.metrics[0];
+
+  return (
+    <div className="canvas-content">
+      {analysis.kind === "radiology_report" ? (
+        <>
+          <section className="radiology-hero">
+            <div><span className="result-label">OVERALL IMPRESSION</span><h3>{analysis.summary}</h3><p>{analysis.plainEnglish}</p></div>
+            <span className="risk-pill">{concernMetric?.value ?? "Review"}</span>
+          </section>
+          <section className="impression-stats">
+            <div><strong>{analysis.keyPoints.length}</strong><span>Key findings</span></div>
+            <div><strong>{analysis.metrics[0]?.value ?? "Report"}</strong><span>{analysis.metrics[0]?.label ?? "Document"}</span></div>
+            <div><strong>{concernMetric?.value ?? "Ask"}</strong><span>{concernMetric?.label ?? "Clinician context"}</span></div>
+          </section>
+          <KeyPoints analysis={analysis} />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} onSceneChange={onSceneChange} onVideoGenerated={onVideoGenerated} />
+        </>
+      ) : (
+        <>
+          <section className={analysis.kind === "insurance_eob" ? "eob-flow" : "clariti-hero-total"}>
+            {analysis.metrics.slice(0, 3).map((metric) => (
+              <div key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong>{metric.caveat && <small>{metric.caveat}</small>}</div>
+            ))}
+          </section>
+          <section className="canvas-card"><h3>In plain English</h3><p>{analysis.plainEnglish}</p></section>
+          <KeyPoints analysis={analysis} />
+        </>
+      )}
+      {analysis.flags.map((flag) => (
+        <section className="canvas-card flag-card" key={flag.label}>
+          <div className="card-title"><Flag /><h3>{flag.label}</h3></div>
+          <p>{flag.detail}</p>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function Detail({ analysis, onOpenSource }: { analysis: ClaritiAnalysis; onOpenSource: () => void }) {
+  return (
+    <div className="canvas-content">
+      <section className="canvas-card">
+        <h3>{analysis.kind === "medical_bill" ? "Charge breakdown" : analysis.kind === "insurance_eob" ? "Claim breakdown" : "Report findings"}</h3>
+        {analysis.keyPoints.map((point) => (
+          <div className="finding-row" key={point.label}>
+            <span>{point.label}</span>
+            <b>{point.detail}</b>
+          </div>
+        ))}
+      </section>
+      <section className="canvas-card meta-card">
+        <h3>Source Anchors</h3>
+        {analysis.sourceAnchors.map((anchor) => (
+          <div className="meta-row" key={anchor}><span>Source</span><b>{anchor}</b></div>
+        ))}
+        <button type="button" className="meta-link-btn" onClick={onOpenSource}><FileDown />View original document</button>
+      </section>
+    </div>
+  );
+}
+
+function KeyPoints({ analysis }: { analysis: ClaritiAnalysis }) {
+  return (
+    <section className="canvas-card">
+      <h3>Key Points</h3>
+      <ul className="key-findings-list">
+        {analysis.keyPoints.map((point) => (
+          <li key={point.label}><CheckCircle2 /><span><b>{point.label}</b><small>{point.detail} Source: {point.sourceAnchor}</small></span></li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ChatMessageBubble({
+  message,
+  session,
+  showAttachment,
+  showSafetyNote,
+  safetyNote,
+  active,
+}: {
+  message: ChatMessage;
+  session: WorkspaceSession;
+  showAttachment: boolean;
+  showSafetyNote: boolean;
+  safetyNote: string;
+  active: ClaritiAnalysisKind;
+}) {
+  if (message.role === "user") {
+    return (
+      <article className="clariti-chat-turn user-turn">
+        <div className="message-meta">You</div>
+        <div className="clariti-user-message">
+          {showAttachment && <span className="attached-file"><FileText /><span><b>{session.fileName}</b><small>{session.tag} document</small></span></span>}
+          <p>{message.content}</p>
+        </div>
+      </article>
+    );
+  }
+
+  const paragraphs = message.content.split("\n").map((paragraph) => paragraph.trim()).filter(Boolean);
+
+  return (
+    <article className="clariti-chat-turn assistant-turn">
+      <span className="clariti-ai-avatar">C</span>
+      <div className="clariti-ai-card">
+        <div className="message-meta">Clariti</div>
+        {paragraphs.map((paragraph, index) => (
+          <p className={/source:/i.test(paragraph) ? "source-grounded-line" : undefined} key={`${paragraph}-${index}`}>{paragraph}</p>
+        ))}
+        {showSafetyNote && (
+          <div className={`clariti-inline-note ${active === "radiology_report" ? "radiology-note" : ""}`}>
+            {active === "radiology_report" ? <Stethoscope /> : <Flag />} {safetyNote}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function GeneratedVideoResponse({ video, analysis }: { video: GeneratedVideo; analysis: ClaritiAnalysis }) {
+  const source = (analysis.sourceAnchors[0] ?? "saved report analysis").replace(/\.+$/, ".");
+  return (
+    <article className="clariti-chat-turn assistant-turn generated-video-turn">
+      <span className="clariti-ai-avatar">C</span>
+      <div className="clariti-ai-card">
+        <div className="message-meta">Clariti</div>
+        <p>I generated a short video explanation from the five source-grounded scenes for this report.</p>
+        <video className="chat-generated-video" src={video.url} controls playsInline />
+        <p className="source-grounded-line">Source: {source} {analysis.safetyNote}</p>
+      </div>
+    </article>
+  );
+}
+
+function VideoStoryboard({
+  analysis,
+  activeScene,
+  generatedVideoUrl,
+  onSceneChange,
+  onVideoGenerated,
+}: {
+  analysis: ClaritiAnalysis;
+  activeScene: number;
+  generatedVideoUrl: string | null;
+  onSceneChange: (scene: number) => void;
+  onVideoGenerated: (url: string) => void;
+}) {
+  const scenes = analysis.videoScenes ?? [];
+  const [generating, setGenerating] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  if (scenes.length === 0) return null;
+  const scene = scenes[activeScene] ?? scenes[0];
+  const generateVideo = async () => {
+    setGenerating(true);
+    setVideoError(null);
+    onSceneChange(0);
+    try {
+      const nextUrl = await createSceneVideo(analysis);
+      onVideoGenerated(nextUrl);
+      requestAnimationFrame(() => {
+        void videoRef.current?.play().catch(() => undefined);
+      });
+    } catch {
+      setVideoError("Clariti could not generate the video in this browser.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <section className="canvas-card video-explainer-card">
+      <div className="video-explainer-head"><h3><Sparkles />Generated video explanation</h3><span className="video-duration-badge">~25 sec</span></div>
+      {generatedVideoUrl ? (
+        <video ref={videoRef} className="clariti-generated-video" src={generatedVideoUrl} controls playsInline />
+      ) : (
+        <div className="video-explainer-media report-preview">
+          <div><span>Ready to generate</span><b>{scene.title}</b><small>{scene.script}</small></div>
+          <button type="button" className="video-play-btn" aria-label="Generate video explanation" disabled={generating} onClick={() => void generateVideo()}>{generating ? <RefreshCw className="spin" /> : <Play />}</button>
+        </div>
+      )}
+      <div className="video-scene-strip" aria-label="Video scene outline">
+        {scenes.map((item, index) => (
+          <button key={item.title} type="button" className={index === activeScene ? "active" : ""} onClick={() => onSceneChange(index)}>{index + 1}</button>
+        ))}
+      </div>
+      <div className="video-explainer-foot">
+        <span><Sparkles />Source: {scene.sourceAnchor}</span>
+        <button type="button" className="video-play-cta" disabled={generating} onClick={() => void generateVideo()}>{generatedVideoUrl ? <RefreshCw /> : <Play />}{generatedVideoUrl ? "Regenerate video" : "Generate video"}</button>
+      </div>
+      {videoError && <p className="video-error">{videoError}</p>}
+      <p className="video-caption">{generatedVideoUrl ? "A generated video file was also added to the chat thread so it is easy to find." : scene.visual}</p>
+    </section>
+  );
+}
+
+async function createSceneVideo(analysis: ClaritiAnalysis) {
+  if (typeof document === "undefined" || typeof MediaRecorder === "undefined") {
+    throw new Error("Video generation is not available.");
+  }
+
+  const scenes = analysis.videoScenes ?? [];
+  if (scenes.length === 0) throw new Error("No scenes to render.");
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 1280;
+  canvas.height = 720;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas is not available.");
+
+  const stream = canvas.captureStream(30);
+  const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
+  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2_400_000 });
+  const chunks: BlobPart[] = [];
+  recorder.ondataavailable = (event) => {
+    if (event.data.size > 0) chunks.push(event.data);
+  };
+
+  const done = new Promise<string>((resolve, reject) => {
+    recorder.onerror = () => reject(new Error("Recording failed."));
+    recorder.onstop = () => resolve(URL.createObjectURL(new Blob(chunks, { type: "video/webm" })));
+  });
+
+  recorder.start();
+  const startedAt = Date.now();
+  const sceneDuration = 5000;
+  const totalDuration = sceneDuration * scenes.length;
+
+  await new Promise<void>((resolve, reject) => {
+    const render = () => {
+      try {
+        const elapsed = Math.min(Date.now() - startedAt, totalDuration);
+        const sceneIndex = Math.max(0, Math.min(scenes.length - 1, Math.floor(elapsed / sceneDuration)));
+        const sceneProgress = Math.max(0, Math.min(1, (elapsed - sceneIndex * sceneDuration) / sceneDuration));
+        const currentScene = scenes[sceneIndex] ?? scenes[0];
+        drawVideoFrame(context, analysis, currentScene, sceneIndex, scenes.length, sceneProgress);
+        if (elapsed >= totalDuration) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(render);
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error("Video render failed."));
+      }
+    };
+    render();
+  });
+
+  recorder.stop();
+  return done;
+}
+
+function drawVideoFrame(
+  context: CanvasRenderingContext2D,
+  analysis: ClaritiAnalysis,
+  scene: NonNullable<ClaritiAnalysis["videoScenes"]>[number],
+  sceneIndex: number,
+  totalScenes: number,
+  progress: number,
+) {
+  const width = context.canvas.width;
+  const height = context.canvas.height;
+  const eased = 1 - Math.pow(1 - progress, 3);
+
+  context.fillStyle = "#f7faf9";
+  context.fillRect(0, 0, width, height);
+  const gradient = context.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, "#173139");
+  gradient.addColorStop(0.62, "#28504a");
+  gradient.addColorStop(1, "#eaf5f1");
+  context.fillStyle = gradient;
+  roundRect(context, 52, 52, width - 104, height - 104, 38);
+  context.fill();
+
+  context.fillStyle = "rgba(255,255,255,0.1)";
+  context.beginPath();
+  context.arc(1030 + eased * 22, 165, 92, 0, Math.PI * 2);
+  context.fill();
+  context.beginPath();
+  context.arc(965, 540 - eased * 24, 150, 0, Math.PI * 2);
+  context.fill();
+
+  context.fillStyle = "#a9d9cf";
+  context.font = "700 24px Inter, Arial, sans-serif";
+  context.fillText(`SCENE ${sceneIndex + 1} OF ${totalScenes}`, 100, 120);
+
+  context.fillStyle = "#ffffff";
+  context.font = "600 60px Georgia, serif";
+  wrapCanvasText(context, scene.title, 100, 205, 760, 66, 2);
+
+  context.fillStyle = "#d9e8e4";
+  context.font = "400 30px Inter, Arial, sans-serif";
+  wrapCanvasText(context, scene.script, 100, 335, 760, 42, 4);
+
+  context.fillStyle = "#20312e";
+  roundRect(context, 880, 178, 250, 294, 28);
+  context.fillStyle = "rgba(255,255,255,0.88)";
+  context.fill();
+  context.fillStyle = "#4d8d83";
+  context.font = "700 22px Inter, Arial, sans-serif";
+  context.fillText("Source", 925, 235);
+  context.fillStyle = "#20312e";
+  context.font = "600 28px Georgia, serif";
+  wrapCanvasText(context, scene.sourceAnchor, 925, 285, 170, 36, 4);
+
+  context.fillStyle = "#ffffff";
+  context.font = "700 22px Inter, Arial, sans-serif";
+  context.fillText("Clariti", 100, 615);
+  context.fillStyle = "#cde3dd";
+  context.font = "400 21px Inter, Arial, sans-serif";
+  context.fillText(analysis.safetyNote, 198, 615);
+
+  context.fillStyle = "rgba(255,255,255,0.25)";
+  roundRect(context, 100, 646, width - 200, 12, 999);
+  context.fill();
+  context.fillStyle = "#9fd2c8";
+  roundRect(context, 100, 646, (width - 200) * ((sceneIndex + progress) / totalScenes), 12, 999);
+  context.fill();
+}
+
+function wrapCanvasText(context: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number, maxLines: number) {
+  const words = text.split(/\s+/);
+  let line = "";
+  let lines = 0;
+  for (const word of words) {
+    const testLine = line ? `${line} ${word}` : word;
+    if (context.measureText(testLine).width > maxWidth && line) {
+      context.fillText(line, x, y + lines * lineHeight);
+      line = word;
+      lines += 1;
+      if (lines >= maxLines) return;
+    } else {
+      line = testLine;
+    }
+  }
+  if (line && lines < maxLines) context.fillText(line, x, y + lines * lineHeight);
+}
+
+function roundRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  context.beginPath();
+  context.moveTo(x + radius, y);
+  context.arcTo(x + width, y, x + width, y + height, radius);
+  context.arcTo(x + width, y + height, x, y + height, radius);
+  context.arcTo(x, y + height, x, y, radius);
+  context.arcTo(x, y, x + width, y, radius);
+  context.closePath();
+}
+
+function Actions({ items, onPrototypeAction }: { items: string[]; onPrototypeAction: (message: string) => void }) {
+  return (
+    <div className="canvas-content">
+      <section className="canvas-card">
+        <h3>Suggested next steps</h3>
+        <ol className="action-list">
+          {items.map((item, index) => <li key={item}><span>{index + 1}</span><p><b>{item}</b><small>Clariti can turn this into a phone follow-up or a concise question list.</small></p></li>)}
+        </ol>
+        <button type="button" className="canvas-primary" onClick={() => onPrototypeAction("Question list created from the current source-grounded analysis.")}>Create question list</button>
+      </section>
+    </div>
+  );
+}
+
+function toArtifactMeta(analysis: ClaritiAnalysis) {
+  const metric = analysis.metrics[0];
+  return {
+    eyebrow: analysis.kind === "radiology_report" ? "RADIOLOGY INTELLIGENCE" : analysis.kind === "insurance_eob" ? "CLAIM INTELLIGENCE" : "BILL INTELLIGENCE",
+    title: analysis.kind === "radiology_report" ? "Your report, in plain English" : analysis.kind === "insurance_eob" ? "Your claim, made clearer" : "Your bill, made clearer",
+    metric: metric?.value ?? String(analysis.keyPoints.length),
+    label: metric?.label ?? "key points",
+    note: analysis.flags[0]?.label ?? analysis.questions[0] ?? "Ready for review",
+  };
+}
+
+function messagesFromDbSession(session: DbWorkspaceSession): ChatMessage[] {
+  const messages = session.messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => ({
+      id: message.id,
+      role: message.role === "assistant" ? "assistant" as const : "user" as const,
+      content: message.content,
+    }));
+  return messages.length > 0 ? messages : [];
+}
+
+function messagesFromRequest(request: ClaritiRequest): ChatMessage[] {
+  if (!request.analysis) return [{ id: "initial-user", role: "user", content: request.question }];
+  return [
+    { id: "initial-user", role: "user", content: request.question },
+    { id: "initial-assistant", role: "assistant", content: `${request.analysis.summary}\n\n${request.analysis.plainEnglish}` },
+  ];
+}
+
+function buildLocalFollowUp(question: string, analysis: ClaritiAnalysis) {
+  const lower = question.toLowerCase();
+  const point = analysis.keyPoints[0];
+  const pointText = `${point.label} - ${point.detail.replace(/\s+/g, " ").replace(/\.+$/, ".")}`;
+
+  if (/schedule|follow-up|follow up|call back|phone follow|reminder|set.*time/.test(lower)) {
+    return buildFollowUpPlanningReply(analysis, analysis.nextActions[0] ?? "review this document with the relevant clinician or provider");
+  }
+
+  if (/cancer|tumou?r|malignan|mass|lesion/.test(lower)) {
+    return `Clariti cannot tell from this report whether you have cancer. The saved analysis does not include a cancer, tumour, malignancy, mass, or lesion finding; it highlights: ${pointText} Source: ${point.sourceAnchor}. Ask your clinician to confirm what the report rules in and rules out.`;
+  }
+
+  if (/ignore|safe to ignore|nothing to do|leave it|wait and see/.test(lower)) {
+    return `Do not treat this as something to ignore. The grounded takeaway is: ${pointText} Source: ${point.sourceAnchor}. A safer next step is to ${(analysis.nextActions[0] ?? "review this with your clinician").toLowerCase()}. ${analysis.safetyNote}`;
+  }
+
+  const metric = analysis.metrics.find((item) => /\$|£|amount|paid|due|responsibility|billed/i.test(`${item.label} ${item.value}`));
+  if (metric) {
+    return `Based on the saved analysis, ${metric.label.toLowerCase()} is ${metric.value}. ${metric.caveat ?? ""} Source: ${analysis.sourceAnchors[0] ?? "saved analysis"}.`;
+  }
+  return `From the saved analysis: ${pointText} Source: ${point.sourceAnchor}. Question asked: ${question}`;
+}
+
+function buildFollowUpPlanningReply(analysis: ClaritiAnalysis, action: string) {
+  const point = analysis.keyPoints[0];
+  const pointText = `${point.label} - ${point.detail.replace(/\s+/g, " ").replace(/\.+$/, ".")}`;
+  const questions = analysis.questions.slice(0, 2).join(" ");
+  return `Yes. I can help set this up as a focused phone follow-up, but I need the best phone number to call and a preferred time before scheduling. Purpose: ${action}. Reason: the saved analysis highlights ${pointText} Source: ${point.sourceAnchor}. Suggested default: tomorrow morning, unless symptoms are worsening or the document mentions urgent instructions. Reply with the phone number and timing, for example: "+44 7123 456789 tomorrow morning", and tell me whether this call should prepare clinician questions, review next steps, or remind you to contact the provider. Useful prompts: ${questions} ${analysis.safetyNote}`;
+}
+
+function extractPhoneNumber(value: string) {
+  const match = value.match(/(?:\+?\d[\d\s().-]{6,}\d)/);
+  return match?.[0].replace(/\s+/g, " ").trim() ?? null;
+}
+
+function inferScheduledFor(value: string) {
+  const lower = value.toLowerCase();
+  const date = new Date();
+  if (/tomorrow/.test(lower)) date.setDate(date.getDate() + 1);
+  if (/next week/.test(lower)) date.setDate(date.getDate() + 7);
+
+  if (/evening/.test(lower)) {
+    date.setHours(18, 0, 0, 0);
+  } else if (/afternoon/.test(lower)) {
+    date.setHours(14, 0, 0, 0);
+  } else if (/noon|midday/.test(lower)) {
+    date.setHours(12, 0, 0, 0);
+  } else {
+    date.setHours(9, 0, 0, 0);
+  }
+
+  const explicitTime = value.match(/\b([01]?\d|2[0-3])(?::([0-5]\d)|\s*(am|pm))\b/i);
+  if (explicitTime) {
+    let hour = Number(explicitTime[1]);
+    const minute = explicitTime[2] ? Number(explicitTime[2]) : 0;
+    const period = explicitTime[3]?.toLowerCase();
+    if (period === "pm" && hour < 12) hour += 12;
+    if (period === "am" && hour === 12) hour = 0;
+    date.setHours(hour, minute, 0, 0);
+  }
+
+  if (date.getTime() < Date.now() + 15 * 60 * 1000) date.setDate(date.getDate() + 1);
+  return date.toISOString();
+}
+
+function parseStoredRequest(value: string | null): ClaritiRequest | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<ClaritiRequest>;
+    if (!isAnalysisKind(parsed.kind) || !parsed.documentText?.trim()) return null;
+    return {
+      kind: parsed.kind,
+      question: parsed.question?.trim() || "Please explain this health document in plain English.",
+      documentText: parsed.documentText,
+      fileName: parsed.fileName,
+      analysis: parsed.analysis,
+      persisted: parsed.persisted,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function requestFromDbSession(session: DbWorkspaceSession): ClaritiRequest | null {
+  const artifact = session.artifacts[0];
+  const parsedAnalysis = claritiAnalysisSchema.safeParse(artifact?.payload);
+  const analysis = parsedAnalysis.success ? parsedAnalysis.data : undefined;
+  const document = session.documents[0];
+  const kindSource = analysis?.kind ?? document?.kind;
+  if (!isAnalysisKind(kindSource)) return null;
+
+  const userQuestion = session.messages.find((message) => message.role === "user")?.content;
+  return {
+    kind: kindSource,
+    question: userQuestion?.trim() || session.title || "Please explain this health document in plain English.",
+    documentText: document?.extracted_text?.trim() || artifact?.summary || session.title,
+    fileName: document?.file_name,
+    analysis,
+    persisted: {
+      session: { id: session.id, title: session.title, status: session.status },
+      document: document ? { id: document.id, file_name: document.file_name, kind: document.kind, status: document.status } : null,
+      artifact: artifact ? { id: artifact.id, kind: artifact.kind, title: artifact.title } : null,
+    },
+  };
+}
+
+function isAnalysisKind(value: unknown): value is ClaritiAnalysisKind {
+  return value === "medical_bill" || value === "radiology_report" || value === "insurance_eob";
+}
+
+function toWorkspaceSession(request: ClaritiRequest): WorkspaceSession {
+  const labels: Record<ClaritiAnalysisKind, { title: string; tag: string }> = {
+    medical_bill: { title: "Medical bill", tag: "Bill" },
+    radiology_report: { title: "Radiology report", tag: "Report" },
+    insurance_eob: { title: "Insurance EOB", tag: "EOB" },
+  };
+  const label = labels[request.kind];
+  return {
+    id: request.kind,
+    title: label.title,
+    tag: label.tag,
+    fileName: request.fileName || `${request.kind.replaceAll("_", "-")}.txt`,
+    meta: request.fileName ? `Attached document · ${request.fileName}` : "Attached text document",
+  };
+}

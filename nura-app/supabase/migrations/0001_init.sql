@@ -38,7 +38,7 @@ create table if not exists nura_check_ins (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null,
   plan_id uuid not null references nura_plans(id) on delete cascade,
-  channel text not null default 'in_app',
+  channel text not null default 'whatsapp',
   prompt text not null,
   scheduled_for timestamptz not null,
   completed_at timestamptz,
