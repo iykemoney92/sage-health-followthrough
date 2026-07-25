@@ -173,7 +173,8 @@
     padding: 6px;
   }
 
-  .clariti-workspace-composer button {
+  .clariti-workspace-composer button,
+  .clariti-workspace-composer a {
     align-items: center;
     border: 0;
     border-radius: 11px;
@@ -185,10 +186,12 @@
     width: 38px;
   }
 
+  .clariti-workspace-composer a,
   .clariti-workspace-composer button:not(.send) {
     background: #f3f7f5;
     box-shadow: inset 0 0 0 1px #e5ece9;
     color: #48645d;
+    text-decoration: none;
   }
 
   .clariti-workspace-composer .send {
@@ -197,11 +200,17 @@
     color: #fff;
   }
 
-  .clariti-workspace-composer button svg {
+  .clariti-workspace-composer button svg,
+  .clariti-workspace-composer a svg {
     display: block;
     height: 19px;
     stroke-width: 2;
     width: 19px;
+  }
+
+  .clariti-workspace-composer .send:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
   }
 
   .clariti-workspace-composer .send svg {

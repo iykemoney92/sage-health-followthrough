@@ -2,7 +2,7 @@
 
 Nura is a personal AI health companion scaffold for living health Plans, conversational organisation, and proactive follow-through.
 
-This folder is intentionally separate from Sage and Clariti. It is based on the Nura concept in `../nura/06_Nura_AI_Health_Companion_Concept.docx` and the UI references in `../nura/ui:ux/`.
+This folder contains the Nura concept in `../nura/06_Nura_AI_Health_Companion_Concept.docx` and the UI references in `../nura/ui:ux/`.
 
 ## Stack
 
@@ -26,8 +26,8 @@ pnpm build
 
 ## Current Shape
 
-- `/` shows the Today composer for chat, voice, and upload-driven plan creation.
-- `/workspace` shows a living Plan workspace for the hackathon demo loop.
+- `/` shows the conversation-first Nura story: chat, voice notes, media, Threads, and follow-through.
+- `/workspace` lets users message Nura, share files/media, continue in WhatsApp, and update Thread context.
 - `/plans`, `/calendar`, and `/me` scaffold the main product navigation.
 - `docs/ARCHITECTURE.md` documents the intended product and technical loop.
 - `types/nura.ts` and `lib/schemas/nura.ts` define the first shared contracts.

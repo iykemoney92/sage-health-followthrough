@@ -1,0 +1,34 @@
+SYNTHETIC TEST DOCUMENT - NOT A REAL RADIOLOGY REPORT
+
+Exam: MRI lumbar spine without contrast
+Facility: Clariti Imaging Center
+Patient: Test Patient
+Date of exam: 19 Jul 2026
+Referring clinician: Dr. Test Clinician
+
+Clinical history
+Lower back pain radiating intermittently to the left leg. No trauma reported.
+
+Technique
+Multiplanar MRI images of the lumbar spine were obtained without intravenous contrast.
+
+Findings
+Alignment is maintained. Vertebral body heights are preserved. No acute osseous abnormality is identified.
+
+L1-L2: No significant disc bulge, spinal canal stenosis, or foraminal narrowing.
+L2-L3: Mild facet arthropathy. No significant canal stenosis.
+L3-L4: Small broad-based disc bulge. Mild bilateral foraminal narrowing. No significant spinal canal stenosis.
+L4-L5: Disc desiccation with mild broad-based disc bulge. Mild bilateral facet arthropathy. Mild bilateral foraminal narrowing. No significant spinal canal stenosis.
+L5-S1: Mild facet arthropathy. No significant disc herniation or canal stenosis.
+
+Impression
+1. Mild multilevel degenerative changes, greatest at L4-L5.
+2. Mild bilateral foraminal narrowing at L3-L4 and L4-L5.
+3. No significant spinal canal stenosis.
+4. No acute osseous abnormality.
+
+Recommendation
+Clinical correlation is recommended. Follow-up should be directed by the treating clinician based on symptoms and examination.
+
+Patient question to test
+Please explain this radiology report in plain English, especially what the findings mean, what sounds reassuring, and what questions I should ask my clinician.

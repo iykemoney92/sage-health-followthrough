@@ -6,6 +6,7 @@ import "./mobile.css";
 import "./sidebar.css";
 import "./modal.css";
 import "./canvas.css";
+import "./auth.css";
 
 export const metadata: Metadata = {
   title: "Clariti",

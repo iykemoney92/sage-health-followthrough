@@ -14,6 +14,13 @@
       "runtimeArgs": ["--dir", "clariti-app", "run", "dev"],
       "port": 3001,
       "autoPort": true
+    },
+    {
+      "name": "nura-app",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "nura-app", "run", "dev"],
+      "port": 3002,
+      "autoPort": true
     }
   ]
 }

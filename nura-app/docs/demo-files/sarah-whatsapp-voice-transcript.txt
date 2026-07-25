@@ -1,0 +1,13 @@
+Fictional WhatsApp voice note transcript for Nura demo use only.
+
+Speaker: Sarah Thompson
+
+Transcript:
+Hi Nura, quick voice note because I am too tired to type properly. I slept badly again last night and woke up with a dull headache. I forgot breakfast before work and only had coffee. I know the GP said to track sleep, headaches, stress, breakfast and hydration, but I keep forgetting. Can you help me keep this simple and maybe check in with me in a few days?
+
+Context Nura should pick up:
+- Poor sleep last night.
+- Dull headache this morning.
+- Skipped breakfast and had coffee.
+- Wants simple follow-through, not a complicated plan.
+- Wants a check-in in a few days.

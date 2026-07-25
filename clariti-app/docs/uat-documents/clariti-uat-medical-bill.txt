@@ -1,0 +1,31 @@
+SYNTHETIC TEST DOCUMENT - NOT A REAL MEDICAL BILL
+
+Document type: Medical bill statement
+Provider: Clariti Test Clinic
+Patient: Test Patient
+Account number: UAT-BILL-1042
+Statement date: 25 Jul 2026
+Service date: 18 Jul 2026
+
+Summary
+Total charges: $1,286.40
+Insurance adjustment: -$214.40
+Insurance payment received: -$760.00
+Previous patient payment: $0.00
+Current amount due: $312.00
+
+Line items
+Office consultation, established patient: $180.00
+Chest X-ray, two views: $260.00
+Laboratory handling fee: $42.00
+Comprehensive metabolic panel: $94.00
+Facility fee: $185.00
+Radiology professional interpretation: $145.00
+Administrative statement fee: $20.00
+Unlisted supply charge: $360.40
+
+Notes from provider billing office
+Your insurance has processed this claim. The current balance may include deductible or coinsurance amounts. Please compare this statement with your Explanation of Benefits. Contact billing if you believe any charge is duplicated or unclear.
+
+Patient question to test
+Please explain this medical bill in plain English, break down what was charged, flag anything unusual, and tell me what to ask billing before paying.

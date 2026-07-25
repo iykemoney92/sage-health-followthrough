@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, CalendarDays, Home, LockKeyhole, MessageCircle, Search, Settings } from "lucide-react";
-import { NuraLogo, NuraMark } from "@/components/nura-logo";
+import { useState } from "react";
+import { Bell, CalendarDays, ChevronDown, Home, MessageCircle, Search, Settings, UserRound } from "lucide-react";
+import { NuraLogo } from "@/components/nura-logo";
+import { SignOutButton } from "@/components/sign-out-button";
 
 const nav = [
   ["Today", "/today", Home],
@@ -12,26 +14,27 @@ const nav = [
   ["Me", "/me", Settings],
 ] as const;
 
-export function NuraShell({ children }: { children: React.ReactNode }) {
+function initialsFor(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
+}
+
+export function NuraShell({
+  children,
+  userName = "You",
+  userAvatarUrl,
+}: {
+  children: React.ReactNode;
+  userName?: string;
+  userAvatarUrl?: string;
+}) {
   const pathname = usePathname();
+  const userInitials = initialsFor(userName);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   return (
     <main className="app-shell product-shell">
-      <aside className="companion-rail">
-        <NuraLogo href="/today" />
-        <div className="companion-copy">
-          <h2>Nura is here for the moments between appointments.</h2>
-          <p>Nura listens, organises what matters, and follows up so you can focus on living.</p>
-        </div>
-        <div className="companion-points">
-          <div><MessageCircle/><span><b>Conversational</b><small>Talk or type naturally</small></span></div>
-          <div><span className="point-icon">▱</span><span><b>Organising</b><small>Nura keeps things together in Threads</small></span></div>
-          <div><Bell/><span><b>Proactive</b><small>Check-ins and reminders at the right time</small></span></div>
-          <div><LockKeyhole/><span><b>Private & secure</b><small>Your data stays yours</small></span></div>
-        </div>
-        <div className="companion-art" aria-hidden="true"><NuraMark size={118} className="rail-watermark"/><div className="companion-person"><span className="head"/><span className="body"/><span className="laptop"/></div></div>
-      </aside>
-
       <aside className="app-sidebar product-sidebar">
         <NuraLogo href="/today" compact />
         <nav>
@@ -41,13 +44,26 @@ export function NuraShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <Link href="/workspace" className="message-nura"><MessageCircle/> Message Nura</Link>
-        <div className="sidebar-illustration" aria-hidden="true"><NuraMark size={54}/><div/></div>
+        <div className="between-card"><b>Nura is here for the moments between appointments.</b></div>
       </aside>
 
       <section className="app-main product-main">
         <header className="app-topbar product-topbar">
           <label className="global-search"><Search/><input placeholder="Search Nura" aria-label="Search Nura" /></label>
-          <div className="app-user"><Link href="/notifications" aria-label="Notifications" className="icon-link"><Bell/></Link><span className="avatar">IA</span><b>Ike Okonkwo</b></div>
+          <div className="app-user">
+            <Link href="/notifications" aria-label="Notifications" className="icon-link"><Bell/></Link>
+            <button className="profile-trigger" type="button" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)}>
+              <span className="avatar" style={userAvatarUrl ? { backgroundImage: `url(${userAvatarUrl})` } : undefined}>{userAvatarUrl ? "" : userInitials}</span>
+              <b>{userName}</b>
+              <ChevronDown/>
+            </button>
+            {profileOpen && (
+              <div className="profile-menu">
+                <Link href="/me/profile" className="profile-menu-item" onClick={() => setProfileOpen(false)}><UserRound/> Profile</Link>
+                <SignOutButton className="profile-menu-item danger" />
+              </div>
+            )}
+          </div>
         </header>
         {children}
       </section>

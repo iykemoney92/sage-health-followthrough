@@ -15,12 +15,12 @@ Primary navigation:
 
 The narrow hackathon loop should prove continuity without becoming too broad:
 
-1. User messages Nura about overwhelm, poor sleep, or a health follow-up.
+1. User messages Nura in-app or over WhatsApp about overwhelm, poor sleep, or a health follow-up.
 2. User uploads a demo GP or care note.
 3. Nura extracts relevant context and separates clinician-provided instructions from user goals.
 4. Nura proposes one living Plan, such as `Stabilise My Week`.
 5. User confirms imported instructions, reminders, and check-in preferences.
-6. Nura schedules a proactive message or voice check-in.
+6. Nura schedules a proactive WhatsApp message, WhatsApp voice-style check-in, or in-app reminder.
 7. User response updates the Plan as an observation.
 8. Nura generates a concise appointment-preparation summary.
 
@@ -47,3 +47,15 @@ Nura is not a doctor, therapist, or autonomous treatment system.
 - Ask users to confirm imported instructions before they become reminders or Plan actions.
 - Route urgent symptoms and crisis language to appropriate support.
 - Label health data as user-reported unless it comes from an explicit document source.
+
+## WhatsApp Continuity
+
+Nura should use WhatsApp as a first-class communication channel for proactive follow-through. The app remains the place to review Threads, calendar events, memory, uploads, and summaries, but WhatsApp is the lightweight daily channel for check-ins, reminders, voice-style follow-ups, and user replies.
+
+Implementation expectations:
+
+- WhatsApp can initiate or continue a Thread when the user sends new context.
+- Scheduled check-ins should default to WhatsApp when the user has opted in.
+- WhatsApp responses should be stored as user-reported observations.
+- Nura must preserve the same safety boundaries on WhatsApp as inside the app.
+- Users can switch between WhatsApp and in-app follow-up preferences from `Me`.

@@ -1,0 +1,19 @@
+Fictional care note for Nura demo use only.
+
+Patient: Margaret B.
+Caregiver: Amina
+Date: 25 July 2026
+Context: Post-hospital follow-up and home recovery support.
+
+Hospital advice:
+- Complete physio breathing exercises once daily.
+- Keep a note of breathlessness, fatigue, sleep, and appetite.
+- Bring the current medication list to the next review.
+- Call the clinic if breathlessness worsens or if new symptoms appear.
+- Seek urgent help if severe breathlessness, chest pain, blue lips, confusion, or fainting occurs.
+
+Follow-through needed:
+- Reminder for daily physio exercises.
+- Check-in with caregiver every few days.
+- Prompt to prepare medication list before review.
+- Summary of symptoms and questions for the clinic appointment.

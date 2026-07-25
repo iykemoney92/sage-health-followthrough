@@ -41,7 +41,7 @@ export const sourceContextSchema = z.object({
 
 export const scheduleCheckInSchema = z.object({
   planId: z.string().min(1),
-  channel: z.enum(["in_app", "whatsapp", "voice"]).default("in_app"),
+  channel: z.enum(["whatsapp", "in_app", "voice"]).default("whatsapp"),
   prompt: z.string().min(1),
   scheduledFor: z.string().datetime(),
 });
