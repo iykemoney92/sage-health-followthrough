@@ -27,9 +27,16 @@ export async function POST(request: NextRequest) {
   const parsed = requestSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
 
-  const { analysis, content, followUpDraft, sessionId } = parsed.data;
-  const assistantContent = await generateGroundedFollowUp(content, analysis, followUpDraft);
   const supabase = await getSupabaseSessionClient();
+  const { analysis, content, followUpDraft, sessionId } = parsed.data;
+  const recoveredDraft = await recoverFollowUpDraftFromSavedThread({
+    analysis,
+    content,
+    explicitDraft: followUpDraft,
+    sessionId,
+    supabase,
+  });
+  const assistantContent = await generateGroundedFollowUp(content, analysis, recoveredDraft);
   const userMessageCreatedAt = new Date();
   const assistantMessageCreatedAt = new Date(userMessageCreatedAt.getTime() + 1);
 
@@ -47,6 +54,40 @@ export async function POST(request: NextRequest) {
 }
 
 type FollowUpDraft = z.infer<typeof requestSchema>["followUpDraft"];
+
+async function recoverFollowUpDraftFromSavedThread({
+  analysis,
+  content,
+  explicitDraft,
+  sessionId,
+  supabase,
+}: {
+  analysis: z.infer<typeof claritiAnalysisSchema>;
+  content: string;
+  explicitDraft?: FollowUpDraft;
+  sessionId: string;
+  supabase: Awaited<ReturnType<typeof getSupabaseSessionClient>>;
+}): Promise<FollowUpDraft> {
+  const { data } = await supabase
+    .from("clariti_messages")
+    .select("content")
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: false })
+    .limit(16);
+
+  const threadText = [
+    content,
+    ...(data ?? []).map((message) => String(message.content ?? "")),
+  ].join("\n");
+  const hasSchedulingIntent = /follow-up|follow up|call me|call back|phone call|schedule|appointment|reminder|preferred day|preferred time|what day and time|what time works/i.test(threadText);
+  if (!explicitDraft && !hasSchedulingIntent) return undefined;
+
+  return {
+    action: explicitDraft?.action ?? analysis.nextActions[0] ?? "review this document with the right professional",
+    phoneNumber: explicitDraft?.phoneNumber ?? extractPhoneNumber(threadText) ?? undefined,
+    timingText: explicitDraft?.timingText ?? (hasSchedulingTime(threadText) ? threadText : undefined),
+  };
+}
 
 async function generateGroundedFollowUp(question: string, analysis: z.infer<typeof claritiAnalysisSchema>, followUpDraft?: FollowUpDraft) {
   const hasGatewayAuth = Boolean(process.env.VERCEL_OIDC_TOKEN || process.env.AI_GATEWAY_API_KEY);
