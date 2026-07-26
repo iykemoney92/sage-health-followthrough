@@ -289,11 +289,15 @@ function WorkspaceContent() {
     try {
       const documentText = request.documentText.trim();
       if (!documentText) throw new Error("Missing document text");
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 45000);
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ ...request, documentText }),
       });
+      window.clearTimeout(timeout);
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Analysis failed");
       const analysis = payload.analysis as ClaritiAnalysis;
