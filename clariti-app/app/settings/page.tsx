@@ -140,7 +140,7 @@ export default function SettingsPage() {
 
   const preferenceRows: SettingsRowData[] = [
     { Icon: Mic2, title: "Voice explanation", copy: "Clariti call context for document follow-ups", meta: "Ready", action: () => setPanel("voice") },
-    { Icon: Bell, title: "Follow-up reminders", copy: "Phone follow-ups scheduled from document actions", meta: loading ? "..." : String(counts.followUps), action: () => setPanel("followups") },
+    { Icon: Bell, title: "Follow-up reminders", copy: "Phone follow-ups scheduled from document actions", meta: loading ? "..." : String(counts.followUps), action: () => router.push("/follow-ups") },
     { Icon: SlidersHorizontal, title: "Analysis preferences", copy: "Plain language, source-grounded explanations", meta: "Default", action: () => setPanel("preferences") },
   ];
 

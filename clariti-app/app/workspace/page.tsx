@@ -594,7 +594,12 @@ function WorkspaceContent() {
 
     const sentAt = createLocalTimestamp();
     const userMessage: ChatMessage = { id: createLocalId("local-user"), role: "user", content, createdAt: sentAt };
-    const pendingDraft = options?.followUpDraftOverride ?? followUpDraft;
+    let pendingDraft = inferFollowUpDraftFromThread({
+      analysis,
+      currentDraft: options?.followUpDraftOverride ?? followUpDraft,
+      latestContent: content,
+      messages: chatMessages,
+    });
     if (options?.clearInput ?? true) setFollowUpText("");
     setSendingFollowUp(true);
     setChatMessages((current) => [...current, userMessage]);
@@ -606,6 +611,14 @@ function WorkspaceContent() {
         if (captured === "scheduled") {
           if (options?.toast) showToast(options.toast);
           return;
+        }
+        if (captured === "captured") {
+          pendingDraft = inferFollowUpDraftFromThread({
+            analysis,
+            currentDraft: pendingDraft,
+            latestContent: content,
+            messages: [...chatMessages, userMessage],
+          });
         }
       }
 
@@ -1626,6 +1639,41 @@ function buildLocalFollowUp(question: string, analysis: ClaritiAnalysis) {
 function buildFollowUpPlanningReply(analysis: ClaritiAnalysis, action: string) {
   const point = analysis.keyPoints[0];
   return `Yes. I can set up a focused phone follow-up for ${action}. Send the best phone number and preferred day/time. Source: ${point.sourceAnchor}.`;
+}
+
+function inferFollowUpDraftFromThread({
+  analysis,
+  currentDraft,
+  latestContent,
+  messages,
+}: {
+  analysis: ClaritiAnalysis | null;
+  currentDraft: FollowUpDraft | null;
+  latestContent: string;
+  messages: ChatMessage[];
+}): FollowUpDraft | null {
+  if (!analysis) return currentDraft;
+
+  const recentMessages = messages.slice(-12);
+  const threadText = [...recentMessages.map((message) => message.content), latestContent].join("\n");
+  const lower = threadText.toLowerCase();
+  const schedulingIntent = /follow-up|follow up|call me|call back|phone call|schedule|appointment|reminder|preferred day|preferred time|what day and time|what time works/i.test(lower);
+  if (!currentDraft && !schedulingIntent) return null;
+
+  const phoneNumber = currentDraft?.phoneNumber ?? extractPhoneNumber(threadText) ?? undefined;
+  const timingSource = hasSchedulingTime(latestContent)
+    ? latestContent
+    : currentDraft?.timingText
+      ? currentDraft.timingText
+      : hasSchedulingTime(threadText)
+        ? threadText
+        : undefined;
+
+  return {
+    action: currentDraft?.action ?? analysis.nextActions[0] ?? "review this document with the right professional",
+    phoneNumber,
+    timingText: timingSource,
+  };
 }
 
 function extractPhoneNumber(value: string) {
