@@ -7,6 +7,12 @@ import { MouseEvent, useEffect, useState } from "react";
 import { ClaritiAuthModal } from "@/components/clariti-auth-modal";
 import { SignOutButton } from "@/components/sign-out-button";
 
+type AuthStatusUser = {
+  id: string;
+  email?: string;
+  name?: string;
+};
+
 const nav = [
   ["Home", "/", Home],
   ["History", "/history", History],
@@ -19,16 +25,26 @@ export function ClaritiShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const isWorkspace = pathname.startsWith("/workspace");
   const [authenticated, setAuthenticated] = useState(false);
+  const [user, setUser] = useState<AuthStatusUser | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
 
+  const refreshAuthStatus = async () => {
+    const response = await fetch("/api/auth/status", { cache: "no-store" });
+    const payload = await response.json();
+    if (!payload?.ok) return;
+    setAuthenticated(Boolean(payload.authenticated));
+    setUser(payload.user ?? null);
+  };
+
   useEffect(() => {
     let alive = true;
-    fetch("/api/auth/status")
+    fetch("/api/auth/status", { cache: "no-store" })
       .then((response) => response.json())
       .then((payload) => {
         if (!alive || !payload?.ok) return;
         setAuthenticated(Boolean(payload.authenticated));
+        setUser(payload.user ?? null);
       })
       .catch(() => undefined);
 
@@ -51,11 +67,13 @@ export function ClaritiShell({ children }: { children: React.ReactNode }) {
     setAuthOpen(true);
   };
 
-  const continueAfterAuth = () => {
-    setAuthenticated(true);
+  const continueAfterAuth = async () => {
+    await refreshAuthStatus();
     setAuthOpen(false);
     router.push(pendingHref ?? "/");
   };
+
+  const avatarInitials = getInitials(user);
 
   return (
     <main className="clariti-app-shell" data-shell-version="mobile-nav-fixed-v2">
@@ -75,11 +93,11 @@ export function ClaritiShell({ children }: { children: React.ReactNode }) {
         <div className="clariti-account-actions">
           {authenticated ? (
             <>
-              <button className="clariti-avatar" aria-label="Profile">IA</button>
+              <button className="clariti-avatar" aria-label="Profile">{avatarInitials}</button>
               <SignOutButton />
             </>
           ) : (
-            <Link href="/login" className="clariti-login-link" onClick={handleSignInClick}>Sign in</Link>
+            <Link href="/" className="clariti-login-link" onClick={handleSignInClick}>Sign in</Link>
           )}
         </div>
       </header>
@@ -202,4 +220,16 @@ export function ClaritiShell({ children }: { children: React.ReactNode }) {
       `}</style>
     </main>
   );
+}
+
+function getInitials(user: AuthStatusUser | null) {
+  const source = user?.name || user?.email?.split("@")[0] || "Clariti";
+  const words = source
+    .replace(/[^a-zA-Z0-9\s._-]/g, " ")
+    .split(/[\s._-]+/)
+    .filter(Boolean);
+  const initials = words.length > 1
+    ? `${words[0][0]}${words[1][0]}`
+    : source.slice(0, 2);
+  return initials.toUpperCase();
 }

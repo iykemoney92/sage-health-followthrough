@@ -14,10 +14,10 @@ export function SignOutButton() {
     try {
       const supabase = getSupabaseBrowserClient();
       await supabase.auth.signOut();
-      router.push("/login");
+      router.push("/");
       router.refresh();
     } catch {
-      router.push("/login");
+      router.push("/");
     } finally {
       setLoading(false);
     }

@@ -106,11 +106,15 @@ async function persistAnalysis({
 
   const sessionId = session.id as string;
   const savedDocumentId = document.id as string;
+  const userMessageCreatedAt = new Date();
+  const assistantMessageCreatedAt = new Date(userMessageCreatedAt.getTime() + 1);
 
-  const [{ error: linkError }, { error: userMessageError }, { error: assistantMessageError }, { data: artifact, error: artifactError }] = await Promise.all([
+  const [{ error: linkError }, { error: messagesError }, { data: artifact, error: artifactError }] = await Promise.all([
     supabase.from("clariti_session_documents").insert({ session_id: sessionId, document_id: savedDocumentId }),
-    supabase.from("clariti_messages").insert({ session_id: sessionId, role: "user", content: question }),
-    supabase.from("clariti_messages").insert({ session_id: sessionId, role: "assistant", content: `${analysis.summary}\n\n${analysis.plainEnglish}` }),
+    supabase.from("clariti_messages").insert([
+      { session_id: sessionId, role: "user", content: question, created_at: userMessageCreatedAt.toISOString() },
+      { session_id: sessionId, role: "assistant", content: buildInitialAnalysisReply(analysis), created_at: assistantMessageCreatedAt.toISOString() },
+    ]),
     supabase
       .from("clariti_artifacts")
       .insert({
@@ -124,8 +128,14 @@ async function persistAnalysis({
       .single(),
   ]);
 
-  const persistenceError = linkError ?? userMessageError ?? assistantMessageError ?? artifactError;
+  const persistenceError = linkError ?? messagesError ?? artifactError;
   if (persistenceError) throw new Error(persistenceError.message);
 
   return { document, session, artifact };
+}
+
+function buildInitialAnalysisReply(analysis: Awaited<ReturnType<typeof analyzeClaritiDocument>>) {
+  const source = analysis.keyPoints[0]?.sourceAnchor ?? analysis.sourceAnchors[0] ?? "saved document";
+  const nextAction = analysis.nextActions[0] ?? "review this with the right professional";
+  return `${analysis.summary}\n\nI pulled out the key points in the analysis panel. Next: ${nextAction}. Source: ${source}.`;
 }

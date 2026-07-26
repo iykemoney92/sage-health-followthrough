@@ -45,8 +45,11 @@ export function inferClaritiKind(input: AnalyzeInput): ClaritiAnalysisKind {
 
 export function buildFallbackAnalysis(input: AnalyzeInput): ClaritiAnalysis {
   if (input.kind === "radiology_report") {
-    const impression = extractSectionLines(input.documentText, "Impression", ["Recommendation", "Patient question"]).slice(0, 4);
-    const findings = extractSectionLines(input.documentText, "Findings", ["Impression"]).slice(0, 5);
+    const impressionLines = extractSectionLines(input.documentText, "Impression", ["Conclusion", "Recommendation", "Patient question"]);
+    const conclusionLines = extractSectionLines(input.documentText, "Conclusion", ["Recommendation", "Patient question", "Electronically Signed", "Signed"]);
+    const impression = [...impressionLines, ...conclusionLines].slice(0, 5);
+    const impressionSource = impressionLines.length ? "Impression" : "Conclusion";
+    const findings = extractSectionLines(input.documentText, "Findings", ["Impression", "Conclusion"]).slice(0, 7);
     const exam = extractLabel(input.documentText, ["Exam", "Study", "Procedure"]) ?? "Radiology report";
     const primaryImpression = impression[0] ?? "Review the Impression section from the uploaded report.";
     const reassuringLine = impression.find((line) => /no significant|no acute|negative|normal/i.test(line)) ?? findings.find((line) => /no significant|no acute|normal/i.test(line));
@@ -57,10 +60,10 @@ export function buildFallbackAnalysis(input: AnalyzeInput): ClaritiAnalysis {
       summary: primaryImpression,
       plainEnglish:
         `This is an explanation of the report wording, not a diagnosis. The report describes ${primaryImpression.toLowerCase()} ${reassuringLine ? `It also says: "${reassuringLine}".` : "Ask the ordering clinician how these findings connect to symptoms and the care plan."}`,
-      sourceAnchors: [...impression.map((line) => `Impression: ${line}`), ...findings.slice(0, 2).map((line) => `Findings: ${line}`)].slice(0, 5),
+      sourceAnchors: [...impression.map((line) => `${impressionSource}: ${line}`), ...findings.slice(0, 2).map((line) => `Findings: ${line}`)].slice(0, 5),
       keyPoints: [
-        { label: "Main impression", detail: primaryImpression, sourceAnchor: "Impression" },
-        { label: "Reassuring wording", detail: reassuringLine ?? "No explicit reassuring phrase was extracted; review the full report with your clinician.", sourceAnchor: reassuringLine ? "Impression / Findings" : "Full report" },
+        { label: "Main impression", detail: primaryImpression, sourceAnchor: impressionSource },
+        { label: "Reassuring wording", detail: reassuringLine ?? "No explicit reassuring phrase was extracted; review the full report with your clinician.", sourceAnchor: reassuringLine ? `${impressionSource} / Findings` : "Full report" },
         { label: "Follow-up", detail: extractSectionLines(input.documentText, "Recommendation", ["Patient question"])[0] ?? "Ask the ordering clinician how the report connects to symptoms.", sourceAnchor: "Recommendation" },
       ],
       metrics: [
@@ -76,8 +79,8 @@ export function buildFallbackAnalysis(input: AnalyzeInput): ClaritiAnalysis {
       nextActions: ["Save clinician questions", "Bring the report to your follow-up visit", "Ask Clariti to talk through the exact terms"],
       safetyNote: "Clariti explains report wording and does not diagnose or replace a clinician.",
       videoScenes: [
-        { title: "What this report is", script: `This report is for ${exam}. We focus on the exact Impression and Findings text.`, visual: "Report header and highlighted Impression section", sourceAnchor: "Report header" },
-        { title: "Main impression", script: primaryImpression, visual: "Plain-English summary beside the source impression", sourceAnchor: "Impression" },
+        { title: "What this report is", script: `This report is for ${exam}. We focus on the exact ${impressionSource} and Findings text.`, visual: `Report header and highlighted ${impressionSource} section`, sourceAnchor: "Report header" },
+        { title: "Main impression", script: primaryImpression, visual: `Plain-English summary beside the source ${impressionSource.toLowerCase()}`, sourceAnchor: impressionSource },
         { title: "Anatomy terms", script: findings[0] ?? "Review the Findings section for the body area and level described.", visual: "Simple anatomy labels from the Findings text", sourceAnchor: "Findings" },
         { title: "Reassuring and follow-up language", script: reassuringLine ?? "Separate reassuring wording from questions that need clinician context.", visual: "Two-column checklist with source-backed notes", sourceAnchor: "Findings / Recommendation" },
         { title: "Questions to ask", script: "The safest next step is to ask your clinician how the report connects to your symptoms and care plan.", visual: "Question list for clinician visit", sourceAnchor: "Clinical context" },
@@ -127,6 +130,13 @@ export function buildFallbackAnalysis(input: AnalyzeInput): ClaritiAnalysis {
       ],
       nextActions: ["Compare the EOB with the provider bill", "Call the insurer with the claim number", "Ask the provider to confirm the current balance"],
       safetyNote: "Clariti does not make final coverage or payment determinations.",
+      videoScenes: [
+        { title: "What this EOB is", script: `This EOB explains how insurance processed ${claimNumber ? `claim ${claimNumber}` : "this claim"}. It may not be a bill.`, visual: "EOB document with claim number and not-a-bill note highlighted", sourceAnchor: claimNumber ? `Claim number: ${claimNumber}` : "EOB header" },
+        { title: "Claim money flow", script: `The provider billed ${billed ?? "an amount shown in the EOB"}, the allowed amount is ${allowed ?? "listed separately"}, and the plan paid ${planPaid ?? "the plan-paid amount shown"}.`, visual: "Three-step flow from billed to allowed to plan paid", sourceAnchor: allowed ? `Allowed amount: ${allowed}` : "Allowed amount" },
+        { title: "Your possible share", script: `The EOB lists ${responsibility ?? "a patient responsibility amount"} as possible patient responsibility. Confirm this against the provider bill before paying.`, visual: "Patient responsibility card with confirmation checklist", sourceAnchor: responsibility ? `Patient responsibility: ${responsibility}` : "Patient responsibility" },
+        { title: "Compare before paying", script: notBill ?? "Do not pay from the EOB alone; compare it with the provider statement.", visual: "Side-by-side EOB and provider bill comparison", sourceAnchor: notBill ?? "Not a bill" },
+        { title: "Questions to ask", script: "Ask the insurer or provider to reconcile any mismatch before you pay.", visual: "Question list for insurer or provider", sourceAnchor: "Next steps" },
+      ],
     };
   }
 
@@ -163,6 +173,13 @@ export function buildFallbackAnalysis(input: AnalyzeInput): ClaritiAnalysis {
     questions: ["Has insurance processed this claim?", "Are any charges duplicated?", "Can the provider explain each unclear line item?"],
     nextActions: ["Compare with your EOB", "Call billing about unclear fees", "Ask for an itemized statement"],
     safetyNote: "Clariti explains billing documents and does not provide legal or coverage determinations.",
+    videoScenes: [
+      { title: "What this bill is", script: `This bill lists ${totalCharges ?? "the provider's charges"} and ${amountDue ?? "the current amount due"}${provider ? ` from ${provider}` : ""}.`, visual: "Provider bill with total charges and amount due highlighted", sourceAnchor: totalCharges ? `Total charges: ${totalCharges}` : "Bill header" },
+      { title: "Charge breakdown", script: `The key amounts to review are total charges, any insurance payment, and the current amount due.`, visual: "Stacked charge breakdown with total, paid, and due rows", sourceAnchor: amountDue ? `Current amount due: ${amountDue}` : "Amount due" },
+      { title: "Insurance comparison", script: insurancePayment ? `The bill shows insurance payment received of ${insurancePayment}. Compare this with your EOB.` : "Check whether insurance has processed the claim and compare this bill with the EOB.", visual: "Bill-to-EOB comparison diagram", sourceAnchor: insurancePayment ? `Insurance payment received: ${insurancePayment}` : "Insurance processing" },
+      { title: "Charge to verify", script: facilityFee ? `Ask billing to explain the ${facilityFee} facility fee.` : "Ask billing to explain unclear fees, duplicate charges, or line items you do not recognize.", visual: "Highlighted line item with verify badge", sourceAnchor: facilityFee ? `Facility fee: ${facilityFee}` : "Line items" },
+      { title: "Before paying", script: "Confirm the balance with billing or your insurer before paying.", visual: "Short checklist: EOB, itemized bill, confirmed balance", sourceAnchor: "Next steps" },
+    ],
   };
 }
 
@@ -178,24 +195,29 @@ function extractMoneyAfter(text: string, labels: string[]) {
 function extractLabel(text: string, labels: string[]) {
   for (const label of labels) {
     const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match = text.match(new RegExp(`^${escaped}\\s*:?\\s*(.+)$`, "im"));
-    if (match?.[1]) return match[1].trim();
+    const match = text.match(new RegExp(`^\\s*(?:\\*\\*)?${escaped}(?:\\*\\*)?\\s*:?\\s*(.+)$`, "im"));
+    if (match?.[1]) return cleanExtractedLine(match[1]);
   }
   return null;
 }
 
 function extractSectionLines(text: string, heading: string, stopHeadings: string[]) {
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const start = lines.findIndex((line) => line.toLowerCase().replace(/:$/, "") === heading.toLowerCase());
+  const lines = text.split(/\r?\n/).map(cleanExtractedLine).filter(Boolean);
+  const target = normalizeHeading(heading);
+  const start = lines.findIndex((line) => normalizeHeading(line) === target || normalizeHeading(line).startsWith(`${target} `));
   if (start === -1) return [];
 
-  const stops = new Set(stopHeadings.map((item) => item.toLowerCase()));
+  const stops = new Set(stopHeadings.map(normalizeHeading));
   const collected: string[] = [];
+  const firstLineRemainder = stripHeadingPrefix(lines[start], heading);
+  if (firstLineRemainder) collected.push(firstLineRemainder);
+
   for (const line of lines.slice(start + 1)) {
-    if (stops.has(line.toLowerCase().replace(/:$/, ""))) break;
+    const normalized = normalizeHeading(line);
+    if (stops.has(normalized) || [...stops].some((stop) => normalized.startsWith(`${stop} `))) break;
     collected.push(line.replace(/^\d+\.\s*/, ""));
   }
-  return collected;
+  return collected.map(cleanExtractedLine).filter((line) => line && !/^\*\*?page\s+\d+/i.test(line));
 }
 
 function findLine(text: string, pattern: RegExp) {
@@ -206,4 +228,26 @@ function normalizeMoney(value: string) {
   if (value.startsWith("$") || value.startsWith("-$")) return value;
   if (value.startsWith("-")) return `-$${value.slice(1)}`;
   return `$${value}`;
+}
+
+function cleanExtractedLine(line: string) {
+  return line
+    .replace(/\*\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeHeading(line: string) {
+  return cleanExtractedLine(line)
+    .replace(/:.*$/, "")
+    .replace(/[^\w\s/-]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function stripHeadingPrefix(line: string, heading: string) {
+  const cleaned = cleanExtractedLine(line);
+  const pattern = new RegExp(`^${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*:?\\s*(.*)$`, "i");
+  const match = cleaned.match(pattern);
+  return match?.[1]?.trim() ?? "";
 }

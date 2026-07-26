@@ -55,19 +55,45 @@ export async function analyzeClaritiDocument(input: AnalyzeInput): Promise<Clari
         "You are Clariti, a conservative consumer health document copilot. Explain only what is in the supplied document. " +
         "Do not diagnose, prescribe, decide coverage, or tell the user they definitely owe money. Distinguish source text from explanation. " +
         "Use careful language such as 'the report describes', 'the document appears to show', and 'ask your clinician/insurer/provider'. " +
+        "Keep summary and plainEnglish concise. Put detail into keyPoints, metrics, flags, questions, and nextActions instead of long paragraphs. " +
         "For urgent symptoms or emergency language, tell the user to seek urgent or emergency care.",
       prompt:
         `Document type: ${input.kind}\n` +
         `User question: ${input.question}\n\n` +
         `Document text:\n${input.documentText.slice(0, 12000)}\n\n` +
-        "Return kind, title, summary, plainEnglish, sourceAnchors, keyPoints, metrics, flags, questions, nextActions and safetyNote. " +
+        "Return kind, title, summary, plainEnglish, sourceAnchors, keyPoints, metrics, flags, questions, nextActions, safetyNote and exactly 5 videoScenes. " +
+        "summary must be one sentence. plainEnglish must be 2-3 short sentences. safetyNote must be one short sentence. " +
         "Every keyPoint, metric and flag must be grounded in a source phrase from the document. " +
-        "If kind is radiology_report, include exactly 5 videoScenes for a short explainer storyboard. " +
+        "For radiology_report videoScenes, use report wording, anatomy illustration, main finding, what needs clinician context, and questions to ask. " +
+        "For medical_bill videoScenes, use document orientation, charge breakdown, payments/adjustments, charges to verify, and next billing questions. " +
+        "For insurance_eob videoScenes, use EOB orientation, billed/allowed/paid flow, patient responsibility, bill comparison, and next insurer/provider questions. " +
         "Each scene must be grounded in a source phrase and must not invent findings.",
     });
 
-    return claritiAnalysisSchema.parse(result.object);
+    return normalizeSourceLabels(claritiAnalysisSchema.parse(result.object), input.documentText);
   } catch {
-    return buildFallbackAnalysis(input);
+    return normalizeSourceLabels(buildFallbackAnalysis(input), input.documentText);
   }
+}
+
+function normalizeSourceLabels(analysis: ClaritiAnalysis, documentText: string): ClaritiAnalysis {
+  if (analysis.kind !== "radiology_report") return analysis;
+
+  const hasConclusion = /^\s*(?:\*\*)?conclusion(?:\*\*)?\s*:/im.test(documentText);
+  const hasImpression = /^\s*(?:\*\*)?impression(?:\*\*)?\s*:/im.test(documentText);
+  if (!hasConclusion || hasImpression) return analysis;
+
+  const replace = (value: string) => value.replace(/\bImpression\b/g, "Conclusion").replace(/\bimpression\b/g, "conclusion");
+
+  return {
+    ...analysis,
+    sourceAnchors: analysis.sourceAnchors.map(replace),
+    keyPoints: analysis.keyPoints.map((point) => ({ ...point, sourceAnchor: replace(point.sourceAnchor) })),
+    videoScenes: analysis.videoScenes?.map((scene) => ({
+      ...scene,
+      sourceAnchor: replace(scene.sourceAnchor),
+      script: replace(scene.script),
+      visual: replace(scene.visual),
+    })),
+  };
 }

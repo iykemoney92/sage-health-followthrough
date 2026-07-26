@@ -13,6 +13,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { ClaritiAuthModal } from "@/components/clariti-auth-modal";
 import { ClaritiShell } from "@/components/clariti-shell";
+import { inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
 
 type StarterKind = "medical_bill" | "insurance_eob" | "radiology_report";
 
@@ -43,6 +44,13 @@ const starters = [
   },
 ] as const;
 
+const extractionLabels: Record<string, string> = {
+  text: "text file",
+  pdf: "PDF text",
+  pdf_vision: "scanned PDF",
+  image_vision: "image",
+};
+
 export default function Home() {
   return (
     <Suspense>
@@ -61,16 +69,28 @@ function HomeContent() {
   const [authConfigured, setAuthConfigured] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [authIntent, setAuthIntent] = useState<"submit" | "navigate" | null>(null);
   const [authNext, setAuthNext] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [extractionProgress, setExtractionProgress] = useState(0);
+  const [extractionMethod, setExtractionMethod] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const extractionAbortRef = useRef<AbortController | null>(null);
 
   const hasDocumentText = documentText.trim().length >= 20;
   const hasAskText = Boolean(message.trim());
-  const canSubmit = hasAskText && hasDocumentText && !submitting;
+  const canSubmit = hasAskText && hasDocumentText && !submitting && !extracting;
+  const sendDisabledReason = !hasAskText
+    ? "Ask a question first"
+    : extracting
+      ? "Preparing document"
+      : !hasDocumentText
+        ? "Attach a readable document"
+        : "";
 
   const waitForServerAuth = async () => {
     for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -103,6 +123,7 @@ function HomeContent() {
 
     if (searchParams.get("auth") === "1" && !authenticated) {
       queueMicrotask(() => {
+        setAuthMode(searchParams.get("mode") === "signup" ? "signup" : "signin");
         setAuthNext(next ?? "/");
         setAuthIntent("navigate");
         setAuthOpen(true);
@@ -110,6 +131,16 @@ function HomeContent() {
       });
     }
   }, [authenticated, searchParams]);
+
+  useEffect(() => {
+    if (!extracting) return;
+
+    const interval = window.setInterval(() => {
+      setExtractionProgress((progress) => Math.min(progress + Math.max(1, Math.round((92 - progress) * 0.12)), 92));
+    }, 700);
+
+    return () => window.clearInterval(interval);
+  }, [extracting]);
 
   const chooseStarter = (starterKind: StarterKind, prompt: string) => {
     setKind(starterKind);
@@ -129,19 +160,46 @@ function HomeContent() {
     if (!file) return;
     setError(null);
     setSelectedFile(file);
-
-    if (file.type.startsWith("text/") || file.name.toLowerCase().endsWith(".txt")) {
-      setDocumentText(await file.text());
-      return;
-    }
-
     setDocumentText("");
-    setError("For this build, attach a .txt file with the report, bill or EOB text.");
+    setExtractionMethod(null);
+    setExtractionProgress(8);
+    setExtracting(true);
+    extractionAbortRef.current?.abort();
+    const controller = new AbortController();
+    extractionAbortRef.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 60000);
+
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      const response = await fetch("/api/documents/extract", { method: "POST", body: formData, signal: controller.signal });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not read this document.");
+      setDocumentText(payload.extractedText);
+      setExtractionMethod(payload.extractionMethod ?? "text");
+      setExtractionProgress(100);
+    } catch (caught) {
+      setDocumentText("");
+      setExtractionProgress(0);
+      setError(
+        caught instanceof DOMException && caught.name === "AbortError"
+          ? "Document reading took too long. Try a clearer PDF/image, a smaller file, or paste the report text."
+          : caught instanceof Error ? caught.message : "Could not read this document.",
+      );
+    } finally {
+      window.clearTimeout(timeout);
+      if (extractionAbortRef.current === controller) extractionAbortRef.current = null;
+      setExtracting(false);
+    }
   };
 
   const clearFile = () => {
+    extractionAbortRef.current?.abort();
+    extractionAbortRef.current = null;
     setSelectedFile(null);
     setDocumentText("");
+    setExtractionMethod(null);
+    setExtractionProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -154,6 +212,7 @@ function HomeContent() {
     }
 
     if (!authenticated) {
+      setAuthMode("signin");
       setAuthIntent("submit");
       setAuthNext(null);
       setAuthOpen(true);
@@ -161,7 +220,7 @@ function HomeContent() {
     }
 
     if (!hasDocumentText) {
-      setError("Attach one text document before analysis.");
+      setError("Attach one readable document before analysis.");
       return;
     }
 
@@ -176,13 +235,19 @@ function HomeContent() {
       const textForAnalysis = documentText.trim();
       let documentId: string | undefined;
       if (textForAnalysis.length < 20) {
-        throw new Error("Attach one text document before analysis.");
+        throw new Error("Attach one readable document before analysis.");
       }
+      const resolvedKind = inferClaritiKind({
+        kind,
+        question: message.trim(),
+        documentText: textForAnalysis,
+        fileName: selectedFile?.name,
+      });
 
       if (selectedFile && authConfigured && authenticatedForRun) {
         const formData = new FormData();
         formData.set("file", selectedFile);
-        formData.set("kind", kind);
+        formData.set("kind", resolvedKind);
         formData.set("extractedText", textForAnalysis);
 
         const uploadResponse = await fetch("/api/documents/upload", { method: "POST", body: formData });
@@ -191,30 +256,15 @@ function HomeContent() {
         documentId = uploadPayload.document?.id;
       }
 
-      const analysisResponse = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          kind,
-          question: message.trim(),
-          fileName: selectedFile?.name,
-          documentText: textForAnalysis,
-          documentId,
-        }),
-      });
-      const analysisPayload = await analysisResponse.json();
-      if (!analysisResponse.ok || !analysisPayload.ok) throw new Error(analysisPayload.error ?? "Could not analyze document");
-
       window.localStorage.setItem("clariti-active-request", JSON.stringify({
-        kind,
+        kind: resolvedKind,
         question: message.trim(),
         documentText: textForAnalysis,
         fileName: selectedFile?.name,
-        analysis: analysisPayload.analysis,
-        persisted: analysisPayload.persisted,
+        documentId,
+        createdAt: Date.now(),
       }));
-      const savedSessionId = analysisPayload.persisted?.session?.id;
-      router.push(savedSessionId ? `/workspace?sessionId=${savedSessionId}` : "/workspace");
+      router.push("/workspace?new=1");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Clariti could not process this document.");
     } finally {
@@ -228,7 +278,7 @@ function HomeContent() {
 
     if (authIntent === "submit") {
       if (!hasDocumentText) {
-        setError("Now attach one text document before analysis.");
+        setError("Now attach one readable document before analysis.");
         return;
       }
       const serverAuthenticated = await waitForServerAuth();
@@ -259,17 +309,25 @@ function HomeContent() {
               ref={fileInputRef}
               type="file"
               className="entry-file-input"
-              accept=".txt,text/plain"
+              accept=".txt,.pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,text/plain,application/pdf,image/*"
               onChange={(event) => void handleFileSelected(event.target.files?.[0])}
             />
 
             {selectedFile && (
-              <div className="entry-attachment">
-                <FileText />
-                <span>
-                  <b>{selectedFile.name}</b>
-                  <small>{hasDocumentText ? "Text extracted or pasted and ready" : "Paste the document text below before analysis."}</small>
-                </span>
+              <div className={`entry-attachment ${extracting ? "is-reading" : hasDocumentText ? "is-ready" : "needs-attention"}`}>
+                <div className="entry-attachment-icon">
+                  {extracting ? <Loader2 className="entry-spinner" /> : <FileText />}
+                </div>
+                <div className="entry-attachment-body">
+                  <div className="entry-attachment-main">
+                    <b>{selectedFile.name}</b>
+                    <small>{extracting ? `${extractionProgress}%` : hasDocumentText ? "Ready" : "Needs text"}</small>
+                  </div>
+                  <p>{extracting ? "Preparing this document before send..." : hasDocumentText ? `Readable text extracted from ${extractionLabels[extractionMethod ?? ""] ?? "document"}.` : "Readable document text is required before analysis."}</p>
+                  <div className="entry-file-progress" aria-hidden={!extracting && !hasDocumentText}>
+                    <span style={{ width: `${hasDocumentText ? 100 : extractionProgress}%` }} />
+                  </div>
+                </div>
                 <button type="button" onClick={clearFile}>Remove</button>
               </div>
             )}
@@ -288,7 +346,8 @@ function HomeContent() {
               <div className="entry-tools">
                 <button type="button" onClick={chooseFile}><Paperclip /> {selectedFile ? "Replace document" : "Attach document"}</button>
               </div>
-              <button type="button" className="clariti-entry-send" aria-label="Send to Clariti" disabled={!canSubmit} onClick={() => void handleSubmit()}>
+              {sendDisabledReason && <span className="entry-send-hint">{sendDisabledReason}</span>}
+              <button type="button" className="clariti-entry-send" aria-label="Send to Clariti" title={sendDisabledReason || "Send to Clariti"} disabled={!canSubmit} onClick={() => void handleSubmit()}>
                 {submitting ? <Loader2 className="entry-spinner" /> : <ArrowUp />}
               </button>
             </div>
@@ -315,7 +374,7 @@ function HomeContent() {
 
       {authOpen && (
         <ClaritiAuthModal
-          modeDefault="signin"
+          modeDefault={authMode}
           onClose={() => setAuthOpen(false)}
           onAuthenticated={handleAuthenticated}
           kicker={authIntent === "navigate" ? "SIGN IN TO CONTINUE" : "SAVE YOUR DOCUMENT"}

@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./"
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./",
+  "crons": [
+    {
+      "path": "/api/agent/trigger-follow-ups",
+      "schedule": "0 9 * * *"
+    }
+  ]
 }

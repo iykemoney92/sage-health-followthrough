@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "trigger:follow-ups": "node scripts/trigger-follow-ups.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.20",
@@ -18,6 +19,7 @@
     "date-fns": "^4.4.0",
     "lucide-react": "^1.25.0",
     "next": "16.2.11",
+    "pdf-parse": "^2.4.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "tailwind-merge": "^3.6.0",

@@ -8,8 +8,17 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isProtected = PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
   const isAuthPage = AUTH_PAGES.some((prefix) => pathname.startsWith(prefix));
+  const redirectAuthPageToHome = () => {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    url.searchParams.set("auth", "1");
+    url.searchParams.set("mode", pathname.startsWith("/signup") ? "signup" : "signin");
+    return NextResponse.redirect(url);
+  };
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    if (isAuthPage) return redirectAuthPageToHome();
+
     if (isProtected) {
       const url = request.nextUrl.clone();
       url.pathname = "/";
@@ -54,11 +63,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuthPage) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
-  }
+  if (isAuthPage) return redirectAuthPageToHome();
 
   return response;
 }

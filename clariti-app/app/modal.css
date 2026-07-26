@@ -79,6 +79,19 @@
   transform: translateY(-1px);
 }
 
+.prototype-option-list button:disabled {
+  background: #f3f6f4;
+  border-color: #e1e9e5;
+  box-shadow: none;
+  color: #91a09b;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.prototype-option-list button:disabled > svg {
+  color: #91a09b;
+}
+
 .prototype-option-list button:focus-visible,
 .sheet-close:focus-visible {
   outline: 3px solid rgba(77, 141, 131, 0.22);
@@ -114,6 +127,31 @@
   font-size: 12px;
   line-height: 1.45;
   margin-top: 5px;
+}
+
+.sheet-field {
+  color: #344942;
+  display: grid;
+  font-size: 11px;
+  font-weight: 850;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.sheet-field input {
+  background: #fbfdfc;
+  border: 1px solid #dce7e3;
+  border-radius: 14px;
+  color: #263934;
+  height: 46px;
+  outline: 0;
+  padding: 0 13px;
+  width: 100%;
+}
+
+.sheet-field input:focus {
+  border-color: #9fc5bc;
+  box-shadow: 0 0 0 3px rgba(77, 141, 131, 0.14);
 }
 
 .source-document-preview {

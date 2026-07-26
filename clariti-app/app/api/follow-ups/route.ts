@@ -12,6 +12,30 @@ const requestSchema = z.object({
   analysis: claritiAnalysisSchema,
 });
 
+export async function GET() {
+  const user = await getSessionUser();
+  if (hasSupabaseBrowserConfig() && !user) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+
+  if (!user) {
+    return NextResponse.json({ ok: true, followUps: [] });
+  }
+
+  const supabase = await getSupabaseSessionClient();
+  const { data, error } = await supabase
+    .from("clariti_follow_ups")
+    .select("id, session_id, channel, action, document_title, document_kind, phone_number, scheduled_for, call_status, triggered_at, created_at")
+    .order("scheduled_for", { ascending: true })
+    .limit(20);
+
+  if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, followUps: data ?? [] });
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const parsed = requestSchema.safeParse(body);
@@ -32,9 +56,21 @@ export async function POST(request: NextRequest) {
     `Use only the stored Clariti analysis and remind the user to confirm clinical, billing, or coverage decisions with the right professional.`;
 
   let persistedId: string | null = null;
+  let persistedMessage: { id: string; role: string; content: string; created_at: string } | null = null;
 
   if (user) {
     const supabase = await getSupabaseSessionClient();
+    const { data: session, error: sessionError } = await supabase
+      .from("clariti_sessions")
+      .select("id")
+      .eq("id", sessionId)
+      .eq("owner_id", user.id)
+      .maybeSingle();
+
+    if (sessionError || !session) {
+      return NextResponse.json({ ok: false, error: "Clariti could not find this saved analysis." }, { status: 404 });
+    }
+
     const insertPayload = {
       session_id: sessionId,
       owner_id: user.id,
@@ -46,6 +82,7 @@ export async function POST(request: NextRequest) {
       phone_number: phoneNumber,
       safety_note: analysis.safetyNote,
       scheduled_for: scheduledFor,
+      analysis_payload: analysis,
     };
     const { data, error } = await supabase
       .from("clariti_follow_ups")
@@ -53,8 +90,9 @@ export async function POST(request: NextRequest) {
       .select("id")
       .maybeSingle();
 
-    if (error && /phone_number/i.test(error.message)) {
-      const { phone_number: phoneNumberForNewerSchema, ...fallbackPayload } = insertPayload;
+    if (error && /phone_number|analysis_payload/i.test(error.message)) {
+      const { analysis_payload: analysisPayloadForNewerSchema, phone_number: phoneNumberForNewerSchema, ...fallbackPayload } = insertPayload;
+      void analysisPayloadForNewerSchema;
       void phoneNumberForNewerSchema;
       const { data: fallbackData } = await supabase
         .from("clariti_follow_ups")
@@ -65,6 +103,14 @@ export async function POST(request: NextRequest) {
     } else {
       persistedId = (data?.id as string | undefined) ?? null;
     }
+
+    const confirmation = `Done. I saved ${phoneNumber ?? "the phone number"} for ${new Date(scheduledFor).toLocaleString()}. Purpose: ${action}.`;
+    const { data: messageData } = await supabase
+      .from("clariti_messages")
+      .insert({ session_id: sessionId, role: "assistant", content: confirmation })
+      .select("id, role, content, created_at")
+      .maybeSingle();
+    persistedMessage = (messageData as typeof persistedMessage) ?? null;
   }
 
   return NextResponse.json({
@@ -81,5 +127,6 @@ export async function POST(request: NextRequest) {
       persisted: Boolean(persistedId),
       safetyNote: analysis.safetyNote,
     },
+    message: persistedMessage,
   });
 }
