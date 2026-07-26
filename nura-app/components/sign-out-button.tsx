@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { LogOut } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
 
 export function SignOutButton({ className = "secondary-cta" }: { className?: string }) {
@@ -18,7 +19,7 @@ export function SignOutButton({ className = "secondary-cta" }: { className?: str
 
   return (
     <button className={className} type="button" onClick={signOut} disabled={loading}>
-      {loading ? "Signing out..." : "Sign out"}
+      <LogOut /> {loading ? "Signing out..." : "Sign out"}
     </button>
   );
 }
