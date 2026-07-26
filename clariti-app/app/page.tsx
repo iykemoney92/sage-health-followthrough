@@ -175,7 +175,16 @@ function HomeContent() {
       const response = await fetch("/api/documents/extract", { method: "POST", body: formData, signal: controller.signal });
       const payload = await readJsonResponse(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not read this document.");
-      setDocumentText(String(payload.extractedText ?? ""));
+      const extractedText = String(payload.extractedText ?? "");
+      const inferredKind = inferClaritiKind({
+        kind,
+        question: message.trim(),
+        documentText: extractedText,
+        fileName: file.name,
+      });
+      setKind(inferredKind);
+      setMessage((current) => isEmptyOrStarterPrompt(current) ? promptForKind(inferredKind) : current);
+      setDocumentText(extractedText);
       setExtractionMethod(String(payload.extractionMethod ?? "text"));
       setExtractionProgress(100);
     } catch (caught) {
@@ -400,4 +409,13 @@ async function readJsonResponse(response: Response) {
         : "Clariti could not read this document in production. Try a clearer PDF/image, a text-based PDF, or paste the report text.",
     };
   }
+}
+
+function isEmptyOrStarterPrompt(value: string) {
+  const normalized = value.trim();
+  return !normalized || starters.some((starter) => starter.prompt === normalized);
+}
+
+function promptForKind(kind: StarterKind) {
+  return starters.find((starter) => starter.kind === kind)?.prompt ?? "Please explain this health document in plain English, stay grounded in the source text, and tell me what I should ask next.";
 }
