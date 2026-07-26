@@ -9,14 +9,17 @@ export function ProfileSettingsForm({
   displayName,
   email,
   avatarUrl,
+  phone,
 }: {
   displayName: string;
   email: string;
   avatarUrl: string;
+  phone: string;
 }) {
   const router = useRouter();
   const [name, setName] = useState(displayName);
   const [photo, setPhoto] = useState(avatarUrl);
+  const [phoneNumber, setPhoneNumber] = useState(phone);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -72,7 +75,7 @@ export function ProfileSettingsForm({
       const res = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName: name, avatarUrl: photo }),
+        body: JSON.stringify({ displayName: name, avatarUrl: photo, phone: phoneNumber }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
@@ -109,7 +112,8 @@ export function ProfileSettingsForm({
         </div>
         <label>Name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
         <label>Email<input value={email} disabled /></label>
-        <label>Phone<input placeholder="+44 7000 000000" /></label>
+        <label>Phone<input placeholder="+44 7000 000000" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} /></label>
+        <p className="muted" style={{ marginTop: -8 }}>This is the number Nura calls for scheduled check-ins.</p>
         {notice && <p className="profile-save-note">{notice}</p>}
         <button className="primary-cta" type="button" onClick={save} disabled={saving || !name.trim()}>
           {saving ? "Saving..." : <><Save /> Save changes</>}

@@ -8,11 +8,13 @@ export function WhatsAppOpenButton({
   children,
   message,
   linked = false,
+  iconOnly = false,
 }: {
   className?: string;
   children?: React.ReactNode;
   message?: string;
   linked?: boolean;
+  iconOnly?: boolean;
 }) {
   const [opening, setOpening] = useState(false);
   const label = children ?? (linked ? "Chat via WhatsApp" : "Connect WhatsApp");
@@ -30,6 +32,15 @@ export function WhatsAppOpenButton({
     } finally {
       setOpening(false);
     }
+  }
+
+  if (iconOnly) {
+    const title = opening ? "Opening..." : (linked ? "Chat via WhatsApp" : "Connect WhatsApp");
+    return (
+      <button type="button" className={className} onClick={openWhatsapp} disabled={opening} title={title} aria-label={title}>
+        <Send />
+      </button>
+    );
   }
 
   return (

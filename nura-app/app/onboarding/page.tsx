@@ -81,7 +81,9 @@ function DesktopCopy({ step }: { step: number }) {
       ? ["Choose what Nura should remember first.", "These choices guide the first Threads Nura creates for you. You can change them later from Me."]
       : step === 4
         ? ["Pick how Nura should check in.", "Nura only follows up through channels you choose, and every check-in stays tied to the relevant Thread."]
-        : ["Start with the real-life context.", "A normal message is enough. Nura uses it to create your first Thread and prepare useful follow-up."];
+        : step === 5
+          ? ["How should Nura reach you?", "Optional, and only used for the check-ins you ask for. You can add or remove this anytime from Me."]
+          : ["Start with the real-life context.", "A normal message is enough. Nura uses it to create your first Thread and prepare useful follow-up."];
 
   return (
     <aside className="onboarding-desktop-copy">
@@ -102,6 +104,8 @@ export default function Onboarding() {
   const [step, setStep] = useState(1);
   const [selected, setSelected] = useState<string[]>([]);
   const [channel, setChannel] = useState("WhatsApp");
+  const [checkinMethod, setCheckinMethod] = useState("WhatsApp");
+  const [phone, setPhone] = useState("");
   const [intake, setIntake] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [skipping, setSkipping] = useState(false);
@@ -121,7 +125,7 @@ export default function Onboarding() {
       const res = await fetch("/api/onboarding/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interests: selected, channel, intake }),
+        body: JSON.stringify({ interests: selected, channel, intake, phone }),
       });
       if (!res.ok) throw new Error("Could not save your details. Please try again.");
       router.push("/today");
@@ -140,7 +144,7 @@ export default function Onboarding() {
       const res = await fetch("/api/onboarding/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interests: selected, channel, skip: true }),
+        body: JSON.stringify({ interests: selected, channel, phone, skip: true }),
       });
       if (!res.ok) throw new Error("Could not skip setup. Please try again.");
       router.push("/today");
@@ -232,10 +236,10 @@ export default function Onboarding() {
           <MobileStatusBar />
           <header className="onboarding-header">
             <button className="onboarding-back" aria-label="Go back" onClick={() => setStep(step - 1)}><ArrowLeft /></button>
-            <span className="onboarding-step-count" aria-label={`Step ${step - 1} of 4`}>{step - 1} of 4</span>
+            <span className="onboarding-step-count" aria-label={`Step ${step - 1} of 5`}>{step - 1} of 5</span>
             <span className="onboarding-header-spacer" aria-hidden="true" />
           </header>
-          <div className="onboarding-progress"><span style={{ width: `${((step - 1) / 4) * 100}%` }} /></div>
+          <div className="onboarding-progress"><span style={{ width: `${((step - 1) / 5) * 100}%` }} /></div>
 
           <div className="onboarding-desktop-layout">
             <DesktopCopy step={step} />
@@ -289,6 +293,35 @@ export default function Onboarding() {
               )}
 
               {step === 5 && (
+                <>
+                  <span className="auth-kicker">CHECK-IN METHOD</span>
+                  <h1>How should Nura check in on you?</h1>
+                  <p className="onboarding-intro">Optional — you can add this later from Me if you&apos;d rather skip it now.</p>
+                  <div className="channel-options mobile-channel-options">
+                    {[
+                      ["WhatsApp", "Text-based check-ins on WhatsApp.", MessageCircle],
+                      ["Phone call", "A short voice check-in call.", BellRing],
+                    ].map(([title, copy, Icon]) => (
+                      <button key={title as string} onClick={() => setCheckinMethod(title as string)} className={checkinMethod === title ? "selected" : ""}>
+                        <span className="channel-icon"><Icon /></span><span><b>{title as string}</b><small>{copy as string}</small></span><span className="selection-circle">{checkinMethod === title && <Check />}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <label className="onboarding-phone-field">
+                    <span>Phone number (optional)</span>
+                    <input
+                      type="tel"
+                      placeholder="+44 7000 000000"
+                      value={phone}
+                      onChange={(event) => setPhone(event.target.value)}
+                    />
+                    <small>Only used for check-in calls you ask for. Never shared, and you can remove it anytime from Me.</small>
+                  </label>
+                  <div className="control-note">Your number and messages are private to your account and only used to run the check-ins you choose. We never sell or share your data.</div>
+                </>
+              )}
+
+              {step === 6 && (
                 <div className="final-intake-screen">
                   <h1>Tell Nura what’s going on</h1>
                   <p className="onboarding-intro">Start with anything. Nura will take care of the rest.</p>
@@ -332,9 +365,14 @@ export default function Onboarding() {
                 </div>
               )}
 
-              {step < 5 && (
+              {step < 6 && (
                 <footer className="onboarding-footer">
-                  <button className="primary-cta onboarding-primary" onClick={() => setStep(step + 1)}>Continue <ArrowRight /></button>
+                  <button
+                    className="primary-cta onboarding-primary"
+                    onClick={() => setStep(step + 1)}
+                  >
+                    Continue <ArrowRight />
+                  </button>
                 </footer>
               )}
             </section>

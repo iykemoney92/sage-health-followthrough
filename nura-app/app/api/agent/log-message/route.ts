@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
-import { resolveDecision, applyPlanDecision, insertConversationTurn, type PlanContext } from "@/lib/domain/message-intake";
+import { resolveDecision, applyPlanDecision, applyNextCheckIn, insertConversationTurn, type PlanContext, type HistoryTurn } from "@/lib/domain/message-intake";
 
 const requestSchema = z.object({
   content: z.string().min(1),
@@ -76,7 +76,27 @@ export async function POST(request: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(12);
 
-  const decision = await resolveDecision(content, plans ?? [], [], (contexts ?? []) as PlanContext[], null);
+  const { data: recentMessages } = await supabase
+    .from("nura_messages")
+    .select("role, content, plan_id, created_at")
+    .eq("owner_id", ownerId)
+    .order("created_at", { ascending: false })
+    .limit(16);
+
+  const planTitleById = new Map((plans ?? []).map((p) => [p.id, p.title as string]));
+  const history: HistoryTurn[] = (recentMessages ?? [])
+    .slice()
+    .reverse()
+    .map((m) => {
+      const title = m.plan_id ? planTitleById.get(m.plan_id as string) : null;
+      return {
+        role: m.role as "user" | "assistant",
+        content: title ? `[${title}] ${m.content as string}` : (m.content as string),
+      };
+    });
+
+  // WhatsApp always carries a caller phone, so a voice check-in is always reachable here.
+  const decision = await resolveDecision(content, plans ?? [], [], (contexts ?? []) as PlanContext[], null, history, phone);
 
   const { planId, planTitle, error: planError } = await applyPlanDecision(supabase, ownerId, decision, plans ?? []);
   if (planError) {
@@ -89,6 +109,10 @@ export async function POST(request: NextRequest) {
   }
 
   if (planId) {
+    if (decision.next_check_in) {
+      await applyNextCheckIn(supabase, ownerId, planId, decision.next_check_in);
+    }
+
     await supabase
       .from("nura_plans")
       .update({ updated_at: new Date().toISOString() })

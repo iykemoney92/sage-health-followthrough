@@ -6,6 +6,7 @@ import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/sup
 const requestSchema = z.object({
   interests: z.array(z.string()).default([]),
   channel: z.string().default("WhatsApp"),
+  phone: z.string().trim().optional().default(""),
   intake: z.string().default(""),
   skip: z.boolean().optional().default(false),
 });
@@ -81,19 +82,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { interests, channel, intake, skip } = parsed.data;
+  const { interests, channel, phone, intake, skip } = parsed.data;
   if (!skip && !intake.trim()) {
     return NextResponse.json({ ok: false, error: "intake_required" }, { status: 400 });
   }
   const supabase = await getSupabaseSessionClient();
 
   const displayName = (user.user_metadata?.display_name as string | undefined) ?? user.email ?? "";
+  const normalizedPhone = phone ? phone.replace(/[^\d]/g, "") : "";
 
   const { error: profileError } = await supabase.from("nura_profiles").upsert({
     id: user.id,
     display_name: displayName,
     preferred_channel: CHANNEL_MAP[channel] ?? "whatsapp",
     interests,
+    phone: normalizedPhone || null,
   });
 
   if (profileError) {

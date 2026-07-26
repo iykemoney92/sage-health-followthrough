@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
-import { resolveDecision, applyPlanDecision, insertConversationTurn, type PlanContext } from "@/lib/domain/message-intake";
+import { resolveDecision, applyPlanDecision, applyNextCheckIn, insertConversationTurn, extractPhoneNumber, type PlanContext, type HistoryTurn, type MissedCheckIn } from "@/lib/domain/message-intake";
+
+const MISSED_STATUSES = ["missed_stale", "missed_consolidated", "failed"];
 
 const requestSchema = z.object({
   content: z.string().min(1),
@@ -15,75 +17,6 @@ const requestSchema = z.object({
 });
 
 type MessageAttachment = z.infer<typeof requestSchema>["attachments"][number];
-
-function relativeMinuteRequest(normalized: string) {
-  const numberMatch = normalized.match(/\b(?:in\s*)?(\d{1,2})\s*(?:minutes?|mins?|min)\b/);
-  if (numberMatch) return Number(numberMatch[1]);
-
-  const words: Record<string, number> = {
-    one: 1,
-    two: 2,
-    three: 3,
-    four: 4,
-    five: 5,
-    six: 6,
-    seven: 7,
-    eight: 8,
-    nine: 9,
-    ten: 10,
-  };
-  const wordMatch = normalized.match(/\b(?:in\s*)?(one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:minutes?|mins?|min)\b/);
-  return wordMatch ? words[wordMatch[1]] : null;
-}
-
-function inferredCheckIn(content: string, planTitle: string | null) {
-  const normalized = content.toLowerCase();
-  const scheduledFor = new Date();
-  let label = "tomorrow evening";
-  let explicit = false;
-  const requestedMinutes = relativeMinuteRequest(normalized);
-
-  if (requestedMinutes && requestedMinutes > 0) {
-    scheduledFor.setTime(Date.now() + requestedMinutes * 60_000);
-    label = `in ${requestedMinutes} minute${requestedMinutes === 1 ? "" : "s"}`;
-    explicit = true;
-  } else if (/\btonight\b|\bthis evening\b/.test(normalized)) {
-    scheduledFor.setHours(19, 30, 0, 0);
-    if (scheduledFor.getTime() <= Date.now()) scheduledFor.setDate(scheduledFor.getDate() + 1);
-    label = "this evening";
-    explicit = true;
-  } else if (/\btomorrow\b/.test(normalized)) {
-    scheduledFor.setDate(scheduledFor.getDate() + 1);
-    scheduledFor.setHours(19, 30, 0, 0);
-    explicit = true;
-  } else if (/\b(two|2)\s+weeks?\b|\bfortnight\b/.test(normalized)) {
-    scheduledFor.setDate(scheduledFor.getDate() + 14);
-    scheduledFor.setHours(9, 0, 0, 0);
-    label = "in two weeks";
-    explicit = true;
-  } else if (/\b(next week|one week|1 week)\b/.test(normalized)) {
-    scheduledFor.setDate(scheduledFor.getDate() + 7);
-    scheduledFor.setHours(9, 0, 0, 0);
-    label = "next week";
-    explicit = true;
-  } else if (/\b(few days|couple of days|every few days)\b/.test(normalized)) {
-    scheduledFor.setDate(scheduledFor.getDate() + 3);
-    scheduledFor.setHours(19, 30, 0, 0);
-    label = "in a few days";
-    explicit = true;
-  } else {
-    scheduledFor.setDate(scheduledFor.getDate() + 1);
-    scheduledFor.setHours(19, 30, 0, 0);
-  }
-
-  const topic = planTitle ? `your ${planTitle} Thread` : "what you shared";
-  return {
-    scheduledFor,
-    label,
-    explicit,
-    prompt: `Quick check-in on ${topic}: how have things been since you told Nura about this?`,
-  };
-}
 
 export async function GET() {
   const user = await getSessionUser();
@@ -155,8 +88,56 @@ export async function POST(request: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(12);
 
+  const { data: recentMessages } = await supabase
+    .from("nura_messages")
+    .select("role, content, plan_id, created_at")
+    .eq("owner_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(16);
+
+  const planTitleById = new Map((plans ?? []).map((p) => [p.id, p.title as string]));
+  const history: HistoryTurn[] = (recentMessages ?? [])
+    .slice()
+    .reverse()
+    .map((m) => {
+      const title = m.plan_id ? planTitleById.get(m.plan_id as string) : null;
+      return {
+        role: m.role as "user" | "assistant",
+        content: title ? `[${title}] ${m.content as string}` : (m.content as string),
+      };
+    });
+
+  const { data: profile } = await supabase
+    .from("nura_profiles")
+    .select("phone")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const existingPhone = (profile?.phone as string | null) ?? null;
+  const mentionedPhone = extractPhoneNumber(content);
+  if (mentionedPhone && mentionedPhone !== existingPhone) {
+    await supabase.from("nura_profiles").upsert({ id: user.id, phone: mentionedPhone });
+  }
+  const phoneOnFile = existingPhone || mentionedPhone || null;
+
+  const { data: missedRows } = await supabase
+    .from("nura_check_ins")
+    .select("prompt, scheduled_for, call_status, plan_id")
+    .eq("owner_id", user.id)
+    .is("completed_at", null)
+    .in("call_status", MISSED_STATUSES)
+    .order("scheduled_for", { ascending: false })
+    .limit(5);
+
+  const missed: MissedCheckIn[] = (missedRows ?? []).map((row) => ({
+    plan_title: planTitleById.get(row.plan_id as string) ?? "a Thread",
+    prompt: row.prompt as string,
+    scheduled_for: new Date(row.scheduled_for as string).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }),
+    reason: row.call_status === "failed" ? "the call failed" : "no answer / too much time passed",
+  }));
+
   const requestedPlan = requestedPlanId ? plans?.find((plan) => plan.id === requestedPlanId) ?? null : null;
-  const decision = await resolveDecision(content, plans ?? [], attachments as MessageAttachment[], (contexts ?? []) as PlanContext[], requestedPlan);
+  const decision = await resolveDecision(content, plans ?? [], attachments as MessageAttachment[], (contexts ?? []) as PlanContext[], requestedPlan, history, phoneOnFile, missed);
 
   const { planId, planTitle, error: planError } = await applyPlanDecision(supabase, user.id, decision, plans ?? []);
   if (planError) {
@@ -182,49 +163,8 @@ export async function POST(request: NextRequest) {
       })));
     }
 
-    const { data: openCheckIn } = await supabase
-      .from("nura_check_ins")
-      .select("id")
-      .eq("owner_id", user.id)
-      .eq("plan_id", planId)
-      .is("completed_at", null)
-      .limit(1)
-      .maybeSingle();
-
-    const checkIn = inferredCheckIn(content, planTitle);
-
-    if (openCheckIn && checkIn.explicit) {
-      await supabase
-        .from("nura_check_ins")
-        .update({
-          prompt: checkIn.prompt,
-          scheduled_for: checkIn.scheduledFor.toISOString(),
-          triggered_at: null,
-          call_status: null,
-          call_error: null,
-        })
-        .eq("id", openCheckIn.id)
-        .eq("owner_id", user.id);
-
-      await supabase
-        .from("nura_plans")
-        .update({ next_step: `Nura will check in ${checkIn.label}.` })
-        .eq("id", planId)
-        .eq("owner_id", user.id);
-    } else if (!openCheckIn) {
-      await supabase.from("nura_check_ins").insert({
-        owner_id: user.id,
-        plan_id: planId,
-        channel: "whatsapp",
-        prompt: checkIn.prompt,
-        scheduled_for: checkIn.scheduledFor.toISOString(),
-      });
-
-      await supabase
-        .from("nura_plans")
-        .update({ next_step: `Nura will check in ${checkIn.label}.` })
-        .eq("id", planId)
-        .eq("owner_id", user.id);
+    if (decision.next_check_in) {
+      await applyNextCheckIn(supabase, user.id, planId, decision.next_check_in);
     }
 
     const { error: updateError } = await supabase

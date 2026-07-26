@@ -79,19 +79,23 @@ export async function POST(request: NextRequest) {
       : Promise.resolve({ data: [] as { owner_id: string; channel_identifier: string }[] }),
     supabase
       .from("nura_profiles")
-      .select("id, display_name")
+      .select("id, display_name, phone")
       .in("id", Array.from(new Set((dueCheckIns as DueCheckIn[]).map((c) => c.owner_id)))),
   ]);
 
   const linkedPhoneByOwner = new Map((links ?? []).map((l) => [l.owner_id, l.channel_identifier as string]));
   const nameByOwner = new Map((profiles ?? []).map((p) => [p.id, (p.display_name as string | null) ?? ""]));
+  const profilePhoneByOwner = new Map((profiles ?? []).map((p) => [p.id, (p.phone as string | null) ?? ""]));
 
   const results: Record<string, unknown>[] = [];
   const noPhoneCheckInIds: string[] = [];
   const phoneGroups = new Map<string, DueCheckIn[]>();
 
   for (const checkIn of dueCheckIns as DueCheckIn[]) {
-    const phone = checkIn.contact_phone || linkedPhoneByOwner.get(checkIn.owner_id);
+    // Prefer a phone captured directly on the check-in (e.g. via WhatsApp), then an
+    // active WhatsApp link, then the phone number the user gave us at onboarding/in
+    // Settings - this last tier is what lets in-app-only accounts still get real calls.
+    const phone = checkIn.contact_phone || linkedPhoneByOwner.get(checkIn.owner_id) || profilePhoneByOwner.get(checkIn.owner_id);
     if (!phone) {
       noPhoneCheckInIds.push(checkIn.id);
       continue;

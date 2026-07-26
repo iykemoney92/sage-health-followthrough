@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, FileText, Mic, Paperclip, Send, Sparkles } from "lucide-react";
+import { ArrowLeft, CalendarDays, FileText, ListChecks, Mic, Paperclip, Send, Sparkles } from "lucide-react";
 import { NuraLogo, NuraMark } from "@/components/nura-logo";
 import { WhatsAppOpenButton } from "@/components/whatsapp-open-button";
 
@@ -145,8 +145,13 @@ export default function WorkspacePage() {
         <Link href="/today"><ArrowLeft /></Link>
         <NuraLogo compact href="/today" />
         <div className="chat-header-actions">
-          {whatsappHref && <WhatsAppOpenButton linked={whatsappLinked} />}
-          <Link href="/plans" className="secondary-cta">View Threads</Link>
+          <Link href="/calendar" className="icon-only-btn" title="Calendar" aria-label="Calendar">
+            <CalendarDays />
+          </Link>
+          {whatsappHref && <WhatsAppOpenButton className="icon-only-btn" linked={whatsappLinked} iconOnly />}
+          <Link href="/plans" className="icon-only-btn" title="View Threads" aria-label="View Threads">
+            <ListChecks />
+          </Link>
         </div>
       </header>
       <section className="chat-layout">

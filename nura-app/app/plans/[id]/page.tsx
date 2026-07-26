@@ -64,7 +64,6 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
             <p>Started {formatDay(plan.created_at as string)} · Nura is tracking this</p>
             {sourceParts.length > 0 && <small className="thread-source-line">Source: {sourceParts.join(", ")}</small>}
           </div>
-          <button className="icon-only-btn"><MoreHorizontal /></button>
         </div>
         <div className="thread-detail">
           <section className="detail-stack">
