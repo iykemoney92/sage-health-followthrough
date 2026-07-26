@@ -29,6 +29,8 @@ export async function POST(request: NextRequest) {
   }
 
   const { ownerId, planId: requestedPlanId, planTitle, channel, prompt, scheduledFor } = parsed.data;
+  const rawCallerPhone = request.headers.get("x-caller-phone");
+  const callerPhone = rawCallerPhone ? rawCallerPhone.replace(/[^\d]/g, "") : null;
   let supabase: ReturnType<typeof getSupabaseServerClient>;
   try {
     supabase = getSupabaseServerClient();
@@ -82,8 +84,9 @@ export async function POST(request: NextRequest) {
       channel,
       prompt,
       scheduled_for: scheduledFor,
+      contact_phone: callerPhone || null,
     })
-    .select("id, plan_id, channel, prompt, scheduled_for, created_at")
+    .select("id, plan_id, channel, prompt, scheduled_for, created_at, contact_phone")
     .single();
 
   if (checkInError || !checkIn) {

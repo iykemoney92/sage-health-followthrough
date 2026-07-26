@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   const now = new Date().toISOString();
   const { data: dueCheckIns, error: dueError } = await supabase
     .from("nura_check_ins")
-    .select("id, owner_id, plan_id, prompt, scheduled_for, nura_plans(title)")
+    .select("id, owner_id, plan_id, prompt, scheduled_for, contact_phone, nura_plans(title)")
     .is("completed_at", null)
     .is("triggered_at", null)
     .lte("scheduled_for", now)
@@ -52,18 +52,22 @@ export async function POST(request: NextRequest) {
     const planId = checkIn.plan_id as string;
     const planTitle = (checkIn as { nura_plans?: { title?: string } }).nura_plans?.title ?? "your Thread";
 
+    const checkInContactPhone = checkIn.contact_phone as string | null;
+
     const [{ data: link }, { data: profile }] = await Promise.all([
-      supabase
-        .from("nura_channel_links")
-        .select("channel_identifier")
-        .eq("owner_id", ownerId)
-        .eq("provider", "whatsapp")
-        .eq("status", "active")
-        .maybeSingle(),
+      checkInContactPhone
+        ? Promise.resolve({ data: null })
+        : supabase
+            .from("nura_channel_links")
+            .select("channel_identifier")
+            .eq("owner_id", ownerId)
+            .eq("provider", "whatsapp")
+            .eq("status", "active")
+            .maybeSingle(),
       supabase.from("nura_profiles").select("display_name").eq("id", ownerId).maybeSingle(),
     ]);
 
-    const phone = link?.channel_identifier as string | undefined;
+    const phone = checkInContactPhone || (link?.channel_identifier as string | undefined);
 
     if (!phone) {
       await supabase
