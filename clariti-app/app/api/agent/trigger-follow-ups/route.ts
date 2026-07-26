@@ -167,6 +167,8 @@ function buildFallbackDynamicVariables(followUp: DueFollowUp, originalDocumentTe
     `This call is about a ${documentTypeLabel}. Do not switch document types.`,
     "Use only the context below. If something is not in the context, say you do not see it and turn it into a safe question.",
     "Keep responses concise and ask one useful next question at a time.",
+    "Be proactive about follow-through: suggest one focused next follow-up when it fits the document context, such as clinician questions, a billing office query, or insurer/provider reconciliation.",
+    "If the user accepts, collect only missing details: purpose, phone number, and preferred day/time. Do not ask again for details already known in context.",
     "Do not diagnose, prescribe, decide urgency, decide insurance coverage, or say the user definitely owes money.",
     "Clariti context:",
     context,
