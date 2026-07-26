@@ -30,6 +30,15 @@ export async function GET() {
     .limit(20);
 
   if (error) {
+    if (/call_status|triggered_at|phone_number/i.test(error.message)) {
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from("clariti_follow_ups")
+        .select("id, session_id, channel, action, document_title, document_kind, scheduled_for, created_at")
+        .order("scheduled_for", { ascending: true })
+        .limit(20);
+      if (fallbackError) return NextResponse.json({ ok: false, error: fallbackError.message }, { status: 500 });
+      return NextResponse.json({ ok: true, followUps: fallbackData ?? [] });
+    }
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
