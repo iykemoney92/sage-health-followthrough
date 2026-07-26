@@ -196,13 +196,29 @@ async function generateScenesAndStitch(job: VideoJobRecord): Promise<RenderedVid
   }
 
   await updateJob(job.id, { status: "stitching", progress: 82, scenes: completedScenes });
-  const stitchedUrl = await stitchWithShotstack(job.id, completedScenes);
-  const storedUrl = await copyRemoteVideoToStorage(stitchedUrl, `${job.owner_id}/${job.id}.mp4`);
-  return {
-    videoUrl: storedUrl,
-    scenes: completedScenes,
-    providerResponse: { pipeline: "scene-render-shotstack", sceneCount: completedScenes.length, shotstackUrl: stitchedUrl },
-  };
+  try {
+    const stitchedUrl = await stitchWithShotstack(job.id, completedScenes);
+    const storedUrl = await copyRemoteVideoToStorage(stitchedUrl, `${job.owner_id}/${job.id}.mp4`);
+    return {
+      videoUrl: storedUrl,
+      scenes: completedScenes,
+      providerResponse: { pipeline: "scene-render-shotstack", sceneCount: completedScenes.length, shotstackUrl: stitchedUrl },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Shotstack stitching failed.";
+    const firstCompletedScene = completedScenes.find((scene) => scene.videoUrl);
+    if (!firstCompletedScene?.videoUrl) throw error;
+    return {
+      videoUrl: firstCompletedScene.videoUrl,
+      scenes: completedScenes,
+      providerResponse: {
+        pipeline: "scene-render-fallback-first-scene",
+        sceneCount: completedScenes.length,
+        warning: "Scene stitching failed, so Clariti kept the completed generated scene instead of discarding it.",
+        shotstackError: message,
+      },
+    };
+  }
 }
 
 async function updateJob(id: string, patch: Record<string, unknown>) {

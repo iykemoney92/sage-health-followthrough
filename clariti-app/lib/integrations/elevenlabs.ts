@@ -76,7 +76,7 @@ export function toE164(value: string) {
 function getElevenLabsCallingConfig() {
   return {
     apiKey: process.env.CLARITI_ELEVENLABS_API_KEY || process.env.ELEVENLABS_API_KEY,
-    agentId: process.env.CLARITI_ELEVENLABS_AGENT_ID || process.env.ELEVENLABS_AGENT_ID,
+    agentId: process.env.CLARITI_ELEVENLABS_AGENT_ID,
     agentPhoneNumberId: process.env.CLARITI_ELEVENLABS_AGENT_PHONE_NUMBER_ID || process.env.ELEVENLABS_AGENT_PHONE_NUMBER_ID,
   };
 }
