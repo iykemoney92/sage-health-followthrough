@@ -1,6 +1,7 @@
 type PlaceOutboundCallInput = {
   toNumber: string;
   dynamicVariables: Record<string, string>;
+  conversationConfigOverride?: Record<string, unknown>;
 };
 
 type OutboundCallResult = {
@@ -23,11 +24,23 @@ export function isClaritiElevenLabsAgentConfigured() {
   return Boolean(process.env.CLARITI_ELEVENLABS_AGENT_ID);
 }
 
-export async function placeOutboundCall({ toNumber, dynamicVariables }: PlaceOutboundCallInput) {
+export async function placeOutboundCall({
+  conversationConfigOverride,
+  dynamicVariables,
+  toNumber,
+}: PlaceOutboundCallInput) {
   const { apiKey, agentId, agentPhoneNumberId } = getElevenLabsCallingConfig();
 
   if (!apiKey || !agentId || !agentPhoneNumberId) {
     throw new Error("ElevenLabs outbound calling is not configured.");
+  }
+
+  const conversationInitiationClientData: Record<string, unknown> = {
+    dynamic_variables: dynamicVariables,
+  };
+
+  if (conversationConfigOverride) {
+    conversationInitiationClientData.conversation_config_override = conversationConfigOverride;
   }
 
   const response = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
@@ -41,9 +54,7 @@ export async function placeOutboundCall({ toNumber, dynamicVariables }: PlaceOut
       agent_phone_number_id: agentPhoneNumberId,
       to_number: toNumber,
       call_recording_enabled: true,
-      conversation_initiation_client_data: {
-        dynamic_variables: dynamicVariables,
-      },
+      conversation_initiation_client_data: conversationInitiationClientData,
     }),
   });
 

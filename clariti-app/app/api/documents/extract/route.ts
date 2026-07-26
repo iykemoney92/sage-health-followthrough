@@ -2,27 +2,28 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { generateText, uploadFile } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
-import { PDFParse } from "pdf-parse";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const MAX_FILE_SIZE = 12 * 1024 * 1024;
-PDFParse.setWorker(path.join(process.cwd(), "node_modules/pdf-parse/dist/pdf-parse/esm/pdf.worker.mjs"));
 
 export async function POST(request: NextRequest) {
-  const formData = await request.formData();
-  const file = formData.get("file");
-
-  if (!(file instanceof File)) {
-    return NextResponse.json({ ok: false, error: "A document file is required." }, { status: 400 });
-  }
-
-  if (file.size > MAX_FILE_SIZE) {
-    return NextResponse.json({ ok: false, error: "Use a file smaller than 12MB for this demo." }, { status: 400 });
-  }
-
-  const type = file.type || inferMimeType(file.name);
-  const buffer = Buffer.from(await file.arrayBuffer());
-
   try {
+    const formData = await request.formData();
+    const file = formData.get("file");
+
+    if (!(file instanceof File)) {
+      return NextResponse.json({ ok: false, error: "A document file is required." }, { status: 400 });
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ ok: false, error: "Use a file smaller than 12MB for this demo." }, { status: 400 });
+    }
+
+    const type = file.type || inferMimeType(file.name);
+    const buffer = Buffer.from(await file.arrayBuffer());
+
     if (type.startsWith("text/") || file.name.toLowerCase().endsWith(".txt")) {
       return extracted(await file.text(), "text");
     }
@@ -47,9 +48,10 @@ export async function POST(request: NextRequest) {
       error: "Clariti can read .txt, PDF, PNG, JPG and HEIC-style image uploads for this build.",
     }, { status: 400 });
   } catch (error) {
+    console.error("[clariti] document extraction failed", error);
     return NextResponse.json({
       ok: false,
-      error: error instanceof Error ? error.message : "Could not extract text from this document.",
+      error: friendlyExtractionError(error),
     }, { status: 422 });
   }
 }
@@ -112,6 +114,8 @@ async function extractWithAiFile(buffer: Buffer, mimeType: string, filename: str
 }
 
 async function extractPdfText(buffer: Buffer) {
+  const { PDFParse } = await import("pdf-parse");
+  PDFParse.setWorker(path.join(process.cwd(), "node_modules/pdf-parse/dist/pdf-parse/esm/pdf.worker.mjs"));
   const parser = new PDFParse({ data: buffer });
   try {
     const parsed = await parser.getText();
@@ -134,6 +138,17 @@ async function extractPdfText(buffer: Buffer) {
   } finally {
     await parser.destroy();
   }
+}
+
+function friendlyExtractionError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (/Provider file upload is not configured|AI Gateway|Anthropic/i.test(message)) {
+    return "Clariti could not read this PDF/image because document vision is not configured in production. Try a text-based PDF, a .txt file, or paste the report text.";
+  }
+  if (/timeout|aborted|duration|exceeded/i.test(message)) {
+    return "Document reading took too long. Try a smaller or clearer PDF/image, or paste the report text.";
+  }
+  return "Clariti could not extract readable text from this document. Try a clearer PDF/image, a text-based PDF, or paste the report text.";
 }
 
 async function extractWithVisionImages(

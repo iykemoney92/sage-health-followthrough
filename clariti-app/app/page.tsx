@@ -173,10 +173,10 @@ function HomeContent() {
       const formData = new FormData();
       formData.set("file", file);
       const response = await fetch("/api/documents/extract", { method: "POST", body: formData, signal: controller.signal });
-      const payload = await response.json();
+      const payload = await readJsonResponse(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not read this document.");
-      setDocumentText(payload.extractedText);
-      setExtractionMethod(payload.extractionMethod ?? "text");
+      setDocumentText(String(payload.extractedText ?? ""));
+      setExtractionMethod(String(payload.extractionMethod ?? "text"));
       setExtractionProgress(100);
     } catch (caught) {
       setDocumentText("");
@@ -251,9 +251,11 @@ function HomeContent() {
         formData.set("extractedText", textForAnalysis);
 
         const uploadResponse = await fetch("/api/documents/upload", { method: "POST", body: formData });
-        const uploadPayload = await uploadResponse.json();
+        const uploadPayload = await readJsonResponse(uploadResponse);
         if (!uploadResponse.ok || !uploadPayload.ok) throw new Error(uploadPayload.error ?? "Could not upload document");
-        documentId = uploadPayload.document?.id;
+        documentId = typeof uploadPayload.document === "object" && uploadPayload.document && "id" in uploadPayload.document
+          ? String(uploadPayload.document.id)
+          : undefined;
       }
 
       window.localStorage.setItem("clariti-active-request", JSON.stringify({
@@ -384,4 +386,18 @@ function HomeContent() {
       )}
     </ClaritiShell>
   );
+}
+
+async function readJsonResponse(response: Response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as { ok?: boolean; error?: string; extractedText?: string; extractionMethod?: string; document?: { id?: string } };
+  } catch {
+    return {
+      ok: false,
+      error: response.ok
+        ? "Clariti received an unreadable server response. Please try again."
+        : "Clariti could not read this document in production. Try a clearer PDF/image, a text-based PDF, or paste the report text.",
+    };
+  }
 }

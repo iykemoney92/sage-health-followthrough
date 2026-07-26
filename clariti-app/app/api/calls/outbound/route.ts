@@ -4,6 +4,7 @@ import { claritiAnalysisSchema } from "@/lib/ai/clariti-analysis";
 import { buildClaritiCallContext } from "@/lib/domain/clariti-call-context";
 import { isClaritiElevenLabsAgentConfigured, isElevenLabsCallingConfigured, placeOutboundCall, toE164 } from "@/lib/integrations/elevenlabs";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const requestSchema = z.object({
   sessionId: z.string().uuid(),
@@ -43,17 +44,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Clariti could not find this saved analysis." }, { status: 404 });
   }
 
+  const originalDocumentText = await fetchSessionDocumentText(supabase, sessionId, user.id);
   const callGoal = action ?? `Talk through ${analysis.title} and help the user decide what to ask next.`;
   const elevenLabs = buildClaritiCallContext({
     analysis,
     goal: callGoal,
+    originalDocumentText,
     sessionId,
     userId: user.id,
     userName: (user.user_metadata?.display_name as string | undefined) ?? user.email ?? undefined,
   });
 
   try {
-    const call = await placeOutboundCall({ toNumber: toE164(phoneNumber), dynamicVariables: elevenLabs.dynamicVariables });
+    const call = await placeOutboundCall({
+      toNumber: toE164(phoneNumber),
+      dynamicVariables: elevenLabs.dynamicVariables,
+      conversationConfigOverride: elevenLabs.conversationConfigOverride,
+    });
     const confirmation = `Calling now. Clariti will focus on: ${callGoal}.`;
     await supabase.from("clariti_follow_ups").insert({
       session_id: sessionId,
@@ -63,7 +70,7 @@ export async function POST(request: NextRequest) {
       action: "Call Clariti now",
       document_title: analysis.title,
       document_kind: analysis.kind,
-      call_prompt: callGoal,
+      call_prompt: elevenLabs.systemPrompt,
       safety_note: analysis.safetyNote,
       scheduled_for: new Date().toISOString(),
       analysis_payload: analysis,
@@ -98,7 +105,7 @@ export async function POST(request: NextRequest) {
       action: "Call Clariti now",
       document_title: analysis.title,
       document_kind: analysis.kind,
-      call_prompt: callGoal,
+      call_prompt: elevenLabs.systemPrompt,
       safety_note: analysis.safetyNote,
       scheduled_for: new Date().toISOString(),
       analysis_payload: analysis,
@@ -111,4 +118,25 @@ export async function POST(request: NextRequest) {
       { status: 502 },
     );
   }
+}
+
+async function fetchSessionDocumentText(supabase: SupabaseClient, sessionId: string, ownerId: string) {
+  const { data: link } = await supabase
+    .from("clariti_session_documents")
+    .select("document_id")
+    .eq("session_id", sessionId)
+    .limit(1)
+    .maybeSingle();
+
+  const documentId = (link?.document_id as string | undefined) ?? null;
+  if (!documentId) return null;
+
+  const { data: document } = await supabase
+    .from("clariti_documents")
+    .select("extracted_text")
+    .eq("id", documentId)
+    .eq("owner_id", ownerId)
+    .maybeSingle();
+
+  return (document?.extracted_text as string | null | undefined) ?? null;
 }
