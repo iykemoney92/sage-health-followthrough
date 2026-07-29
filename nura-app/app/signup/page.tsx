@@ -18,11 +18,13 @@ export default function SignupPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     if (!agreed) {
       setError("Please agree to the Terms and Privacy Policy to continue.");
       return;
@@ -37,7 +39,10 @@ export default function SignupPage() {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { display_name: name, avatar_url: avatarUrl, onboarding_complete: false } },
+      options: {
+        data: { display_name: name, avatar_url: avatarUrl, onboarding_complete: false },
+        emailRedirectTo: `${window.location.origin}/login`,
+      },
     });
     setLoading(false);
     if (error) {
@@ -45,7 +50,7 @@ export default function SignupPage() {
       return;
     }
     if (!data.session) {
-      setError("Check your email to confirm your account, then sign in.");
+      setNotice("Account created. Check your email to confirm it, then sign in.");
       return;
     }
     router.push("/onboarding");
@@ -90,6 +95,7 @@ export default function SignupPage() {
             <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I agree to the Terms and Privacy Policy
           </label>
           {error && <p className="auth-error">{error}</p>}
+          {notice && <p className="auth-success"><CheckCircle2 /> {notice}</p>}
           <button type="submit" className="primary-cta auth-submit" disabled={loading}>
             {loading ? "Creating account…" : <>Create account <ArrowRight /></>}
           </button>

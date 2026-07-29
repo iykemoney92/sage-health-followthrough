@@ -93,17 +93,11 @@ export function ProfileSettingsForm({
   return (
     <div className="settings-panels profile-edit-panels">
       <section>
-        <div className="profile-picture-editor">
+        <div className="profile-picture-editor centered">
           <label className="profile-photo-picker" htmlFor="avatar-file">
             <span className="profile-photo large" style={{ backgroundImage: `url(${photo || getAvatarUrl(name || email)})` }} />
             <span className="profile-photo-badge"><Upload size={13} /></span>
           </label>
-          <div>
-            <h3>Profile picture</h3>
-            <label className="secondary-cta profile-upload-button" htmlFor="avatar-file">
-              <Upload /> Upload photo
-            </label>
-          </div>
           <input
             id="avatar-file"
             type="file"
