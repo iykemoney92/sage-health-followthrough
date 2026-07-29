@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Camera, Save, Upload } from "lucide-react";
+import { Save, Upload } from "lucide-react";
 import { getAvatarUrl } from "@/lib/avatar";
 import { PhoneNumberInput } from "@/components/phone-number-input";
 
@@ -116,11 +116,6 @@ export function ProfileSettingsForm({
         <h3>Check-in number</h3>
         <p className="muted">Number Nura can check in on for scheduled reminders.</p>
         <label htmlFor="profile-phone">Phone<PhoneNumberInput id="profile-phone" value={phoneNumber} onChange={setPhoneNumber} /></label>
-      </section>
-      <section>
-        <span className="modal-icon"><Camera /></span>
-        <h3>Personalisation</h3>
-        <p className="muted">Your profile photo appears in the app header and Me page so demo accounts feel like real people.</p>
       </section>
       {notice && <p className="profile-save-note">{notice}</p>}
       <button className="primary-cta profile-save-button" type="button" onClick={save} disabled={saving || !name.trim()}>
