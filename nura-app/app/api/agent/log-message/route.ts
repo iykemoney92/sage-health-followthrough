@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { enforceThreadLimit, requirePlusAccess } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { resolveDecision, applyPlanDecision, applyNextCheckIn, insertConversationTurn, type PlanContext, type HistoryTurn } from "@/lib/domain/message-intake";
 
@@ -57,6 +58,8 @@ export async function POST(request: NextRequest) {
 
   const ownerId = link.owner_id as string;
   const { content } = parsed.data;
+  const paywall = await requirePlusAccess(supabase, ownerId, "voice");
+  if (paywall) return paywall;
 
   const { data: plans, error: plansError } = await supabase
     .from("nura_plans")
@@ -97,6 +100,8 @@ export async function POST(request: NextRequest) {
 
   // WhatsApp always carries a caller phone, so a voice check-in is always reachable here.
   const decision = await resolveDecision(content, plans ?? [], [], (contexts ?? []) as PlanContext[], null, history, phone);
+  const threadLimit = await enforceThreadLimit(supabase, ownerId, plans?.length ?? 0, decision.action === "new_plan");
+  if (threadLimit) return threadLimit;
 
   const { planId, planTitle, error: planError } = await applyPlanDecision(supabase, ownerId, decision, plans ?? []);
   if (planError) {

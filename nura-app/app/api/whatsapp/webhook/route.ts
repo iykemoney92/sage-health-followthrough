@@ -1,7 +1,26 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { getSubscriptionAccess } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { extractWhatsappLinkCode } from "@/lib/whatsapp-link";
+import { logger } from "@/lib/logger";
+
+// Meta signs every webhook delivery with x-hub-signature-256 (sha256 HMAC over the raw
+// body, keyed with the app secret). Verified only when the secret is configured, so local/
+// demo testing without it keeps working exactly as before - but once WHATSAPP_APP_SECRET is
+// set (required for real Meta traffic), anything unsigned or mismatched is rejected outright.
+function verifyMetaSignature(rawBody: string, signatureHeader: string | null): boolean {
+  const secret = process.env.WHATSAPP_APP_SECRET;
+  if (!secret) return true;
+  if (!signatureHeader?.startsWith("sha256=")) return false;
+
+  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
+  const provided = signatureHeader.slice("sha256=".length);
+  const left = Buffer.from(provided, "hex");
+  const right = Buffer.from(expected, "hex");
+  return left.length === right.length && timingSafeEqual(left, right);
+}
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
@@ -194,6 +213,11 @@ async function storeWhatsappContext(
   text: string,
   media: z.infer<typeof inboundSchema>["media"],
 ) {
+  const access = await getSubscriptionAccess(supabase, ownerId);
+  if (!access.hasPlus) {
+    return { thread: null, checkInLabel: null, gated: true };
+  }
+
   const thread = await resolveWhatsappThread(supabase, ownerId, text);
 
   await supabase.from("nura_messages").insert({
@@ -258,12 +282,24 @@ async function storeWhatsappContext(
       .eq("owner_id", ownerId);
   }
 
-  return { thread, checkInLabel };
+  return { thread, checkInLabel, gated: false };
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const parsed = inboundSchema.safeParse(await request.json().catch(() => null));
+    const rawBody = await request.text();
+    if (!verifyMetaSignature(rawBody, request.headers.get("x-hub-signature-256"))) {
+      logger.warn("whatsapp_webhook.invalid_signature");
+      return NextResponse.json({ ok: false, error: "invalid signature" }, { status: 401 });
+    }
+
+    let body: unknown = null;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      // leave body null - safeParse below will reject it
+    }
+    const parsed = inboundSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
     }
@@ -364,13 +400,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: linkError?.message ?? "WhatsApp number is not linked to a Nura account." }, { status: 404 });
     }
 
-    const { thread, checkInLabel } = await storeWhatsappContext(supabase, channelLink.owner_id as string, text, media);
+    const { thread, checkInLabel, gated } = await storeWhatsappContext(supabase, channelLink.owner_id as string, text, media);
     const firstName = await getFirstName(supabase, channelLink.owner_id as string);
+    if (gated) {
+      const reply = `Hi ${firstName}, WhatsApp follow-up is part of Nura Plus. Please open Nura to start or renew Plus, then message me here again.`;
+      const outbound = await sendWhatsappText(phone, reply);
+      return NextResponse.json({ ok: true, gated: true, error: "plus_required", ownerId: channelLink.owner_id, reply, outbound });
+    }
+
     const reply = threadReply(firstName, thread?.title ?? null, checkInLabel);
     const outbound = await sendWhatsappText(phone, reply);
 
     return NextResponse.json({ ok: true, linked: false, ownerId: channelLink.owner_id, planId: thread?.id ?? null, planTitle: thread?.title ?? null, reply, outbound });
   } catch (error) {
+    logger.error("whatsapp_webhook.unhandled_error", { message: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Webhook failed." }, { status: 500 });
   }
 }

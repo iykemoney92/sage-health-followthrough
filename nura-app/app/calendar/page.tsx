@@ -102,6 +102,8 @@ export default function CalendarPage() {
       .then((data) => setEvents(data.ok ? (data.events as RawEvent[]).map(withLocalDateTime) : []))
       .finally(() => setLoading(false));
 
+    fetch("/api/calendar/mark-viewed", { method: "POST" }).catch(() => {});
+
     const supabase = getSupabaseBrowserClient();
     supabase.auth.getUser().then(({ data }) => {
       const user = data.user;
@@ -121,6 +123,10 @@ export default function CalendarPage() {
 
   function openEditEvent() {
     if (!selected) return;
+    if (selected.source !== "calendar_event") {
+      setNotice("This item comes from a Thread — reschedule it from the Thread's check-in instead.");
+      return;
+    }
     setForm({
       title: selected.title,
       date: selected.date,
@@ -138,23 +144,35 @@ export default function CalendarPage() {
   const monthGridStart = startOfWeek(monthStart);
   const monthDays = Array.from({ length: 42 }, (_, index) => addDays(monthGridStart, index));
 
+  const chronological = (a: CalendarEvent, b: CalendarEvent) =>
+    a.date === b.date ? a.start.localeCompare(b.start) : a.date.localeCompare(b.date);
+
   const visibleEvents = (() => {
     if (view === "week") {
       const start = weekStart.getTime();
       const end = addDays(weekStart, 7).getTime();
-      return events.filter((event) => {
-        const time = parseDate(event.date).getTime();
-        return time >= start && time < end;
-      });
+      return events
+        .filter((event) => {
+          const time = parseDate(event.date).getTime();
+          return time >= start && time < end;
+        })
+        .sort(chronological);
     }
-    return events.filter((event) => {
-      const eventDate = parseDate(event.date);
-      return eventDate.getMonth() === cursor.getMonth() && eventDate.getFullYear() === cursor.getFullYear();
-    });
+    return events
+      .filter((event) => {
+        const eventDate = parseDate(event.date);
+        return eventDate.getMonth() === cursor.getMonth() && eventDate.getFullYear() === cursor.getFullYear();
+      })
+      .sort(chronological);
   })();
 
+  const weekEnd = addDays(weekStart, 6);
   const pageLabel = view === "week"
-    ? `${weekStart.getDate()} - ${addDays(weekStart, 6).getDate()} ${shortMonthNames[weekStart.getMonth()]} ${weekStart.getFullYear()}`
+    ? weekStart.getMonth() === weekEnd.getMonth() && weekStart.getFullYear() === weekEnd.getFullYear()
+      ? `${weekStart.getDate()} - ${weekEnd.getDate()} ${shortMonthNames[weekStart.getMonth()]} ${weekStart.getFullYear()}`
+      : weekStart.getFullYear() === weekEnd.getFullYear()
+        ? `${weekStart.getDate()} ${shortMonthNames[weekStart.getMonth()]} - ${weekEnd.getDate()} ${shortMonthNames[weekEnd.getMonth()]} ${weekEnd.getFullYear()}`
+        : `${weekStart.getDate()} ${shortMonthNames[weekStart.getMonth()]} ${weekStart.getFullYear()} - ${weekEnd.getDate()} ${shortMonthNames[weekEnd.getMonth()]} ${weekEnd.getFullYear()}`
     : `${monthNames[cursor.getMonth()]} ${cursor.getFullYear()}`;
 
   const move = (direction: -1 | 1) => {
@@ -304,7 +322,35 @@ export default function CalendarPage() {
     </div>
 
     <div className="calendar-mobile-only">
-      <section className="calendar-events">{visibleEvents.map((event)=> <button key={event.id} onClick={() => setSelectedId(event.id)} className={`calendar-item ${event.tone} ${selected?.id === event.id ? "selected" : ""}`}><div><small>{weekdayNames[parseDate(event.date).getDay()]} {parseDate(event.date).getDate()}</small><b>{formatTime(event.start)}</b></div><span><EventToneIcon tone={event.tone}/></span><div><h3>{event.title}</h3><p>{event.channel}</p></div></button>)}</section>
+      {view === "month" && (
+        <section className="mobile-month-grid">
+          <div className="mobile-month-head">{weekdayNames.map((day) => <span key={day}>{day}</span>)}</div>
+          <div className="mobile-month-days">
+            {monthDays.map((day) => {
+              const key = dateKey(day);
+              const dayEvents = events.filter((event) => event.date === key);
+              return (
+                <article key={key} className={day.getMonth() === cursor.getMonth() ? "mobile-month-day" : "mobile-month-day muted-month"}>
+                  <button className={key === dateKey(cursor) ? "selected" : ""} onClick={() => setCursor(day)}>{day.getDate()}</button>
+                  {dayEvents.length > 0 && (
+                    <div className="mobile-month-dots">
+                      {dayEvents.slice(0, 3).map((event) => <span key={event.id} className={`mobile-month-dot ${event.tone}`} />)}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
+      <section className="calendar-events">
+        {(view === "month" ? events.filter((event) => event.date === dateKey(cursor)).sort(chronological) : visibleEvents).map((event) => (
+          <button key={event.id} onClick={() => setSelectedId(event.id)} className={`calendar-item ${event.tone} ${selected?.id === event.id ? "selected" : ""}`}><div><small>{weekdayNames[parseDate(event.date).getDay()]} {parseDate(event.date).getDate()}</small><b>{formatTime(event.start)}</b></div><span><EventToneIcon tone={event.tone}/></span><div><h3>{event.title}</h3><p>{event.channel}</p></div></button>
+        ))}
+        {view === "month" && events.filter((event) => event.date === dateKey(cursor)).length === 0 && (
+          <p className="checkin-copy">Nothing on {monthNames[parseDate(dateKey(cursor)).getMonth()]} {parseDate(dateKey(cursor)).getDate()}.</p>
+        )}
+      </section>
     </div>
 
     {modalMode && (

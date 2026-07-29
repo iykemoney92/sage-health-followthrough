@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requirePlusAccess } from "@/lib/billing/subscription";
 import { getOrCreateWhatsappLink } from "@/lib/channel-links";
 import { createWhatsappHref } from "@/lib/whatsapp-link";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
@@ -10,6 +11,9 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = await getSupabaseSessionClient();
+  const paywall = await requirePlusAccess(supabase, user.id, "whatsapp");
+  if (paywall) return paywall;
+
   const link = await getOrCreateWhatsappLink(supabase, user.id);
   const code = link.linked ? null : link.code;
   const message = request.nextUrl.searchParams.get("message");

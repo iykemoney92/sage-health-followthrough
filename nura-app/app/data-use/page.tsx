@@ -15,7 +15,7 @@ const sections = [
   },
   {
     title: "Retention and deletion",
-    body: "The intended product model is user-controlled retention: users should be able to export or delete their health memory. For the MVP, this page documents the expected data-use posture for the demo.",
+    body: "Nura uses user-controlled retention: from Me → Data & export you can download a complete copy of your health memory as a single file, or permanently delete your account and all associated data. Both actions take effect immediately and cannot be undone.",
   },
 ];
 

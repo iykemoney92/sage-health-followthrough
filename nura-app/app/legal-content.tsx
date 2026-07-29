@@ -34,7 +34,7 @@ export function LegalPage({
         <span className="auth-kicker">{eyebrow}</span>
         <h1>{title}</h1>
         <p>{intro}</p>
-        <small>Hackathon demo policy. Last updated July 25, 2026.</small>
+        <small>Last updated July 28, 2026.</small>
       </section>
       <section className="legal-body">
         {sections.map((section) => (

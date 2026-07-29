@@ -60,16 +60,8 @@ function MobileStatusBar() {
 function WelcomeArt() {
   return (
     <div className="mobile-welcome-art" aria-hidden="true">
-      <span className="welcome-orbit orbit-one" />
-      <span className="welcome-orbit orbit-two" />
-      <div className="welcome-person">
-        <span className="welcome-head" />
-        <span className="welcome-hair" />
-        <span className="welcome-body" />
-        <span className="welcome-phone" />
-      </div>
-      <span className="welcome-leaf leaf-one" />
-      <span className="welcome-leaf leaf-two" />
+      {/* eslint-disable-next-line @next/next/no-img-element -- static onboarding illustration, no responsive/CDN sizing needed */}
+      <img src="/illustrations/onboarding-welcome.png" alt="" className="welcome-illustration" />
     </div>
   );
 }

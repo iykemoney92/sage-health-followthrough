@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { HeartPulse, MoreHorizontal, Plus, Search } from "lucide-react";
+import { HeartPulse } from "lucide-react";
 import { NuraShell } from "@/components/nura-shell";
+import { ThreadRowMenu } from "@/components/thread-row-menu";
+import { ThreadSearchToolbar } from "@/components/thread-search-toolbar";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
@@ -25,16 +27,29 @@ function timeAgo(dateString: string) {
   return `Last updated ${Math.floor(days / 7)} weeks ago`;
 }
 
-export default async function ThreadsPage() {
+const TABS = ["active", "archived", "all"] as const;
+type Tab = (typeof TABS)[number];
+
+export default async function ThreadsPage({ searchParams }: { searchParams: Promise<{ tab?: string; q?: string; category?: string }> }) {
+  const { tab: rawTab, q, category: categoryFilter } = await searchParams;
+  const tab: Tab = TABS.includes(rawTab as Tab) ? (rawTab as Tab) : "active";
+  const searchTerm = (q ?? "").trim();
+
   const user = await getSessionUser();
   const supabase = await getSupabaseSessionClient();
-  const { data: plans } = user
-    ? await supabase
-        .from("nura_plans")
-        .select("id, title, category, next_step, updated_at")
-        .eq("owner_id", user.id)
-        .order("updated_at", { ascending: false })
-    : { data: null };
+
+  let query = user
+    ? supabase.from("nura_plans").select("id, title, category, next_step, updated_at, status").eq("owner_id", user.id)
+    : null;
+
+  if (query && tab === "active") query = query.neq("status", "archived");
+  if (query && tab === "archived") query = query.eq("status", "archived");
+  if (query && searchTerm) query = query.ilike("title", `%${searchTerm}%`);
+
+  const { data: rawPlans } = query ? await query.order("updated_at", { ascending: false }) : { data: null };
+  const plans = categoryFilter
+    ? rawPlans?.filter((plan) => categoryMeta(plan.category).tone === categoryFilter)
+    : rawPlans;
 
   const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email;
   const avatarUrl = getUserAvatarUrl(user);
@@ -44,39 +59,34 @@ export default async function ThreadsPage() {
       <div className="dashboard-page">
         <div className="library-heading"><div><h1>Threads</h1></div></div>
         <div className="thread-tabs">
-          <button className="active">Active</button>
-          <button>Archived</button>
-          <button>All</button>
+          <Link href="/plans?tab=active" className={tab === "active" ? "active" : ""}>Active</Link>
+          <Link href="/plans?tab=archived" className={tab === "archived" ? "active" : ""}>Archived</Link>
+          <Link href="/plans?tab=all" className={tab === "all" ? "active" : ""}>All</Link>
         </div>
-        <div className="threads-toolbar">
-          <label className="searchbox"><Search /><input placeholder="Search threads" aria-label="Search threads" /></label>
-          <select className="category-select">
-            <option>All categories</option>
-            <option>Wellbeing</option>
-            <option>Health</option>
-            <option>Medication</option>
-          </select>
-          <Link href="/workspace" className="primary-cta"><Plus /> New thread</Link>
-        </div>
+        <ThreadSearchToolbar tab={tab} searchTerm={searchTerm} category={categoryFilter ?? ""} />
         {plans && plans.length > 0 ? (
           <section className="thread-list">
             {plans.map((plan) => {
               const meta = categoryMeta(plan.category);
               return (
-                <Link href={`/plans/${plan.id}`} key={plan.id} className="thread-row">
-                  <span className={`thread-icon ${meta.tone}`}><HeartPulse /></span>
-                  <div>
-                    <span className="thread-row-title-line"><h3>{plan.title}</h3><span className={`tag ${meta.tone}`}>{meta.tag}</span></span>
-                    <p>{timeAgo(plan.updated_at as string)}</p>
-                  </div>
-                  <div className="thread-next"><small>Next follow-up</small><b>{(plan.next_step as string) || "To be scheduled"}</b></div>
-                  <MoreHorizontal className="thread-row-more" />
-                </Link>
+                <div className="thread-row" key={plan.id}>
+                  <Link href={`/plans/${plan.id}`} className="thread-row-link">
+                    <span className={`thread-icon ${meta.tone}`}><HeartPulse /></span>
+                    <div className="thread-row-main">
+                      <span className="thread-row-title-line"><h3>{plan.title}</h3><span className={`tag ${meta.tone}`}>{meta.tag}</span></span>
+                      <p>{timeAgo(plan.updated_at as string)}</p>
+                    </div>
+                    <div className="thread-next"><small>Next follow-up</small><b>{(plan.next_step as string) || "To be scheduled"}</b></div>
+                  </Link>
+                  <ThreadRowMenu planId={plan.id as string} status={(plan.status as string) ?? "active"} />
+                </div>
               );
             })}
           </section>
         ) : (
-          <p className="checkin-copy">No Threads yet. Message Nura to start your first one.</p>
+          <p className="checkin-copy">
+            {tab === "archived" ? "No archived Threads." : "No Threads yet. Message Nura to start your first one."}
+          </p>
         )}
       </div>
     </NuraShell>

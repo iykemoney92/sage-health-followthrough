@@ -70,7 +70,6 @@ export default async function NotificationsPage() {
             <h1>What Nura is bringing back to you.</h1>
             <p>Follow-ups, reminders and useful context—kept intentionally light.</p>
           </div>
-          <button className="secondary-cta">Mark all read</button>
         </div>
         <section className="notification-list">
           {notes.length > 0 ? (

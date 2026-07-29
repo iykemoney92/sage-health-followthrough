@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
+import { ensureTrialStarted } from "@/lib/billing/subscription";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 const requestSchema = z.object({
@@ -102,6 +103,7 @@ export async function POST(request: NextRequest) {
   if (profileError) {
     return NextResponse.json({ ok: false, error: profileError.message }, { status: 500 });
   }
+  await ensureTrialStarted(supabase, user.id);
 
   if (skip) {
     await supabase.auth.updateUser({ data: { onboarding_complete: true } });

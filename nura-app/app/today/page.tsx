@@ -26,6 +26,22 @@ function greeting(hour: number) {
   return "Good evening";
 }
 
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function addDays(date: Date, days: number) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+function startOfWeek(date: Date) {
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  return addDays(date, diff);
+}
+
+function dateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 export default async function TodayPage() {
   const user = await getSessionUser();
   const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email || "there";
@@ -37,14 +53,40 @@ export default async function TodayPage() {
   const whatsappLinkCode = whatsappLink?.linked ? null : whatsappLink?.code ?? null;
   const whatsappHref = user ? createWhatsappHref(whatsappLinkCode) : null;
 
-  const { data: plans } = user
-    ? await supabase
-        .from("nura_plans")
-        .select("id, title, category, current_focus, next_step, updated_at")
-        .eq("owner_id", user.id)
-        .order("updated_at", { ascending: false })
-        .limit(4)
-    : { data: null };
+  const today = new Date();
+  const weekStart = startOfWeek(today);
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const todayKey = dateKey(today);
+
+  const [{ data: plans }, { data: weekCheckIns }] = await Promise.all([
+    user
+      ? supabase
+          .from("nura_plans")
+          .select("id, title, category, current_focus, next_step, updated_at")
+          .eq("owner_id", user.id)
+          .order("updated_at", { ascending: false })
+          .limit(4)
+      : Promise.resolve({ data: null }),
+    user
+      ? supabase
+          .from("nura_check_ins")
+          .select("scheduled_for")
+          .eq("owner_id", user.id)
+          .gte("scheduled_for", weekStart.toISOString())
+          .lt("scheduled_for", addDays(weekStart, 7).toISOString())
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const checkInCountByDay = new Map<string, number>();
+  for (const row of weekCheckIns ?? []) {
+    const key = dateKey(new Date(row.scheduled_for as string));
+    checkInCountByDay.set(key, (checkInCountByDay.get(key) ?? 0) + 1);
+  }
+
+  const weekStrip = weekDays.map((date, i) => {
+    const key = dateKey(date);
+    return { label: WEEKDAY_LABELS[i], day: date.getDate(), count: checkInCountByDay.get(key) ?? 0, isToday: key === todayKey };
+  });
 
   const threads = (plans ?? []).map((plan) => {
     const meta = categoryMeta(plan.category);
@@ -128,8 +170,8 @@ export default async function TodayPage() {
 
             <div className="section-title-row week-title"><h2>This week</h2><Link href="/calendar">View calendar <ChevronRight /></Link></div>
             <div className="week-strip">
-              {[["Mon", "21", "1"], ["Tue", "22", "2"], ["Wed", "23", "1"], ["Thu", "24", "2"], ["Fri", "25", "1"], ["Sat", "26", "0"], ["Sun", "27", "1"]].map(([d, n, c]) => (
-                <div key={d}><small>{d}</small><b>{n}</b><span className={c === "0" ? "empty" : ""}>{c === "0" ? "—" : c}</span></div>
+              {weekStrip.map((d) => (
+                <div key={d.label} className={d.isToday ? "is-today" : ""}><small>{d.label}</small><b>{d.day}</b><span className={d.count === 0 ? "empty" : ""}>{d.count === 0 ? "—" : d.count}</span></div>
               ))}
             </div>
           </section>
@@ -147,7 +189,6 @@ export default async function TodayPage() {
             </article>
           </aside>
         </div>
-        <Link href="/workspace" className="mobile-message-nura"><MessageCircle /> Message Nura</Link>
       </div>
     </NuraShell>
   );

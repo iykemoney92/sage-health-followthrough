@@ -155,7 +155,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
               <CalendarDays />
               <h3>Next review</h3>
               <p>{nextCheckIn ? new Date(nextCheckIn.scheduled_for as string).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "Not yet scheduled"}</p>
-              <button className="secondary-cta full">Add a question</button>
+              <p className="muted" style={{ fontSize: 9 }}>To add your own question for this review, just message Nura about it.</p>
             </article>
           </aside>
         </div>

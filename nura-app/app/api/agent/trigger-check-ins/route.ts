@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSubscriptionAccess } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { placeOutboundCall, isElevenLabsCallingConfigured } from "@/lib/integrations/elevenlabs";
 import { buildVoiceCheckinContext } from "@/lib/domain/voice-checkin-context";
@@ -57,12 +58,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, triggered: [] });
   }
 
+  // Claim these rows atomically before doing anything else. Previously triggered_at was
+  // only set after the outbound call finished, leaving a window where a second overlapping
+  // invocation (an overlapping cron tick, a retry) could select the same still-unclaimed
+  // check-ins and place a duplicate call. The `.is("triggered_at", null)` condition means
+  // only rows nobody has claimed yet actually get updated - `.select()` returns exactly
+  // those, so anything already claimed by a concurrent run is dropped from this run.
+  const { data: claimed, error: claimError } = await supabase
+    .from("nura_check_ins")
+    .update({ triggered_at: nowIso, call_status: "processing" })
+    .in("id", (dueCheckIns as DueCheckIn[]).map((c) => c.id))
+    .is("triggered_at", null)
+    .select("id");
+
+  if (claimError) {
+    return NextResponse.json({ ok: false, error: claimError.message }, { status: 500 });
+  }
+
+  const claimedIds = new Set((claimed ?? []).map((row) => row.id as string));
+  const claimedCheckIns = (dueCheckIns as DueCheckIn[]).filter((c) => claimedIds.has(c.id));
+  if (claimedCheckIns.length === 0) {
+    return NextResponse.json({ ok: true, triggered: [] });
+  }
+
   // Resolve a call-target phone per check-in: the check-in's own contact_phone
   // (captured directly from whoever messaged, e.g. via WhatsApp) if present,
   // otherwise the owning account's actively linked WhatsApp number.
   const ownersNeedingLookup = Array.from(
     new Set(
-      (dueCheckIns as DueCheckIn[])
+      claimedCheckIns
         .filter((c) => !c.contact_phone)
         .map((c) => c.owner_id),
     ),
@@ -80,18 +104,28 @@ export async function POST(request: NextRequest) {
     supabase
       .from("nura_profiles")
       .select("id, display_name, phone")
-      .in("id", Array.from(new Set((dueCheckIns as DueCheckIn[]).map((c) => c.owner_id)))),
+      .in("id", Array.from(new Set(claimedCheckIns.map((c) => c.owner_id)))),
   ]);
 
   const linkedPhoneByOwner = new Map((links ?? []).map((l) => [l.owner_id, l.channel_identifier as string]));
   const nameByOwner = new Map((profiles ?? []).map((p) => [p.id, (p.display_name as string | null) ?? ""]));
   const profilePhoneByOwner = new Map((profiles ?? []).map((p) => [p.id, (p.phone as string | null) ?? ""]));
+  const plusByOwner = new Map<string, boolean>();
+  await Promise.all(Array.from(new Set(claimedCheckIns.map((c) => c.owner_id))).map(async (ownerId) => {
+    plusByOwner.set(ownerId, (await getSubscriptionAccess(supabase, ownerId)).hasPlus);
+  }));
 
   const results: Record<string, unknown>[] = [];
   const noPhoneCheckInIds: string[] = [];
+  const gatedCheckInIds: string[] = [];
   const phoneGroups = new Map<string, DueCheckIn[]>();
 
-  for (const checkIn of dueCheckIns as DueCheckIn[]) {
+  for (const checkIn of claimedCheckIns) {
+    if (!plusByOwner.get(checkIn.owner_id)) {
+      gatedCheckInIds.push(checkIn.id);
+      continue;
+    }
+
     // Prefer a phone captured directly on the check-in (e.g. via WhatsApp), then an
     // active WhatsApp link, then the phone number the user gave us at onboarding/in
     // Settings - this last tier is what lets in-app-only accounts still get real calls.
@@ -113,6 +147,16 @@ export async function POST(request: NextRequest) {
       .in("id", noPhoneCheckInIds);
     for (const id of noPhoneCheckInIds) {
       results.push({ checkInId: id, status: "skipped_no_phone" });
+    }
+  }
+
+  if (gatedCheckInIds.length > 0) {
+    await supabase
+      .from("nura_check_ins")
+      .update({ triggered_at: nowIso, call_status: "skipped_plus_required" })
+      .in("id", gatedCheckInIds);
+    for (const id of gatedCheckInIds) {
+      results.push({ checkInId: id, status: "skipped_plus_required" });
     }
   }
 

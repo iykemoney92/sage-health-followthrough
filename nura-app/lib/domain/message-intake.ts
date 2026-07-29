@@ -1,10 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export type CheckInRecurrence = "none" | "daily" | "weekdays" | "weekly";
+
 export type NextCheckIn = {
   when: string;
   prompt: string;
   channel: "voice" | "whatsapp" | "in_app";
+  recurrence?: CheckInRecurrence;
 };
 
 export type NuraDecision = {
@@ -18,7 +21,7 @@ export type NuraDecision = {
 export type PlanSummary = { id: string; title: string; current_focus: string | null };
 export type PlanContext = { plan_id: string; title: string; summary: string; kind: string };
 export type MissedCheckIn = { plan_title: string; prompt: string; scheduled_for: string; reason: string };
-export type MessageAttachment = { name: string; type: string; kind: "image" | "audio" | "document" | "file"; text?: string };
+export type MessageAttachment = { name: string; type: string; kind: "image" | "audio" | "document" | "file"; text?: string; base64?: string };
 export type HistoryTurn = { role: "user" | "assistant"; content: string };
 
 const PHONE_PATTERN = /(\+?\d[\d\s\-().]{6,}\d)/;
@@ -77,6 +80,7 @@ function isValidNextCheckIn(value: unknown): value is NextCheckIn {
   if (typeof candidate.when !== "string" || typeof candidate.prompt !== "string") return false;
   const when = new Date(candidate.when);
   if (Number.isNaN(when.getTime())) return false;
+  if (candidate.recurrence !== undefined && !["none", "daily", "weekdays", "weekly"].includes(candidate.recurrence as string)) return false;
   return candidate.channel === "voice" || candidate.channel === "whatsapp" || candidate.channel === "in_app" || candidate.channel === undefined;
 }
 
@@ -88,6 +92,7 @@ async function classifyWithClaude(
   history: HistoryTurn[],
   phoneOnFile: string | null,
   missed: MissedCheckIn[] = [],
+  attachmentBlocks: Anthropic.ContentBlockParam[] = [],
 ): Promise<NuraDecision> {
   const hasPhoneOnFile = Boolean(phoneOnFile);
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -101,7 +106,7 @@ async function classifyWithClaude(
     const nowIso = new Date().toISOString();
     const message = await client.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 500,
+      max_tokens: 1024,
       system:
         "You are Nura, a warm AI health and wellbeing companion. You are not a doctor or therapist: you never diagnose, prescribe, or give medical advice. " +
         "What you do is closer to a caring intake conversation - you listen, ask thoughtful follow-up questions to actually understand what's going on, and help someone organise what they're dealing with into a 'Thread' (also called a Plan) that you help them stay on top of over time. " +
@@ -109,6 +114,7 @@ async function classifyWithClaude(
         "\n\nOnce you do understand it, decide whether this belongs to one of the user's existing Threads (by id), should start a brand new Thread, or still needs no Thread yet (small talk, or you're still asking questions). " +
         "\n\nWhen you create a NEW Thread (action = new_plan), that Thread should almost always come with a proposed follow-up - a plan to help with something isn't really a plan without one. Decide the cadence yourself even if the user never asked for a check-in: a single stressful shift might warrant checking in a couple of days later; a new medication might warrant checking in around the timing the user described; an ongoing pattern like poor sleep might warrant checking in a week out. This does not default to 'tomorrow'. Say what you've decided in your reply (e.g. 'I'll check back in with you in a few days about this') so it doesn't feel like a silent background action. Be proactive, not just reactive: if that follow-up is more than a few hours away, also offer in the same reply to check in sooner if they'd like - e.g. 'Want me to check in with you in a couple of minutes instead, or is that timing fine?' - so the user always has the option of an immediate check-in, not only a future one. " +
         "\n\nWhen you attach to an EXISTING Thread instead, only set a fresh next_check_in if something actually changed enough to warrant re-scheduling (new detail, explicit request, or the situation clearly shifted) - otherwise leave it null and let the existing schedule stand. Something the user explicitly asked about ('call me in 5 minutes', 'check in next Tuesday', 'check in on me from time to time') must always be honoured, overriding any existing schedule. The current date/time is " + nowIso + " - compute next_check_in.when as a real ISO 8601 datetime relative to that. " +
+        "\n\nIMPORTANT - recurring vs one-off: next_check_in only ever represents a SINGLE point in time by itself, so if the user asks for an ONGOING or REPEATING pattern you MUST also set next_check_in.recurrence, not just pick one date. Phrases like 'check in on me daily', 'remind me every day to take my meds', 'check in each morning', 'check in on weekdays', or 'check in with me weekly' describe a repeating cadence - set recurrence to \"daily\", \"weekdays\", or \"weekly\" accordingly, and set next_check_in.when to the FIRST occurrence only (pick a sensible time of day for the purpose - e.g. morning for a medication reminder - unless the user specifies a time). The system will automatically lay down the full recurring series from that first occurrence; you never need to schedule each one yourself. For a normal single follow-up (the common case), leave recurrence as \"none\". Setting up a recurring reminder REPLACES any previous schedule for that Thread, so say clearly in your reply what the new pattern is (e.g. 'I'll check in with you every morning at 9am about your medication') rather than only confirming a single date. " +
         "\n\nNura CAN place a real proactive phone check-in call (voice), or follow up on WhatsApp or in-app - never say you are unable to call or check in. " +
         "\n\n" + (hasPhoneOnFile
           ? `The user's phone number on file is +${phoneOnFile}. When you confirm a voice check-in call, briefly state that exact number (e.g. "I'll call you on +${phoneOnFile}") so they can correct it if it's wrong - don't just silently assume it's still right without saying it.`
@@ -169,11 +175,16 @@ async function classifyWithClaude(
                 type: "object",
                 description: "Only meaningful when has_next_check_in is true; otherwise pass empty/placeholder values.",
                 properties: {
-                  when: { type: "string", description: "Real ISO 8601 datetime, computed relative to the current date/time given above." },
+                  when: { type: "string", description: "Real ISO 8601 datetime of the FIRST occurrence, computed relative to the current date/time given above." },
                   prompt: { type: "string", description: "What Nura should specifically ask about at that check-in." },
                   channel: { type: "string", enum: ["voice", "whatsapp", "in_app"] },
+                  recurrence: {
+                    type: "string",
+                    enum: ["none", "daily", "weekdays", "weekly"],
+                    description: "\"none\" for a normal single follow-up. Set to \"daily\", \"weekdays\", or \"weekly\" ONLY when the user explicitly asked for a repeating/ongoing check-in pattern (e.g. 'check in on me daily', 'remind me every day', 'check in each weekday', 'weekly check-ins').",
+                  },
                 },
-                required: ["when", "prompt", "channel"],
+                required: ["when", "prompt", "channel", "recurrence"],
               },
             },
             required: ["reply", "action", "plan_id", "new_plan", "has_next_check_in", "next_check_in"],
@@ -183,7 +194,10 @@ async function classifyWithClaude(
       tool_choice: { type: "tool", name: "decide" },
       messages: [
         ...history.map((turn) => ({ role: turn.role, content: turn.content })),
-        { role: "user" as const, content },
+        {
+          role: "user" as const,
+          content: attachmentBlocks.length > 0 ? [{ type: "text" as const, text: content }, ...attachmentBlocks] : content,
+        },
       ],
     });
 
@@ -199,7 +213,7 @@ async function classifyWithClaude(
       plan_id: string;
       new_plan: { title: string; why_this_exists: string; current_focus: string; next_step: string };
       has_next_check_in: boolean;
-      next_check_in: { when: string; prompt: string; channel: string };
+      next_check_in: { when: string; prompt: string; channel: string; recurrence?: string };
     };
 
     if (!raw.reply || !raw.action) {
@@ -207,6 +221,14 @@ async function classifyWithClaude(
       return fallback;
     }
 
+    if (raw.has_next_check_in && !isValidNextCheckIn(raw.next_check_in)) {
+      console.error(
+        "[classifyWithClaude] has_next_check_in=true but failed validation; stop_reason:",
+        message.stop_reason,
+        "raw.next_check_in:",
+        JSON.stringify(raw.next_check_in),
+      );
+    }
     let nextCheckIn = raw.has_next_check_in && isValidNextCheckIn(raw.next_check_in)
       ? { ...raw.next_check_in, channel: (raw.next_check_in.channel || "voice") as NextCheckIn["channel"] }
       : null;
@@ -237,6 +259,7 @@ export async function resolveDecision(
   history: HistoryTurn[] = [],
   phoneOnFile: string | null = null,
   missed: MissedCheckIn[] = [],
+  attachmentBlocks: Anthropic.ContentBlockParam[] = [],
 ): Promise<NuraDecision> {
   if (requestedPlan) {
     return {
@@ -252,7 +275,7 @@ export async function resolveDecision(
     ? { reply: FALLBACK_REPLY, action: "existing_plan", plan_id: plans[0].id, new_plan: null, next_check_in: null }
     : FALLBACK_NEW_PLAN;
 
-  return withTimeout(classifyWithClaude(content, plans, attachments, contexts, history, phoneOnFile, missed), fallback);
+  return withTimeout(classifyWithClaude(content, plans, attachments, contexts, history, phoneOnFile, missed, attachmentBlocks), fallback);
 }
 
 export async function applyPlanDecision(
@@ -319,45 +342,72 @@ async function avoidSameDayCollision(
   return candidate;
 }
 
+function generateRecurringOccurrences(start: Date, recurrence: "daily" | "weekdays" | "weekly"): Date[] {
+  const occurrences: Date[] = [];
+  const cursor = new Date(start);
+
+  if (recurrence === "daily") {
+    for (let i = 0; i < 30; i++) {
+      occurrences.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  } else if (recurrence === "weekdays") {
+    while (occurrences.length < 22) {
+      const day = cursor.getDay();
+      if (day !== 0 && day !== 6) occurrences.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  } else {
+    for (let i = 0; i < 8; i++) {
+      occurrences.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 7);
+    }
+  }
+
+  return occurrences;
+}
+
 export async function applyNextCheckIn(
   supabase: SupabaseClient,
   ownerId: string,
   planId: string,
   nextCheckIn: NextCheckIn,
 ) {
-  const when = await avoidSameDayCollision(supabase, ownerId, planId, new Date(nextCheckIn.when));
+  if (nextCheckIn.recurrence && nextCheckIn.recurrence !== "none") {
+    // A recurring ask replaces whatever was previously scheduled for this Thread -
+    // clear any open check-ins (single or from an earlier series) before laying the new one down.
+    await supabase.from("nura_check_ins").delete().eq("owner_id", ownerId).eq("plan_id", planId).is("completed_at", null);
 
-  const { data: openCheckIn } = await supabase
-    .from("nura_check_ins")
-    .select("id")
-    .eq("owner_id", ownerId)
-    .eq("plan_id", planId)
-    .is("completed_at", null)
-    .limit(1)
-    .maybeSingle();
-
-  if (openCheckIn) {
-    await supabase
-      .from("nura_check_ins")
-      .update({
-        prompt: nextCheckIn.prompt,
-        scheduled_for: when.toISOString(),
-        channel: nextCheckIn.channel,
-        triggered_at: null,
-        call_status: null,
-        call_error: null,
-      })
-      .eq("id", openCheckIn.id)
-      .eq("owner_id", ownerId);
-  } else {
-    await supabase.from("nura_check_ins").insert({
+    const occurrences = generateRecurringOccurrences(new Date(nextCheckIn.when), nextCheckIn.recurrence);
+    const rows = occurrences.map((date) => ({
       owner_id: ownerId,
       plan_id: planId,
       channel: nextCheckIn.channel,
       prompt: nextCheckIn.prompt,
-      scheduled_for: when.toISOString(),
-    });
+      scheduled_for: date.toISOString(),
+      recurrence: nextCheckIn.recurrence,
+    }));
+
+    if (rows.length > 0) {
+      await supabase.from("nura_check_ins").insert(rows);
+    }
+    return;
   }
+
+  const when = await avoidSameDayCollision(supabase, ownerId, planId, new Date(nextCheckIn.when));
+
+  // Clear any previously open check-ins for this Thread - including leftover rows from an
+  // earlier recurring series - so a one-off reschedule doesn't leave orphaned future occurrences.
+  await supabase.from("nura_check_ins").delete().eq("owner_id", ownerId).eq("plan_id", planId).is("completed_at", null);
+
+  await supabase.from("nura_check_ins").insert({
+    owner_id: ownerId,
+    plan_id: planId,
+    channel: nextCheckIn.channel,
+    prompt: nextCheckIn.prompt,
+    scheduled_for: when.toISOString(),
+    recurrence: null,
+  });
 }
 
 export async function insertConversationTurn(

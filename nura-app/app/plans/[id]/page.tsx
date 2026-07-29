@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CheckCircle2, FileText, MessageCircle, MoreHorizontal, UploadCloud } from "lucide-react";
+import { CheckCircle2, FileText, MessageCircle, MoreHorizontal, Pin, UploadCloud } from "lucide-react";
 import { NuraShell } from "@/components/nura-shell";
 import { RescheduleButton } from "@/components/nura-actions";
+import { PlanJourney } from "@/components/plan-journey";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { ensureJourney } from "@/lib/domain/plan-journey";
 
 const CATEGORY_META: Record<string, { tag: string; tone: string }> = {
   mental_wellbeing: { tag: "Wellbeing", tone: "wellbeing" },
@@ -32,16 +34,24 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
     : { data: null };
 
   if (!plan) notFound();
+  const ownerId = user!.id;
   const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email || "You";
   const avatarUrl = getUserAvatarUrl(user);
 
-  const [{ data: observations }, { data: nextCheckIn }, { data: sourceContexts }, { data: messages }, { count: totalCheckIns }, { count: completedCheckIns }] = await Promise.all([
+  const [{ data: observations }, { data: nextCheckIn }, { data: sourceContexts }, { data: messages }, { count: totalCheckIns }, { count: completedCheckIns }, journey] = await Promise.all([
     supabase.from("nura_observations").select("id, label, value, recorded_at").eq("plan_id", id).order("recorded_at", { ascending: false }).limit(6),
     supabase.from("nura_check_ins").select("id, scheduled_for, channel").eq("plan_id", id).is("completed_at", null).order("scheduled_for", { ascending: true }).limit(1).maybeSingle(),
     supabase.from("nura_source_contexts").select("id, title, created_at").eq("plan_id", id).order("created_at", { ascending: false }).limit(3),
     supabase.from("nura_messages").select("id").eq("plan_id", id).limit(1),
     supabase.from("nura_check_ins").select("id", { count: "exact", head: true }).eq("plan_id", id),
     supabase.from("nura_check_ins").select("id", { count: "exact", head: true }).eq("plan_id", id).not("completed_at", "is", null),
+    ensureJourney(supabase, ownerId, {
+      id: plan.id as string,
+      title: plan.title as string,
+      why_this_exists: plan.why_this_exists as string,
+      current_focus: plan.current_focus as string,
+      next_step: plan.next_step as string,
+    }),
   ]);
 
   const meta = categoryMeta(plan.category as string);
@@ -67,17 +77,19 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
         </div>
         <div className="thread-detail">
           <section className="detail-stack">
-            <article className="detail-card">
-              <h3>Summary</h3>
+            <article className="detail-card pinned-note">
+              <span className="pinned-note-pin" aria-hidden="true"><Pin /></span>
+              <h3>Pinned note</h3>
               <p>{(plan.why_this_exists as string) || (plan.current_focus as string) || "Nura is keeping track of this Thread."}</p>
-              {total > 0 && (
-                <>
-                  <h3 className="progress-heading">Progress</h3>
-                  <div className="progress-row"><b>{completed} of {total} check-ins</b><span>{pct}%</span></div>
-                  <div className="progress-track"><span style={{ width: `${pct}%` }} /></div>
-                </>
-              )}
             </article>
+            {total > 0 && (
+              <article className="detail-card">
+                <h3>Progress</h3>
+                <div className="progress-row"><b>{completed} of {total} check-ins</b><span>{pct}%</span></div>
+                <div className="progress-track"><span style={{ width: `${pct}%` }} /></div>
+              </article>
+            )}
+            <PlanJourney planId={plan.id as string} milestones={journey} />
             <article className="detail-card">
               <h3>Recent updates</h3>
               {observations && observations.length > 0 ? (
@@ -104,7 +116,7 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
               ) : (
                 <p className="checkin-copy">No files, notes or media shared yet.</p>
               )}
-              <button className="upload-note-row"><UploadCloud /><span><b>Share context</b><small>Images, voice, documents or notes</small></span></button>
+              <Link href={`/workspace?planId=${plan.id}`} className="upload-note-row"><UploadCloud /><span><b>Share context</b><small>Images, voice, documents or notes</small></span></Link>
             </article>
           </section>
           <aside className="detail-stack">

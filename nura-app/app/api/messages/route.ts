@@ -1,9 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
+import { enforceThreadLimit } from "@/lib/billing/subscription";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { resolveDecision, applyPlanDecision, applyNextCheckIn, insertConversationTurn, extractPhoneNumber, type PlanContext, type HistoryTurn, type MissedCheckIn } from "@/lib/domain/message-intake";
+import { processAttachments } from "@/lib/ai/attachments";
+import { evaluateAndAdvanceJourney } from "@/lib/domain/plan-journey";
+import { checkRateLimit, rateLimitedResponse } from "@/lib/rate-limit";
 
 const MISSED_STATUSES = ["missed_stale", "missed_consolidated", "failed"];
+const MAX_ATTACHMENT_BASE64_CHARS = 6_000_000; // ~4.5MB raw per file, base64-encoded
 
 const requestSchema = z.object({
   content: z.string().min(1),
@@ -13,6 +18,7 @@ const requestSchema = z.object({
     type: z.string().default("application/octet-stream"),
     kind: z.enum(["image", "audio", "document", "file"]).default("file"),
     text: z.string().optional().default(""),
+    base64: z.string().max(MAX_ATTACHMENT_BASE64_CHARS).optional(),
   })).optional().default([]),
 });
 
@@ -70,9 +76,14 @@ export async function POST(request: NextRequest) {
   const { content, attachments, planId: requestedPlanId } = parsed.data;
   const supabase = await getSupabaseSessionClient();
 
+  const rateLimit = await checkRateLimit(supabase, user.id, "messages", 20, 300);
+  if (rateLimit.limited) {
+    return rateLimitedResponse(rateLimit.retryAfterSeconds);
+  }
+
   const { data: plans, error: plansError } = await supabase
     .from("nura_plans")
-    .select("id, title, current_focus")
+    .select("id, title, current_focus, why_this_exists, next_step")
     .eq("owner_id", user.id)
     .order("updated_at", { ascending: false })
     .limit(10);
@@ -137,7 +148,10 @@ export async function POST(request: NextRequest) {
   }));
 
   const requestedPlan = requestedPlanId ? plans?.find((plan) => plan.id === requestedPlanId) ?? null : null;
-  const decision = await resolveDecision(content, plans ?? [], attachments as MessageAttachment[], (contexts ?? []) as PlanContext[], requestedPlan, history, phoneOnFile, missed);
+  const { attachments: sanitizedAttachments, blocks: attachmentBlocks } = await processAttachments(attachments as MessageAttachment[]);
+  const decision = await resolveDecision(content, plans ?? [], sanitizedAttachments, (contexts ?? []) as PlanContext[], requestedPlan, history, phoneOnFile, missed, attachmentBlocks);
+  const threadLimit = await enforceThreadLimit(supabase, user.id, plans?.length ?? 0, decision.action === "new_plan");
+  if (threadLimit) return threadLimit;
 
   const { planId, planTitle, error: planError } = await applyPlanDecision(supabase, user.id, decision, plans ?? []);
   if (planError) {
@@ -150,8 +164,8 @@ export async function POST(request: NextRequest) {
   }
 
   if (planId) {
-    if (attachments.length > 0) {
-      await supabase.from("nura_source_contexts").insert(attachments.map((file) => ({
+    if (sanitizedAttachments.length > 0) {
+      await supabase.from("nura_source_contexts").insert(sanitizedAttachments.map((file) => ({
         owner_id: user.id,
         plan_id: planId,
         kind: file.kind === "image" ? "document_upload" : file.kind === "audio" ? "conversation" : "document_upload",
@@ -165,6 +179,12 @@ export async function POST(request: NextRequest) {
 
     if (decision.next_check_in) {
       await applyNextCheckIn(supabase, user.id, planId, decision.next_check_in);
+    }
+
+    const planForJourney = plans?.find((plan) => plan.id === planId);
+    if (planForJourney) {
+      // Runs after the response is sent - journey bookkeeping should never delay the visible chat reply.
+      after(() => evaluateAndAdvanceJourney(supabase, user.id, planForJourney as never, content, decision.reply));
     }
 
     const { error: updateError } = await supabase

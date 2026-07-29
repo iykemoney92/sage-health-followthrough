@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Bell, CalendarDays, ChevronDown, Home, MessageCircle, Search, Settings, UserRound } from "lucide-react";
 import { NuraLogo } from "@/components/nura-logo";
 import { SignOutButton } from "@/components/sign-out-button";
+import { CalendarNavBadge } from "@/components/calendar-nav-badge";
 
 const nav = [
   ["Today", "/today", Home],
@@ -40,7 +41,12 @@ export function NuraShell({
         <nav>
           {nav.map(([label, href, Icon]) => {
             const active = pathname.startsWith(href);
-            return <Link key={href} href={href} className={active ? "active" : ""}><Icon/><span>{label}</span></Link>;
+            return (
+              <Link key={href} href={href} className={active ? "active" : ""}>
+                <span className="nav-icon-wrap"><Icon/>{href === "/calendar" && <CalendarNavBadge />}</span>
+                <span>{label}</span>
+              </Link>
+            );
           })}
         </nav>
         <Link href="/workspace" className="message-nura"><MessageCircle/> Message Nura</Link>
@@ -69,7 +75,12 @@ export function NuraShell({
       </section>
 
       <nav className="mobile-nav">
-        {nav.map(([label, href, Icon]) => <Link key={href} href={href} className={pathname.startsWith(href) ? "active" : ""}><Icon/><span>{label}</span></Link>)}
+        {nav.map(([label, href, Icon]) => (
+          <Link key={href} href={href} className={pathname.startsWith(href) ? "active" : ""}>
+            <span className="nav-icon-wrap"><Icon/>{href === "/calendar" && <CalendarNavBadge />}</span>
+            <span>{label}</span>
+          </Link>
+        ))}
       </nav>
     </main>
   );

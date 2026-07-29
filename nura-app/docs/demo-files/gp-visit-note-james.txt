@@ -1,0 +1,50 @@
+Fictional GP after-visit summary for Nura demo/testing use only. No real patient.
+
+RIVERSIDE MEDICAL PRACTICE
+14 Elm Grove, London N4 2QT
+Tel: 020 7946 0958
+
+AFTER YOUR APPOINTMENT
+
+Patient: James Okafor
+Date of birth: 03 May 1979
+Date of appointment: 24 July 2026
+Clinician: Dr. A. Whitfield, GP
+
+Reason for visit:
+Review following recent diagnosis of high blood pressure. New medication started.
+
+What we discussed:
+Your blood pressure has been consistently raised over the last two home readings
+(average 148/94 mmHg). We discussed lifestyle factors and agreed to start you on
+a low dose of Amlodipine to help bring this down, alongside the changes below.
+
+Medication started today:
+- Amlodipine 5mg, once daily, in the morning
+- Common side effects can include mild swelling in the ankles, flushing, and
+  light-headedness or dizziness, especially in the first 1-2 weeks as your body
+  adjusts. This usually settles - let us know if it doesn't.
+
+Advice given:
+- Reduce added salt in cooking and avoid adding salt at the table
+- Continue home blood pressure monitoring twice a week, same time of day
+- Limit alcohol to no more than 14 units per week
+- Aim for 150 minutes of moderate activity per week (e.g. brisk walking)
+- Stand up slowly, especially in the mornings, while your body adjusts to the
+  new medication
+
+When to seek urgent help:
+- Severe headache, chest pain, sudden vision changes, slurred speech, or
+  weakness down one side - call 999
+- Fainting, severe dizziness that doesn't improve, or a very fast/irregular
+  heartbeat - contact us urgently or call 111
+
+Next steps / follow-up:
+- Repeat blood pressure check and routine bloods in 4 weeks (please book at
+  reception or online)
+- Continue home readings and bring your log to the next appointment
+- If dizziness is significant or not improving after 2 weeks, contact the
+  surgery - the dose may need adjusting
+
+This letter is a summary only and does not replace the advice given in your
+appointment. Please contact the surgery if anything here is unclear.

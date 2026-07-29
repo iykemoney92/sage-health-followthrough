@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { enforceThreadLimit, requirePlusAccess } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 
 const requestSchema = z.object({
@@ -38,10 +39,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Supabase is not configured" }, { status: 503 });
   }
 
+  // Resolve the real caller by phone instead of falling back to a shared demo account -
+  // every inbound call used to silently write into the same fixed owner regardless of who called.
+  let effectiveOwnerId = ownerId ?? null;
+  if (!effectiveOwnerId && callerPhone) {
+    const { data: matchedProfile } = await supabase
+      .from("nura_profiles")
+      .select("id")
+      .eq("phone", callerPhone)
+      .maybeSingle();
+    effectiveOwnerId = (matchedProfile?.id as string | undefined) ?? null;
+  }
+  if (!effectiveOwnerId && !requestedPlanId) {
+    return NextResponse.json({ ok: false, error: "Could not identify the caller - no matching account for this phone number." }, { status: 404 });
+  }
+
   const planQuery = supabase.from("nura_plans").select("id, title, owner_id");
   const { data: plan, error: planError } = requestedPlanId
     ? await planQuery.eq("id", requestedPlanId).maybeSingle()
-    : await planQuery.eq("owner_id", ownerId ?? DEMO_OWNER_ID).ilike("title", planTitle!).maybeSingle();
+    : await planQuery.eq("owner_id", effectiveOwnerId!).ilike("title", planTitle!).maybeSingle();
 
   if (planError) {
     return NextResponse.json({ ok: false, error: planError.message }, { status: 500 });
@@ -53,9 +69,21 @@ export async function POST(request: NextRequest) {
 
   let planId = plan?.id as string | undefined;
   let resolvedTitle = plan?.title ?? planTitle!;
-  const resolvedOwnerId = (plan?.owner_id as string | undefined) ?? ownerId ?? DEMO_OWNER_ID;
+  const resolvedOwnerId = (plan?.owner_id as string | undefined) ?? effectiveOwnerId;
+  if (!resolvedOwnerId) {
+    return NextResponse.json({ ok: false, error: "Could not identify the caller for this Thread." }, { status: 404 });
+  }
+  const paywall = await requirePlusAccess(supabase, resolvedOwnerId, channel === "voice" ? "voice" : "whatsapp");
+  if (paywall) return paywall;
 
   if (!planId) {
+    const { count } = await supabase
+      .from("nura_plans")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_id", resolvedOwnerId);
+    const threadLimit = await enforceThreadLimit(supabase, resolvedOwnerId, count ?? 0, true);
+    if (threadLimit) return threadLimit;
+
     const { data: created, error: createError } = await supabase
       .from("nura_plans")
       .insert({

@@ -1,0 +1,545 @@
+/* ============================================================
+   Nura design refresh - one authoritative layer for consistency.
+   Loaded last, so it reliably wins over the older per-page rules
+   scattered across the other stylesheets. Keeps brand exactly as
+   is (green/cream palette, Georgia serif headings, leaf mark) -
+   this only unifies spacing, radius, shadow, and proportion.
+   ============================================================ */
+
+:root {
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 2px 8px rgba(24, 49, 41, 0.05);
+  --shadow-md: 0 8px 24px rgba(24, 49, 41, 0.07);
+  --shadow-lg: 0 20px 48px rgba(24, 49, 41, 0.10);
+  --space-1: 6px;
+  --space-2: 10px;
+  --space-3: 16px;
+  --space-4: 22px;
+  --space-5: 32px;
+}
+
+/* ---------- Danger-zone modal (account deletion) ---------- */
+.modal-icon.danger {
+  background: #fbeceb;
+  color: #c0453a;
+}
+
+.nura-modal input {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  outline: 0;
+  background: #fff;
+  font-size: 14px;
+}
+
+.nura-modal .danger-button {
+  min-height: 43px;
+  padding: 0 17px;
+}
+
+/* ---------- Native form controls: match brand instead of default browser blue ---------- */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--green);
+}
+
+/* ---------- Cards & panels: one consistent language everywhere ---------- */
+.detail-card,
+.ui-card,
+.thread-card,
+.rail-card,
+.profile-card,
+.channel-card,
+.hero-card,
+.hero-checkin,
+.settings-panels section,
+.month-calendar-card,
+.week-calendar-card,
+.calendar-detail,
+.product-detail-panel,
+.onboarding-card,
+.between-card {
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.thread-row,
+.calendar-item,
+.month-day,
+.mobile-month-day {
+  border-radius: var(--radius-md) !important;
+}
+
+button:not(.thread-row-more-btn):not(.modal-close):not(.icon-only-btn):not(.calendar-item),
+.primary-cta,
+.secondary-cta,
+a.primary-cta,
+a.secondary-cta {
+  border-radius: var(--radius-pill) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.primary-cta {
+  box-shadow: var(--shadow-sm);
+}
+
+.primary-cta:active,
+.secondary-cta:active {
+  transform: scale(0.97);
+}
+
+/* ---------- Calendar agenda rows: white cards with a colored left accent
+   instead of a full pastel fill, matching the rest of the card system. ---------- */
+.calendar-events {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.calendar-item {
+  position: relative;
+  background: #fff !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-sm);
+  padding-left: 14px !important;
+  overflow: hidden;
+}
+
+.calendar-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #7d92c4;
+}
+
+.calendar-item.health::before { background: #5578a2; }
+.calendar-item.medication::before { background: #c9932f; }
+.calendar-item.appointment::before { background: #7d6bc4; }
+.calendar-item.document::before { background: #b76a4e; }
+.calendar-item.wellbeing::before,
+.calendar-item.sleep::before,
+.calendar-item.stress::before { background: #548a7a; }
+
+.calendar-item > span {
+  background: #f6f6f1 !important;
+}
+
+.calendar-item.selected {
+  border-color: #3f7b57 !important;
+  box-shadow: var(--shadow-md);
+}
+
+.calendar-events {
+  gap: 10px !important;
+}
+
+/* ---------- Calendar event detail panel: still had the pre-readability-pass
+   7-9px text and cramped button spacing, so it read as broken/overlapping
+   next to the rest of the redesigned app. ---------- */
+.product-detail-panel {
+  padding: 20px !important;
+  margin-bottom: 20px !important;
+}
+
+.detail-panel-head button {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  display: grid;
+  place-items: center;
+}
+
+.detail-panel-head button:hover {
+  background: #f4f4ef;
+}
+
+.calendar-detail .detail-eyebrow {
+  font-size: 11px !important;
+  margin-top: 14px;
+}
+
+.product-detail-panel h2 {
+  font-size: 22px !important;
+  line-height: 1.25 !important;
+  margin: 8px 0 12px !important;
+}
+
+.detail-meta-row {
+  padding: 14px 0 !important;
+  gap: 12px !important;
+}
+
+.detail-meta-row svg {
+  width: 18px !important;
+  margin-top: 2px;
+}
+
+.detail-meta-row b {
+  font-size: 14px !important;
+}
+
+.detail-meta-row small {
+  font-size: 12px !important;
+  margin-top: 4px !important;
+  line-height: 1.5 !important;
+}
+
+.detail-notes {
+  padding-top: 16px !important;
+}
+
+.detail-notes b {
+  font-size: 12px !important;
+  color: #8a938e;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.detail-notes p {
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+  margin-top: 6px !important;
+}
+
+.detail-actions {
+  gap: 10px !important;
+  margin-top: 24px !important;
+}
+
+.danger-button {
+  min-height: 46px !important;
+  font-size: 13px !important;
+  border-radius: var(--radius-pill) !important;
+}
+
+.detail-close {
+  margin-top: 16px !important;
+  padding: 12px 0 !important;
+  font-size: 13px !important;
+  text-align: center;
+}
+
+/* ---------- New/edit event modal: labels were stuck at the old 9px scale
+   while the fields next to them read at 16px, so the form felt unbalanced. ---------- */
+.calendar-edit-modal label {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: #4a544d;
+}
+
+.calendar-edit-modal h2 {
+  font-size: 26px !important;
+}
+
+/* ---------- Threads tab bar: stuck at the old 8px scale, looked shrunk
+   next to everything else. ---------- */
+.thread-tabs {
+  padding: 4px !important;
+  width: 100% !important;
+}
+
+.thread-tabs button {
+  flex: 1;
+  padding: 12px 18px !important;
+  font-size: 13px !important;
+  min-height: 44px;
+}
+
+/* ---------- Onboarding welcome illustration ---------- */
+.mobile-welcome-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible !important;
+}
+
+.welcome-illustration {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 16px 32px rgba(24, 49, 41, 0.12));
+}
+
+@media (min-width: 761px) {
+  .welcome-illustration {
+    max-width: 480px;
+  }
+}
+
+/* ---------- Today page week strip: highlight the current day ---------- */
+.week-strip .is-today {
+  background: #eef4ec;
+}
+
+.week-strip .is-today b {
+  color: #3f7b57;
+}
+
+/* ---------- Cookie notice ---------- */
+.cookie-notice {
+  position: fixed;
+  left: 20px;
+  right: 20px;
+  bottom: 20px;
+  z-index: 200;
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  background: #1f2a22;
+  color: #f3f1e8;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.cookie-notice p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #f3f1e8;
+}
+
+.cookie-notice a {
+  color: #a9d3ad;
+  text-decoration: underline;
+}
+
+.cookie-notice .secondary-cta {
+  flex-shrink: 0;
+  background: #f3f1e8;
+  border-color: transparent;
+  color: #1f2a22;
+  min-height: 38px;
+  padding: 0 16px;
+}
+
+@media (max-width: 760px) {
+  .cookie-notice {
+    flex-direction: column;
+    align-items: stretch;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+  }
+  .cookie-notice .secondary-cta {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ---------- Pinned note: the Thread's core context, styled like an actual
+   note pinned to a corkboard - paper texture, slight rotation, a pin icon
+   overlapping the top edge. ---------- */
+.pinned-note {
+  position: relative;
+  overflow: visible;
+  background: linear-gradient(180deg, #fffdf2, #fdf6e0) !important;
+  border: 1px solid #ecdfab;
+  box-shadow: 0 14px 26px rgba(120, 96, 24, 0.16), 0 3px 8px rgba(120, 96, 24, 0.08) !important;
+  transform: rotate(-1.1deg);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pinned-note:hover {
+  transform: rotate(-0.4deg) translateY(-2px);
+  box-shadow: 0 18px 32px rgba(120, 96, 24, 0.2), 0 4px 10px rgba(120, 96, 24, 0.1) !important;
+}
+
+.pinned-note h3 {
+  font-family: Georgia, serif;
+  color: #7a5b12;
+  letter-spacing: 0.02em;
+}
+
+.pinned-note p {
+  color: #4a3f22;
+}
+
+.pinned-note-pin {
+  position: absolute;
+  top: -16px;
+  left: 28px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #c0453a;
+  color: #fff;
+  transform: rotate(-18deg);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.25);
+}
+
+.pinned-note-pin svg {
+  width: 15px;
+  height: 15px;
+  fill: #fff;
+}
+
+@media (max-width: 760px) {
+  .pinned-note {
+    transform: rotate(-0.6deg);
+  }
+}
+
+/* ---------- Me page sign-out: the topbar profile-menu sign-out isn't reachable on
+   mobile (that dropdown lives in the desktop-only topbar), so this is the one
+   sign-out control mobile users can actually get to. ---------- */
+.me-signout {
+  margin-top: var(--space-4);
+  width: 100%;
+  justify-content: center;
+  color: #c0453a;
+  border-color: #f0d9d6;
+}
+
+/* ---------- Icon circles: one consistent size/weight everywhere ---------- */
+.thread-icon,
+.settings-hero-icon,
+.feature-icon,
+.rail-icon,
+.profile-photo,
+.profile-pic,
+.settings-list button > span,
+.detail-type-icon {
+  border-radius: var(--radius-md) !important;
+}
+
+/* ---------- Mobile: real spacing rhythm, not cramped desktop leftovers ---------- */
+@media (max-width: 760px) {
+  .dashboard-page {
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+  }
+
+  /* User's own chat bubble renders as raw text (no <p> wrapper), so the global
+     p{font-size:15px} rule above never reached it - it was still stuck at the
+     old 10px base while Nura's reply (which IS wrapped in <p>) got bumped.
+     Matching it here so both sides of the conversation read at the same size. */
+  .user-message {
+    font-size: 15px !important;
+    line-height: 1.55 !important;
+  }
+
+  .detail-card,
+  .ui-card,
+  .thread-card,
+  .rail-card,
+  .profile-card,
+  .channel-card,
+  .hero-card,
+  .hero-checkin,
+  .settings-panels section {
+    padding: 20px !important;
+  }
+
+  .thread-list,
+  .settings-panels,
+  .today-main,
+  .today-rail,
+  .detail-stack {
+    gap: 14px !important;
+  }
+
+  .primary-cta,
+  .secondary-cta,
+  a.primary-cta,
+  a.secondary-cta {
+    min-height: 48px !important;
+  }
+
+  .page-heading h1,
+  .library-heading h1,
+  .dashboard-heading h1 {
+    letter-spacing: -0.02em;
+  }
+
+  .landing-nav .nura-logo-copy small {
+    display: none !important;
+  }
+
+  /* Auth card was vertically centered via margin:auto in a min-height:100vh flex column -
+     fine on desktop, but on mobile it left a huge empty gap above the form. Top-align instead. */
+  .auth-panel {
+    justify-content: flex-start !important;
+    padding-top: 28px !important;
+  }
+
+  .auth-card {
+    margin: 32px auto 0 !important;
+  }
+}
+
+/* ---------- Tablet range: a real middle breakpoint, not just mobile-stacked-on-a-wide-screen ---------- */
+@media (min-width: 761px) and (max-width: 1080px) {
+  .app-shell,
+  .product-shell {
+    grid-template-columns: 84px 1fr !important;
+  }
+
+  .app-sidebar .nura-logo-copy,
+  .product-sidebar .nura-logo-copy,
+  .app-sidebar nav a span:last-child,
+  .product-sidebar nav a span:last-child,
+  .app-sidebar .message-nura,
+  .product-sidebar .message-nura,
+  .between-card {
+    display: none !important;
+  }
+
+  .app-sidebar nav a,
+  .product-sidebar nav a {
+    justify-content: center !important;
+  }
+
+  .app-sidebar,
+  .product-sidebar {
+    width: 84px !important;
+    padding: 20px 12px !important;
+  }
+
+  .app-main,
+  .product-main {
+    grid-column: 2 !important;
+  }
+
+  .today-grid,
+  .calendar-layout,
+  .thread-detail-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .thread-cards {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  .app-content {
+    padding: 26px !important;
+  }
+}
+
+.calendar-toast{width:auto!important;max-width:calc(100% - 32px)!important;white-space:normal!important;text-align:left!important}
+
+.settings-cards{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important}
+.settings-card{min-width:0!important}
+.settings-link{min-width:0!important}
+.settings-link small{overflow-wrap:break-word!important}
+
+.preview-badge{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:#f1f0ea;color:#8a8f89;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}
+.preview-note{padding:10px 12px;border-radius:10px;background:#f6faf3;border:1px solid #dce8dc;font-size:9px}
+.settings-panels button:disabled,.settings-panels select:disabled,.settings-panels input:disabled{opacity:.55;cursor:not-allowed}

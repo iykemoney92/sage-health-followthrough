@@ -7,6 +7,8 @@ import "./product-design-overrides.css";
 import "./ui-completion.css";
 import "./ui-extra.css";
 import "./mobile-landing.css";
+import "./design-refresh.css";
+import { CookieConsent } from "@/components/cookie-consent";
 
 export const metadata: Metadata = {
   title: "Nura — Your AI health companion",
@@ -14,5 +16,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body>{children}</body></html>;
+  return <html lang="en"><body>{children}<CookieConsent /></body></html>;
 }
