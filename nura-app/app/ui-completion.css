@@ -57,14 +57,6 @@
 }
 
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
-.mobile-status-bar{height:28px;max-width:480px;margin:0 auto;padding:8px 22px 0;display:flex;align-items:center;justify-content:space-between;color:#0f1915;font-size:8.5px;font-weight:850;line-height:1}
-.mobile-status-icons{display:flex;align-items:center;gap:4px}
-.mobile-status-icons i:first-child{width:13px;height:8px;border-radius:2px;background:linear-gradient(90deg,#111 2px,transparent 2px 4px,#111 4px 6px,transparent 6px 8px,#111 8px 10px,transparent 10px)}
-.mobile-status-icons i:nth-child(2){width:10px;height:7px;border:1.5px solid #111;border-top-color:transparent;border-left-color:transparent;transform:rotate(-45deg);border-radius:1px}
-.mobile-status-icons i:last-child{width:14px;height:7px;border:1.5px solid #111;border-radius:2px;position:relative}
-.mobile-status-icons i:last-child:after{content:"";position:absolute;right:-3px;top:2px;width:2px;height:3px;border-radius:0 2px 2px 0;background:#111}
-.mobile-welcome-screen .mobile-status-bar{width:100%;padding-left:0;padding-right:0;margin-top:-36px;margin-bottom:28px}
-.mobile-onboarding:not(.step-1) .mobile-status-bar{padding-left:24px;padding-right:24px}
 .mobile-onboarding .onboarding-progress{display:none}
 .mobile-onboarding .onboarding-header{height:44px;max-width:480px;padding:0 24px!important;display:grid!important;grid-template-columns:34px minmax(0,1fr) 34px!important;align-items:center!important}
 .mobile-onboarding .onboarding-back{width:24px;height:24px;border:0!important;background:transparent!important;border-radius:0!important;color:#0f1915;justify-self:start}
@@ -82,7 +74,6 @@
 .mobile-onboarding.step-2 .how-it-works-list h3{font-size:9px;margin:0 0 8px}
 .mobile-onboarding.step-2 .how-it-works-list p{max-width:170px;font-size:7.5px;line-height:1.6;color:#1e2b26}
 @media(max-width:760px){
-  .mobile-onboarding:not(.step-1) .mobile-status-bar{padding-left:24px;padding-right:24px}
   .mobile-onboarding .onboarding-card{margin:6px auto 20px!important;padding-left:28px!important;padding-right:28px!important}
   .mobile-onboarding.step-3 .onboarding-card,.mobile-onboarding.step-4 .onboarding-card{padding-top:18px!important}
   .mobile-onboarding.step-3 .onboarding-card h1,.mobile-onboarding.step-4 .onboarding-card h1{font-size:21px!important;line-height:1.16!important;letter-spacing:-.015em!important}
@@ -91,7 +82,6 @@
 
 @media(max-width:760px){
   .mobile-welcome-screen{padding:0 28px 28px!important;background:#fbfaf6!important}
-  .mobile-welcome-screen .mobile-status-bar{margin:0 0 56px!important;padding-top:8px!important}
   .mobile-welcome-brand{justify-content:center;margin:0}
   .mobile-welcome-brand .nura-logo{display:grid;justify-items:center;gap:8px;text-align:center}
   .mobile-welcome-brand .nura-logo-copy{display:grid;justify-items:center;gap:2px}

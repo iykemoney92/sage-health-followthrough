@@ -610,3 +610,20 @@ a.secondary-cta {
   gap: 6px;
 }
 .auth-success svg { width: 14px; height: 14px; flex: none; }
+
+/* Auth form labels were stuck at 9px while the input/placeholder text next to
+   them used the browser default (16px) - the placeholder read louder than its
+   own label. Match the field-label scale used everywhere else in the app. */
+.auth-card > label {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #263a31 !important;
+  margin-top: 18px !important;
+}
+.auth-card input {
+  font-size: 15px !important;
+}
+.auth-card input::placeholder {
+  color: #9aa19d !important;
+  font-size: 15px !important;
+}

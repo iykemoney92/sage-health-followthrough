@@ -48,15 +48,6 @@ type SpeechWindow = Window & {
   webkitSpeechRecognition?: new () => SpeechRecognitionLike;
 };
 
-function MobileStatusBar() {
-  return (
-    <div className="mobile-status-bar" aria-hidden="true">
-      <span>9:41</span>
-      <span className="mobile-status-icons"><i /><i /><i /></span>
-    </div>
-  );
-}
-
 function WelcomeArt() {
   return (
     <div className="mobile-welcome-art" aria-hidden="true">
@@ -197,7 +188,6 @@ export default function Onboarding() {
     <main className={`onboarding mobile-onboarding step-${step}`}>
       {step === 1 ? (
         <section className="mobile-welcome-screen">
-          <MobileStatusBar />
           <div className="welcome-desktop-copy">
             <NuraLogo />
             <span className="auth-kicker">CONVERSATION-FIRST HEALTH MEMORY</span>
@@ -225,7 +215,6 @@ export default function Onboarding() {
         </section>
       ) : (
         <>
-          <MobileStatusBar />
           <header className="onboarding-header">
             <button className="onboarding-back" aria-label="Go back" onClick={() => setStep(step - 1)}><ArrowLeft /></button>
             <span className="onboarding-step-count" aria-label={`Step ${step - 1} of 5`}>{step - 1} of 5</span>
