@@ -13,11 +13,11 @@ export function NuraMark({ size = 36, className = "" }: { size?: number; classNa
   );
 }
 
-export function NuraLogo({ href = "/", compact = false, inverse = false }: { href?: string; compact?: boolean; inverse?: boolean }) {
+export function NuraLogo({ href = "/", compact = false, inverse = false, tagline = true }: { href?: string; compact?: boolean; inverse?: boolean; tagline?: boolean }) {
   return (
     <Link href={href} className={`nura-logo ${compact ? "compact" : ""} ${inverse ? "inverse" : ""}`} aria-label="Nura home">
       <NuraMark size={compact ? 30 : 40}/>
-      <span className="nura-logo-copy"><b>Nura</b>{!compact && <small>Your AI health companion</small>}</span>
+      <span className="nura-logo-copy"><b>Nura</b>{!compact && tagline && <small>Your AI health companion</small>}</span>
     </Link>
   );
 }

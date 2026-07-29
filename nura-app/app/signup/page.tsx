@@ -60,7 +60,7 @@ export default function SignupPage() {
   return (
     <main className="auth-page">
       <section className="auth-panel">
-        <NuraLogo />
+        <NuraLogo tagline={false} />
         <form className="auth-card" onSubmit={handleSubmit}>
           <span className="auth-kicker">GET STARTED</span>
           <h1>Create your Nura</h1>
