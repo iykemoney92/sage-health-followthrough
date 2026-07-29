@@ -265,10 +265,26 @@ a.secondary-cta {
   overflow: visible !important;
 }
 
+@media (max-width: 760px) {
+  .mobile-welcome-content {
+    justify-content: center !important;
+    gap: 32px;
+  }
+  .mobile-welcome-art {
+    min-height: 0 !important;
+    width: 100%;
+    margin: 0 !important;
+  }
+  .mobile-welcome-actions {
+    margin-top: 0 !important;
+  }
+}
+
 .welcome-illustration {
   width: 100%;
   max-width: 420px;
   height: auto;
+  max-height: 100%;
   object-fit: contain;
   filter: drop-shadow(0 16px 32px rgba(24, 49, 41, 0.12));
 }
