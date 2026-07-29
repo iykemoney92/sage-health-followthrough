@@ -542,4 +542,52 @@ a.secondary-cta {
 
 .preview-badge{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:#f1f0ea;color:#8a8f89;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}
 .preview-note{padding:10px 12px;border-radius:10px;background:#f6faf3;border:1px solid #dce8dc;font-size:9px}
+
+.phone-input-group{display:flex!important;gap:8px}
+.phone-number-field{flex:1 1 auto!important;min-width:0!important}
+
+.phone-code-picker{position:relative;flex:0 0 auto}
+.phone-code-trigger{display:flex;align-items:center;gap:6px;height:100%;min-height:44px;padding:11px 12px;border:1px solid #deded7;border-radius:10px;background:#fff;color:#263a31;font-size:15px;font-weight:700;white-space:nowrap}
+.phone-code-trigger svg{color:#8b9490;flex:none}
+.phone-code-dropdown{position:absolute;top:calc(100% + 6px);left:0;z-index:40;width:max(260px,90vw);max-width:300px;border:1px solid #e6e3da;border-radius:12px;background:#fff;box-shadow:0 16px 40px rgba(24,43,32,.16);overflow:hidden}
+.phone-code-search{width:100%;padding:11px 12px;border:0;border-bottom:1px solid #eeede8;outline:0;font-size:14px}
+.phone-code-list{list-style:none;margin:0;padding:6px;max-height:260px;overflow-y:auto}
+.phone-code-list button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 9px;border:0;border-radius:8px;background:transparent;text-align:left;font-size:14px;color:#263a31}
+.phone-code-list button span{color:#8b9490;font-size:13px}
+.phone-code-list button:hover,.phone-code-list button.selected{background:#f2f6ef}
+.phone-code-empty{padding:14px 12px;color:#8b9490;font-size:13px;text-align:center}
+
+/* Mobile typography pass - the shared design system below was tuned for a
+   dense desktop dashboard; on a phone those sizes read too small next to
+   16px input text, so bump the whole small-text scale up here. */
+@media (max-width: 760px) {
+  .settings-panels h3,
+  .summary-card h3 { font-size: 16px !important; }
+
+  .field-row label,
+  .settings-panels section > label,
+  .nura-modal label { font-size: 14px !important; }
+
+  .radio-row, .toggle-row { font-size: 15px !important; }
+  .radio-row small { font-size: 13px !important; }
+
+  .settings-detail-head p,
+  .muted,
+  .info-row small,
+  .memory-row small,
+  .connection-row small,
+  .notification-list p,
+  .summary-card p, .summary-card li, .summary-card small { font-size: 13.5px !important; }
+
+  .back-link { font-size: 13px !important; }
+  .notification-list h3 { font-size: 15px !important; }
+  .notification-list small { font-size: 12.5px !important; }
+
+  .info-row button, .memory-row button, .connection-row button,
+  .danger-zone button { font-size: 13px !important; }
+
+  .chip-cloud span { font-size: 12.5px !important; padding: 8px 11px !important; }
+
+  .profile-save-note { font-size: 13.5px !important; }
+}
 .settings-panels button:disabled,.settings-panels select:disabled,.settings-panels input:disabled{opacity:.55;cursor:not-allowed}

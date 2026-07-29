@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Camera, Save, Upload } from "lucide-react";
 import { getAvatarUrl } from "@/lib/avatar";
+import { PhoneNumberInput } from "@/components/phone-number-input";
 
 export function ProfileSettingsForm({
   displayName,
@@ -112,7 +113,7 @@ export function ProfileSettingsForm({
         </div>
         <label>Name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
         <label>Email<input value={email} disabled /></label>
-        <label>Phone<input placeholder="+44 7000 000000" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} /></label>
+        <label htmlFor="profile-phone">Phone<PhoneNumberInput id="profile-phone" value={phoneNumber} onChange={setPhoneNumber} /></label>
         <p className="muted" style={{ marginTop: -8 }}>This is the number Nura calls for scheduled check-ins.</p>
         {notice && <p className="profile-save-note">{notice}</p>}
         <button className="primary-cta" type="button" onClick={save} disabled={saving || !name.trim()}>
