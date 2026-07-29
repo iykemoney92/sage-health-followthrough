@@ -94,37 +94,44 @@ export function ProfileSettingsForm({
     <div className="settings-panels profile-edit-panels">
       <section>
         <div className="profile-picture-editor">
-          <span className="profile-photo large" style={{ backgroundImage: `url(${photo || getAvatarUrl(name || email)})` }} />
+          <label className="profile-photo-picker" htmlFor="avatar-file">
+            <span className="profile-photo large" style={{ backgroundImage: `url(${photo || getAvatarUrl(name || email)})` }} />
+            <span className="profile-photo-badge"><Upload size={13} /></span>
+          </label>
           <div>
             <h3>Profile picture</h3>
-            <p className="muted">Upload a photo from your device. Nura will use initials if you do not add one.</p>
-            <label className="secondary-cta profile-upload-button">
+            <label className="secondary-cta profile-upload-button" htmlFor="avatar-file">
               <Upload /> Upload photo
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void imageToAvatar(file);
-                }}
-              />
             </label>
           </div>
+          <input
+            id="avatar-file"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="profile-photo-input"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void imageToAvatar(file);
+            }}
+          />
         </div>
         <label>Name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
         <label>Email<input value={email} disabled /></label>
+      </section>
+      <section>
+        <h3>Check-in number</h3>
+        <p className="muted">Number Nura can check in on for scheduled reminders.</p>
         <label htmlFor="profile-phone">Phone<PhoneNumberInput id="profile-phone" value={phoneNumber} onChange={setPhoneNumber} /></label>
-        <p className="muted" style={{ marginTop: -8 }}>This is the number Nura calls for scheduled check-ins.</p>
-        {notice && <p className="profile-save-note">{notice}</p>}
-        <button className="primary-cta" type="button" onClick={save} disabled={saving || !name.trim()}>
-          {saving ? "Saving..." : <><Save /> Save changes</>}
-        </button>
       </section>
       <section>
         <span className="modal-icon"><Camera /></span>
         <h3>Personalisation</h3>
         <p className="muted">Your profile photo appears in the app header and Me page so demo accounts feel like real people.</p>
       </section>
+      {notice && <p className="profile-save-note">{notice}</p>}
+      <button className="primary-cta profile-save-button" type="button" onClick={save} disabled={saving || !name.trim()}>
+        {saving ? "Saving..." : <><Save /> Save changes</>}
+      </button>
     </div>
   );
 }
