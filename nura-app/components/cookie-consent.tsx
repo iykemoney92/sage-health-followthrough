@@ -3,10 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-const CONSENT_COOKIE = "nura_cookie_notice_ack";
+const CONSENT_KEY = "nura_cookie_notice_ack";
 
 function hasAcknowledged() {
-  return document.cookie.split("; ").some((row) => row.startsWith(`${CONSENT_COOKIE}=`));
+  // A JS-set document.cookie is capped at 7 days by Safari/WebKit's ITP
+  // regardless of max-age, which made this banner reappear weekly on iOS
+  // (including the Capacitor shell's WKWebView). localStorage has no such
+  // cap and this flag is never needed server-side, so it's the right store.
+  try {
+    return localStorage.getItem(CONSENT_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 export function CookieConsent() {
@@ -21,8 +29,12 @@ export function CookieConsent() {
   }, []);
 
   function acknowledge() {
-    const oneYear = 60 * 60 * 24 * 365;
-    document.cookie = `${CONSENT_COOKIE}=1; max-age=${oneYear}; path=/; SameSite=Lax`;
+    try {
+      localStorage.setItem(CONSENT_KEY, "1");
+    } catch {
+      // Private browsing or storage disabled - nothing we can persist; the
+      // banner will just reappear next visit, which is an acceptable fallback.
+    }
     setVisible(false);
   }
 
