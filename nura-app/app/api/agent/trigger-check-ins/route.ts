@@ -3,6 +3,7 @@ import { getSubscriptionAccess } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { placeOutboundCall, isElevenLabsCallingConfigured } from "@/lib/integrations/elevenlabs";
 import { buildVoiceCheckinContext } from "@/lib/domain/voice-checkin-context";
+import { sendPushToOwner } from "@/lib/integrations/push";
 
 function toE164(digits: string) {
   return digits.startsWith("+") ? digits : `+${digits}`;
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
   }));
 
   const results: Record<string, unknown>[] = [];
-  const noPhoneCheckInIds: string[] = [];
+  const noPhoneCheckIns: DueCheckIn[] = [];
   const gatedCheckInIds: string[] = [];
   const phoneGroups = new Map<string, DueCheckIn[]>();
 
@@ -131,7 +132,7 @@ export async function POST(request: NextRequest) {
     // Settings - this last tier is what lets in-app-only accounts still get real calls.
     const phone = checkIn.contact_phone || linkedPhoneByOwner.get(checkIn.owner_id) || profilePhoneByOwner.get(checkIn.owner_id);
     if (!phone) {
-      noPhoneCheckInIds.push(checkIn.id);
+      noPhoneCheckIns.push(checkIn);
       continue;
     }
     const key = phone.replace(/[^\d]/g, "");
@@ -140,13 +141,26 @@ export async function POST(request: NextRequest) {
     phoneGroups.set(key, group);
   }
 
-  if (noPhoneCheckInIds.length > 0) {
+  if (noPhoneCheckIns.length > 0) {
+    // No phone to call - this is exactly the gap "In the app" / "Both" channel
+    // users fall into, since until push existed they got no notification at
+    // all when a check-in came due. Best-effort push here; the call_status
+    // still tracks the voice-call flow specifically, so it stays "skipped".
+    await Promise.all(
+      noPhoneCheckIns.map((checkIn) =>
+        sendPushToOwner(checkIn.owner_id, {
+          title: "Check-in time",
+          body: `Nura wants to check in about ${checkIn.nura_plans?.title ?? "your Thread"}.`,
+          url: "/today",
+        }).catch(() => null),
+      ),
+    );
     await supabase
       .from("nura_check_ins")
       .update({ triggered_at: nowIso, call_status: "skipped_no_phone" })
-      .in("id", noPhoneCheckInIds);
-    for (const id of noPhoneCheckInIds) {
-      results.push({ checkInId: id, status: "skipped_no_phone" });
+      .in("id", noPhoneCheckIns.map((c) => c.id));
+    for (const checkIn of noPhoneCheckIns) {
+      results.push({ checkInId: checkIn.id, status: "skipped_no_phone" });
     }
   }
 
