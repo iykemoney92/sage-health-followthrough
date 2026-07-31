@@ -1,0 +1,22 @@
+name: Trigger Nura check-ins
+
+# Vercel's Hobby plan only allows one cron run per day, which isn't frequent enough for
+# check-ins scheduled throughout the day. This workflow calls the same endpoint on a much
+# tighter schedule instead, using infrastructure already available on this repo.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call trigger-check-ins
+        run: |
+          curl -sS -X POST "https://usenura.app/api/agent/trigger-check-ins" \
+            -H "x-agent-secret: ${{ secrets.AGENT_TOOL_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" \
+            --fail-with-body
+        env:
+          AGENT_TOOL_SECRET: ${{ secrets.AGENT_TOOL_SECRET }}
