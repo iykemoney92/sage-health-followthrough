@@ -1,0 +1,37 @@
+name: Nura check-in dispatcher
+
+# Vercel Hobby only allows one cron/day. GitHub Actions polls every 5 minutes
+# so due check-ins fire near their scheduled_for time.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch due check-ins
+        env:
+          AGENT_TOOL_SECRET: ${{ secrets.NURA_AGENT_TOOL_SECRET }}
+          FALLBACK_AGENT_SECRET: ${{ secrets.AGENT_TOOL_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          SECRET="${AGENT_TOOL_SECRET:-${FALLBACK_AGENT_SECRET:-}}"
+          if [ -n "$SECRET" ]; then
+            curl -fsS -X POST "https://usenura.app/api/agent/trigger-check-ins" \
+              -H "content-type: application/json" \
+              -H "x-agent-secret: $SECRET" \
+              -d '{}'
+          elif [ -n "${CRON_SECRET:-}" ]; then
+            curl -fsS -X POST "https://usenura.app/api/agent/trigger-check-ins" \
+              -H "content-type: application/json" \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              -d '{}'
+          else
+            echo "Missing NURA_AGENT_TOOL_SECRET / AGENT_TOOL_SECRET / CRON_SECRET"
+            exit 1
+          fi
+          echo
+          echo "Dispatched at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
