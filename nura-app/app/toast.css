@@ -1,0 +1,165 @@
+/* Dismissible app toasts — ephemeral feedback only (not form field errors). */
+
+.nura-toast-viewport {
+  position: fixed;
+  left: 50%;
+  bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+  z-index: 1400;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: stretch;
+  gap: 8px;
+  width: min(400px, calc(100vw - 28px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.nura-toast {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: 36px 1fr 28px;
+  gap: 10px;
+  align-items: start;
+  padding: 13px 12px 13px 11px;
+  border-radius: 14px;
+  border: 1px solid rgba(45, 70, 54, 0.12);
+  border-left-width: 3px;
+  background: #fff;
+  box-shadow:
+    0 14px 34px rgba(28, 42, 34, 0.16),
+    0 2px 6px rgba(28, 42, 34, 0.06);
+  color: #2a3a31;
+  animation: nura-toast-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.nura-toast.leaving {
+  animation: nura-toast-out 0.2s ease forwards;
+}
+
+.nura-toast.success {
+  border-left-color: #3a734d;
+}
+
+.nura-toast.error {
+  border-left-color: #9a4a4a;
+}
+
+.nura-toast.warning {
+  border-left-color: #8a6430;
+}
+
+.nura-toast.info {
+  border-left-color: #4a6780;
+}
+
+.nura-toast-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.nura-toast-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.nura-toast.success .nura-toast-icon {
+  background: #eef6ef;
+  color: #3a734d;
+}
+
+.nura-toast.error .nura-toast-icon {
+  background: #f8ecec;
+  color: #9a4a4a;
+}
+
+.nura-toast.warning .nura-toast-icon {
+  background: #f7f0e4;
+  color: #8a6430;
+}
+
+.nura-toast.info .nura-toast-icon {
+  background: #eef2f6;
+  color: #4a6780;
+}
+
+.nura-toast-body {
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.nura-toast-body b {
+  display: block;
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.nura-toast-body p {
+  margin: 0;
+  color: #5d6b63;
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.4;
+}
+
+.nura-toast-dismiss {
+  width: 28px;
+  height: 28px;
+  margin-top: 2px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #8a9590;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.nura-toast-dismiss:hover,
+.nura-toast-dismiss:focus-visible {
+  background: rgba(45, 70, 54, 0.06);
+  color: #405248;
+  outline: none;
+}
+
+.nura-toast-dismiss svg {
+  width: 15px;
+  height: 15px;
+}
+
+@keyframes nura-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes nura-toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@media (min-width: 900px) {
+  .nura-toast-viewport {
+    bottom: 28px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nura-toast,
+  .nura-toast.leaving {
+    animation: none;
+  }
+}

@@ -39,11 +39,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
-  await sendPushToOwner(user.id, {
+  const test = await sendPushToOwner(user.id, {
     title: "Notifications on",
     body: "Nura will check in here when something needs your attention.",
     url: "/today",
-  });
+  }, { bypassRateLimit: true });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    testSent: test.sent,
+    testSkipped: test.skipped ?? null,
+  });
 }

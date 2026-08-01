@@ -18,11 +18,15 @@ The narrow hackathon loop should prove continuity without becoming too broad:
 1. User messages Nura in-app or over WhatsApp about overwhelm, poor sleep, or a health follow-up.
 2. User uploads a demo GP or care note.
 3. Nura extracts relevant context and separates clinician-provided instructions from user goals.
-4. Nura proposes one living Plan, such as `Stabilise My Week`.
-5. User confirms imported instructions, reminders, and check-in preferences.
-6. Nura schedules a proactive WhatsApp message, WhatsApp voice-style check-in, or in-app reminder.
-7. User response updates the Plan as an observation.
+4. Nura **reasons a tailored Care plan for that person** (not a stock template) — e.g. `Evening meds follow-through` for one user, `Post-clinic BP watch` or `Headaches & sleep rhythm` for another.
+5. Nura drafts a short roadmap (milestones/steps) as structured JSON and schedules a proactive check-in with agent-chosen timing, channel, and prompt.
+6. Those check-ins appear on **their** calendar; user confirms imported instructions and preferences as needed.
+7. User response updates the Care plan as an observation.
 8. Nura generates a concise appointment-preparation summary.
+
+### Care plans are agent-authored
+
+Care plans are **not** picked from a fixed catalogue. For each user, Nura listens, proposes a plan suited to their care needs, writes structured plan + check-in data, and updates their Care plans and calendar. Two users with different situations get different titles, focuses, cadences, and roadmaps. Keyword/template fallbacks exist only if the model is unavailable — they are not the product model.
 
 ## App Layers
 
@@ -50,11 +54,11 @@ Nura is not a doctor, therapist, or autonomous treatment system.
 
 ## WhatsApp Continuity
 
-Nura should use WhatsApp as a first-class communication channel for proactive follow-through. The app remains the place to review Threads, calendar events, memory, uploads, and summaries, but WhatsApp is the lightweight daily channel for check-ins, reminders, voice-style follow-ups, and user replies.
+Nura should use WhatsApp as a first-class communication channel for proactive follow-through. The app remains the place to review Care plans, calendar events, memory, uploads, and summaries, but WhatsApp is the lightweight daily channel for check-ins, reminders, voice-style follow-ups, and user replies.
 
 Implementation expectations:
 
-- WhatsApp can initiate or continue a Thread when the user sends new context.
+- WhatsApp can initiate or continue a Care plan when the user sends new context.
 - Scheduled check-ins should default to WhatsApp when the user has opted in.
 - WhatsApp responses should be stored as user-reported observations.
 - Nura must preserve the same safety boundaries on WhatsApp as inside the app.

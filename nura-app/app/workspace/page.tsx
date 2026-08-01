@@ -4,8 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CalendarDays, FileAudio, FileText, Image as ImageIcon, ListChecks, Mic, Paperclip, Send, Sparkles, X } from "lucide-react";
 import { NuraLogo, NuraMark } from "@/components/nura-logo";
+import { CareDisclaimer } from "@/components/care-disclaimer";
 import { WhatsAppOpenButton } from "@/components/whatsapp-open-button";
 import { CalendarNavBadge } from "@/components/calendar-nav-badge";
+import {
+  pickRecorderMimeType,
+  voiceMicDeniedMessage,
+  voiceRecordingFileName,
+  voiceUnavailableMessage,
+} from "@/lib/client/voice-recording";
 
 type ChatMessage = {
   id: string;
@@ -29,6 +36,45 @@ function AttachmentIcon({ kind }: { kind: ChatAttachment["kind"] }) {
   if (kind === "image") return <ImageIcon />;
   if (kind === "audio") return <FileAudio />;
   return <FileText />;
+}
+
+const LEGACY_ATTACHMENT_SUFFIX = /\n*\s*Shared \d+ attachments?: (.+)\.?\s*$/i;
+
+function inferAttachmentKind(name: string): ChatAttachment["kind"] {
+  if (/\.(png|jpe?g|gif|webp|heic)$/i.test(name)) return "image";
+  if (/\.(mp3|wav|m4a|ogg|webm|aac)$/i.test(name)) return "audio";
+  if (/\.(pdf|doc|docx|txt|md)$/i.test(name)) return "document";
+  return "file";
+}
+
+function shortFileName(name: string, max = 18) {
+  const trimmed = name.trim();
+  if (trimmed.length <= max) return trimmed;
+  const dot = trimmed.lastIndexOf(".");
+  if (dot > 0 && trimmed.length - dot <= 5) {
+    const ext = trimmed.slice(dot);
+    const base = trimmed.slice(0, Math.max(1, max - ext.length - 1));
+    return `${base}…${ext}`;
+  }
+  return `${trimmed.slice(0, max - 1)}…`;
+}
+
+/** Split legacy "Shared N attachments: a, b." text into clean body + chip metadata. */
+function displayMessage(message: ChatMessage): {
+  text: string;
+  attachments: { name: string; kind: ChatAttachment["kind"] }[];
+} {
+  const stored = Array.isArray(message.attachments) ? message.attachments : [];
+  if (stored.length > 0) {
+    return { text: message.content.replace(LEGACY_ATTACHMENT_SUFFIX, "").trim(), attachments: stored };
+  }
+  const match = message.content.match(LEGACY_ATTACHMENT_SUFFIX);
+  if (!match?.[1]) return { text: message.content, attachments: [] };
+  const names = match[1].split(",").map((part) => part.trim()).filter(Boolean);
+  return {
+    text: message.content.replace(LEGACY_ATTACHMENT_SUFFIX, "").trim(),
+    attachments: names.map((name) => ({ name, kind: inferAttachmentKind(name) })),
+  };
 }
 
 const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB per file
@@ -56,6 +102,21 @@ function newAttachmentId() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `att-${Date.now()}-${Math.random()}`;
 }
 
+// Tracks the newest message timestamp the user has actually seen rendered in this browser.
+// A proactive check-in composes and stores its opener ahead of delivery (so WhatsApp/push
+// can carry the real text immediately) - without this, reopening the chat would just show
+// that text already sitting there, flat, instead of feeling like Nura is present and says
+// it to you live.
+const LAST_SEEN_MESSAGE_KEY = "nura-last-seen-message-ts";
+
+function randomThinkingDelay() {
+  return 900 + Math.random() * 600;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function readAttachment(file: File): Promise<ChatAttachment> {
   const kind = attachmentKind(file);
   const canReadText = file.type.startsWith("text/") || file.name.match(/\.(txt|md|csv|json)$/i);
@@ -80,6 +141,7 @@ export default function WorkspacePage() {
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [draft, setDraft] = useState(initialDraft);
   const [sending, setSending] = useState(false);
+  const [checkinThinking, setCheckinThinking] = useState(false);
   const [activePlan, setActivePlan] = useState<{ id: string; title: string } | null>(
     initialPlanId && initialPlanTitle ? { id: initialPlanId, title: initialPlanTitle } : null,
   );
@@ -98,6 +160,20 @@ export default function WorkspacePage() {
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // Reveals a trailing run of assistant messages one at a time, each preceded by a "Nura is
+  // thinking…" beat, instead of dumping them onto the screen already-written - this is what
+  // makes opening the chat off a check-in notification feel like Nura noticing you're here
+  // and actually speaking, not like reading a message that's been sitting there for a while.
+  async function revealPending(pending: ChatMessage[]) {
+    for (const message of pending) {
+      setCheckinThinking(true);
+      await delay(randomThinkingDelay());
+      setCheckinThinking(false);
+      setMessages((prev) => [...(prev ?? []), message]);
+      await delay(300);
+    }
+  }
+
   useEffect(() => {
     const pendingIntake = sessionStorage.getItem("nura-intake");
     sessionStorage.removeItem("nura-intake");
@@ -105,8 +181,40 @@ export default function WorkspacePage() {
     fetch("/api/messages")
       .then((res) => res.json())
       .then((data) => {
-        setMessages(data.ok ? data.messages : []);
-        if (data.ok && data.activePlan && !initialPlanId) setActivePlan(data.activePlan);
+        if (!data.ok) {
+          setMessages([]);
+          return;
+        }
+        const all: ChatMessage[] = data.messages;
+        if (data.activePlan && !initialPlanId) setActivePlan(data.activePlan);
+
+        const lastSeenRaw = localStorage.getItem(LAST_SEEN_MESSAGE_KEY);
+        const lastSeenTs = lastSeenRaw ? Number(lastSeenRaw) : null;
+
+        // Walk back from the end: everything in that trailing run is an assistant message
+        // that arrived after the user was last actually looking at this chat - i.e. Nura
+        // reaching out while they were away, rather than something they already read.
+        let splitIndex = all.length;
+        if (lastSeenTs !== null) {
+          for (let i = all.length - 1; i >= 0; i--) {
+            const message = all[i];
+            if (message.role === "assistant" && new Date(message.created_at).getTime() > lastSeenTs) {
+              splitIndex = i;
+            } else {
+              break;
+            }
+          }
+        }
+
+        if (splitIndex === all.length) {
+          // Nothing arrived while the user was away (or this is their first-ever visit) -
+          // show history as-is with no reveal animation.
+          setMessages(all);
+          return;
+        }
+
+        setMessages(all.slice(0, splitIndex));
+        void revealPending(all.slice(splitIndex));
       })
       .catch(() => setMessages([]))
       .finally(() => {
@@ -114,6 +222,16 @@ export default function WorkspacePage() {
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keeps "last seen" in step with whatever's actually on screen, including as pending
+  // check-in messages get revealed one by one above - so leaving and coming back later
+  // never replays something already shown in this session.
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+    const newest = messages[messages.length - 1];
+    const ts = new Date(newest.created_at).getTime();
+    if (!Number.isNaN(ts)) localStorage.setItem(LAST_SEEN_MESSAGE_KEY, String(ts));
+  }, [messages]);
 
   useEffect(() => {
     fetch("/api/whatsapp/link")
@@ -129,7 +247,12 @@ export default function WorkspacePage() {
   }, []);
 
   useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+    const node = listRef.current;
+    if (!node) return;
+    // Keep the thread inside the messages scroller (composer is viewport-fixed).
+    node.scrollTo({ top: node.scrollHeight, behavior: "auto" });
+    // Prevent the document itself from sitting scrolled under mobile browser chrome.
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [messages]);
 
   useEffect(() => {
@@ -150,7 +273,7 @@ export default function WorkspacePage() {
       id: `temp-${Date.now()}`,
       plan_id: activePlan?.id ?? null,
       role: "user",
-      content: content || `Shared ${attachments.map((file) => file.name).join(", ")}`,
+      content: content || (attachments.length > 0 ? "" : "Shared media context with Nura."),
       created_at: new Date().toISOString(),
       attachments: attachments.length > 0 ? attachments.map((file) => ({ name: file.name, kind: file.kind })) : undefined,
     };
@@ -190,6 +313,20 @@ export default function WorkspacePage() {
             created_at: new Date().toISOString(),
           },
         ]);
+
+        // The reply already arrived by the time we check this, so it reflects whether the
+        // user was actually away when it landed - not just when they sent the message (which
+        // can be several seconds earlier for a slower reply).
+        if (typeof document !== "undefined" && document.visibilityState === "hidden" && data.reply) {
+          void fetch("/api/push/notify-reply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              body: String(data.reply).slice(0, 200),
+              url: data.planId ? `/plans/${data.planId}` : "/workspace",
+            }),
+          }).catch(() => null);
+        }
       }
     } finally {
       setSending(false);
@@ -245,10 +382,22 @@ export default function WorkspacePage() {
   async function startRecording() {
     if (mediaRecorderRef.current) return; // already recording - avoid orphaning a prior stream
     setVoiceError("");
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setVoiceError(voiceUnavailableMessage());
+      return;
+    }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
       streamRef.current = stream;
-      const recorder = new MediaRecorder(stream);
+      const mimeType = pickRecorderMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       chunksRef.current = [];
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
@@ -256,13 +405,14 @@ export default function WorkspacePage() {
       recorder.onstop = () => {
         releaseMicStream();
         mediaRecorderRef.current = null;
-        void transcribeAndSend();
+        void transcribeAndSend(recorder.mimeType || mimeType || "audio/webm");
       };
       mediaRecorderRef.current = recorder;
-      recorder.start();
+      // Timeslice keeps chunks flowing on iOS WKWebView.
+      recorder.start(250);
       setRecording(true);
     } catch {
-      setVoiceError("Couldn't access your microphone. Check your browser's permission for this site.");
+      setVoiceError(voiceMicDeniedMessage());
     }
   }
 
@@ -277,15 +427,15 @@ export default function WorkspacePage() {
 
   useEffect(() => releaseMicStream, []);
 
-  async function transcribeAndSend() {
-    const blob = new Blob(chunksRef.current, { type: mediaRecorderRef.current?.mimeType || "audio/webm" });
+  async function transcribeAndSend(mimeType = "audio/webm") {
+    const blob = new Blob(chunksRef.current, { type: mimeType });
     chunksRef.current = [];
     if (blob.size === 0) return;
 
     setTranscribing(true);
     try {
       const formData = new FormData();
-      formData.append("audio", blob, "voice-note.webm");
+      formData.append("audio", blob, voiceRecordingFileName(mimeType));
       const res = await fetch("/api/voice/transcribe", { method: "POST", body: formData });
       const data = await res.json();
       if (!data.ok) {
@@ -307,7 +457,9 @@ export default function WorkspacePage() {
   return (
     <main className="chat-page">
       <header>
-        <Link href="/today"><ArrowLeft /></Link>
+        <Link href="/today" className="icon-only-btn" aria-label="Back to Today">
+          <ArrowLeft />
+        </Link>
         <NuraLogo compact href="/today" />
         <div className="chat-header-actions">
           <Link href="/calendar" className="icon-only-btn nav-icon-wrap" title="Calendar" aria-label="Calendar">
@@ -315,13 +467,14 @@ export default function WorkspacePage() {
             <CalendarNavBadge />
           </Link>
           {whatsappHref && <WhatsAppOpenButton className="icon-only-btn" linked={whatsappLinked} iconOnly />}
-          <Link href="/plans" className="icon-only-btn" title="View Threads" aria-label="View Threads">
+          <Link href="/plans" className="icon-only-btn" title="View Care plans" aria-label="View Care plans">
             <ListChecks />
           </Link>
         </div>
       </header>
       <section className="chat-layout">
         <div className="chat-main">
+          <CareDisclaimer compact />
           {!hasMessages && (
             <div className="chat-intro">
               <span className="chat-orb"><NuraMark size={44} /></span>
@@ -330,29 +483,33 @@ export default function WorkspacePage() {
             </div>
           )}
           <div className="messages" ref={listRef}>
-            {messages?.map((message) =>
-              message.role === "user" ? (
+            {messages?.map((message) => {
+              if (message.role !== "user") {
+                return (
+                  <div className="nura-message" key={message.id}>
+                    <NuraMark size={30} />
+                    <div><p>{message.content}</p></div>
+                  </div>
+                );
+              }
+              const { text, attachments } = displayMessage(message);
+              return (
                 <div className="user-message" key={message.id}>
-                  {message.attachments && message.attachments.length > 0 && (
+                  {attachments.length > 0 && (
                     <div className="message-attachments">
-                      {message.attachments.map((file, index) => (
-                        <span className="attachment-chip" key={`${file.name}-${index}`}>
+                      {attachments.map((file, index) => (
+                        <span className="attachment-chip" key={`${file.name}-${index}`} title={file.name}>
                           <AttachmentIcon kind={file.kind} />
-                          <span>{file.name}</span>
+                          <span>{shortFileName(file.name)}</span>
                         </span>
                       ))}
                     </div>
                   )}
-                  {message.content}
+                  {text ? <p className="user-message-text">{text}</p> : null}
                 </div>
-              ) : (
-                <div className="nura-message" key={message.id}>
-                  <NuraMark size={30} />
-                  <div><p>{message.content}</p></div>
-                </div>
-              )
-            )}
-            {sending && (
+              );
+            })}
+            {(sending || checkinThinking) && (
               <div className="nura-message subtle">
                 <Sparkles />
                 <div><p>Nura is thinking…</p></div>
@@ -400,7 +557,8 @@ export default function WorkspacePage() {
               />
             </label>
             <textarea
-              placeholder="Message Nura..."
+              placeholder="Message Nura…"
+              rows={1}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
@@ -430,17 +588,20 @@ export default function WorkspacePage() {
           {activePlan ? (
             <>
               <h2>{activePlan.title}</h2>
-              <p>Nura has connected this conversation to this Thread.</p>
+              <p>Nura has connected this conversation to this Care plan.</p>
             </>
           ) : (
             <>
-              <h2>No Thread yet</h2>
-              <p>Nura will connect what you share to a Thread as the conversation continues.</p>
+              <h2>No Care plan yet</h2>
+              <p>Nura will connect what you share to a Care plan as the conversation continues — or start one in a few steps.</p>
+              <Link href="/plans/new" className="secondary-cta">
+                Start a Care plan
+              </Link>
             </>
           )}
           <article>
             <FileText />
-            <div><b>Conversation-first memory</b><span>Messages, context notes, and voice notes update Threads.</span></div>
+            <div><b>Conversation-first memory</b><span>Messages, context notes, and voice notes update Care plans.</span></div>
           </article>
           {whatsappLinked ? (
             <p className="checkin-copy">WhatsApp is linked to this Nura account.</p>

@@ -1,19 +1,32 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarDays, FileUp, Plus, X, Clock3, MessageCircle, CheckCircle2 } from "lucide-react";
+import { CalendarDays, FileUp, Plus, X, Clock3, MessageCircle } from "lucide-react";
 import { WhatsAppOpenButton } from "@/components/whatsapp-open-button";
+import { useToast } from "@/components/toast";
+import { formatCheckInWhen } from "@/lib/domain/journey-naming";
 
 type PlanOption = { id: string; title: string };
 
-type Mode = "new" | "log" | "upload" | null;
+type Mode = "log" | "upload" | null;
+type RescheduleChoice = "tonight" | "tomorrow" | "custom";
 
-function nextAt(hours: number, daysFromNow: number) {
+function nextAt(hours: number, minutes: number, daysFromNow: number) {
   const date = new Date();
   date.setDate(date.getDate() + daysFromNow);
-  date.setHours(hours, 0, 0, 0);
+  date.setHours(hours, minutes, 0, 0);
   return date;
+}
+
+function toDatetimeLocalValue(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function friendlyLabel(date: Date) {
+  return formatCheckInWhen(date.toISOString());
 }
 
 export function NuraActions({
@@ -26,7 +39,6 @@ export function NuraActions({
   const [mode, setMode] = useState<Mode>(null);
   const [selectedPlanId, setSelectedPlanId] = useState(plans[0]?.id ?? "");
   const [note, setNote] = useState("");
-  const [intake, setIntake] = useState("");
   const router = useRouter();
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? plans[0];
   const updateTemplate = selectedPlan
@@ -39,24 +51,19 @@ export function NuraActions({
   const close = () => {
     setMode(null);
     setNote("");
-    setIntake("");
   };
-
-  function startWithNura() {
-    if (intake.trim()) {
-      sessionStorage.setItem("nura-intake", intake.trim());
-    }
-    router.push("/workspace");
-  }
 
   return (
     <>
       <div className={compact ? "action-stack compact" : "action-stack"}>
-        <button onClick={() => setMode("new")}><span className="rail-icon"><MessageCircle /></span><span><b>Start a new Thread</b><small>Tell Nura what&rsquo;s going on</small></span></button>
+        <button onClick={() => router.push("/plans/new")}>
+          <span className="rail-icon"><MessageCircle /></span>
+          <span><b>Start a new Care plan</b><small>Guided setup from what&rsquo;s going on</small></span>
+        </button>
         {plans.length > 0 && (
           <button onClick={() => { setNote(updateTemplate); setMode("log"); }}>
             <span className="rail-icon blue"><Plus /></span>
-            <span><b>Log an update</b><small>Update an existing Thread</small></span>
+            <span><b>Log an update</b><small>Update an existing Care plan</small></span>
           </button>
         )}
         <button onClick={() => setMode("upload")}><span className="rail-icon amber"><FileUp /></span><span><b>Share media or files</b><small>Images, voice, notes or results</small></span></button>
@@ -65,46 +72,54 @@ export function NuraActions({
         <div className="modal-backdrop" onMouseDown={close}>
           <section className="nura-modal" onMouseDown={(e) => e.stopPropagation()}>
             <button className="modal-close" onClick={close}><X /></button>
-            {mode === "new" && (
-              <>
-                <div className="modal-heading">
-                  <span className="modal-icon"><MessageCircle /></span>
-                  <div>
-                    <h2>Start a new Thread</h2>
-                    <p>Tell Nura what changed, what you&rsquo;re worried about, or what you want help keeping track of.</p>
-                  </div>
-                </div>
-                <textarea aria-label="Tell Nura what is going on" placeholder="e.g. I saw my GP today and need to monitor my headaches…" value={intake} onChange={(e) => setIntake(e.target.value)} />
-                <div className="modal-actions">
-                  <button className="secondary-cta" onClick={close}>Cancel</button>
-                  <button className="primary-cta" onClick={startWithNura} disabled={!intake.trim()}>Continue with Nura</button>
-                </div>
-              </>
-            )}
             {mode === "log" && (
               <>
-                <span className="modal-icon blue"><Plus /></span>
-                <h2>Log an update</h2>
-                <p>Choose the Thread, then continue with Nura. The message is already prepared so the update stays conversational.</p>
-                <label>Related Thread
-                  <select
-                    value={selectedPlanId}
-                    onChange={(e) => {
-                      const nextPlan = plans.find((plan) => plan.id === e.target.value);
-                      setSelectedPlanId(e.target.value);
-                      setNote(nextPlan ? `Update for ${nextPlan.title}: I want to log how things have been since my last check-in. Today, ` : "");
-                    }}
-                  >
-                    {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.title}</option>)}
-                  </select>
-                </label>
-                <label>Prepared message
-                  <textarea placeholder="Add a symptom, thought, measurement or note…" value={note} onChange={(e) => setNote(e.target.value)} />
-                </label>
-                <div className="modal-actions">
-                  <button className="secondary-cta" onClick={close}>Cancel</button>
+                <div className="modal-heading">
+                  <span className="modal-icon blue"><Plus /></span>
+                  <div>
+                    <h2>Log an update</h2>
+                    <p>Choose the Care plan, then continue with Nura. The message is already prepared so the update stays conversational.</p>
+                  </div>
+                </div>
+                <div className="modal-fields">
+                  <label>
+                    <span className="field-label">Related Care plan</span>
+                    <select
+                      value={selectedPlanId}
+                      onChange={(e) => {
+                        const nextPlan = plans.find((plan) => plan.id === e.target.value);
+                        setSelectedPlanId(e.target.value);
+                        setNote(
+                          nextPlan
+                            ? `Update for ${nextPlan.title}: I want to log how things have been since my last check-in. Today, `
+                            : "",
+                        );
+                      }}
+                    >
+                      {plans.map((plan) => (
+                        <option key={plan.id} value={plan.id}>
+                          {plan.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span className="field-label">Prepared message</span>
+                    <textarea
+                      placeholder="Add a symptom, thought, measurement or note…"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                    />
+                  </label>
+                </div>
+                <div className="modal-actions modal-actions-triple">
+                  <button type="button" className="secondary-cta" onClick={close}>
+                    Cancel
+                  </button>
                   <WhatsAppOpenButton message={updateDraft}>WhatsApp</WhatsAppOpenButton>
-                  <Link href={workspaceHref} className="primary-cta"><MessageCircle /> Message in app</Link>
+                  <Link href={workspaceHref} className="primary-cta">
+                    <MessageCircle /> Message in app
+                  </Link>
                 </div>
               </>
             )}
@@ -114,7 +129,7 @@ export function NuraActions({
                   <span className="modal-icon amber"><FileUp /></span>
                   <div>
                     <h2>Share media or files</h2>
-                    <p>Send images, voice notes, documents, care instructions or results in the conversation. Nura will use them to update the right Thread.</p>
+                    <p>Send images, voice notes, documents, care instructions or results in the conversation. Nura will use them to update the right Care plan.</p>
                   </div>
                 </div>
                 <Link href="/workspace" className="drop-zone upload-drop-zone">
@@ -137,75 +152,185 @@ export function NuraActions({
 
 export function RescheduleButton({ planId }: { planId: string }) {
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<"tonight" | "tomorrow" | "custom">("tonight");
+  const [mounted, setMounted] = useState(false);
+  const [selected, setSelected] = useState<RescheduleChoice>("tomorrow");
   const [customValue, setCustomValue] = useState("");
   const [saving, setSaving] = useState(false);
   const router = useRouter();
+  const { toast } = useToast();
+
+  const tonight = nextAt(19, 30, 0);
+  const tomorrow = nextAt(18, 0, 1);
+  const now = new Date();
+  const tonightAvailable = tonight.getTime() > now.getTime() + 5 * 60_000;
+
+  useEffect(() => {
+    // Portals need document.body, which only exists client-side after mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
+
+  function openModal() {
+    const defaultChoice: RescheduleChoice = tonightAvailable ? "tonight" : "tomorrow";
+    setSelected(defaultChoice);
+    setCustomValue(toDatetimeLocalValue(nextAt(19, 30, tonightAvailable ? 0 : 1)));
+    setOpen(true);
+  }
+
+  function closeModal() {
+    if (saving) return;
+    setOpen(false);
+  }
 
   async function save() {
+    let scheduledFor: Date;
+    if (selected === "tonight") {
+      if (!tonightAvailable) {
+        toast({ tone: "error", message: "Tonight’s slot has already passed." });
+        return;
+      }
+      scheduledFor = tonight;
+    } else if (selected === "tomorrow") {
+      scheduledFor = tomorrow;
+    } else {
+      if (!customValue) {
+        toast({ tone: "error", message: "Pick a date and time first." });
+        return;
+      }
+      scheduledFor = new Date(customValue);
+      if (Number.isNaN(scheduledFor.getTime()) || scheduledFor.getTime() < Date.now() + 60_000) {
+        toast({ tone: "error", message: "Choose a time at least a minute from now." });
+        return;
+      }
+    }
+
+    const label = friendlyLabel(scheduledFor);
     setSaving(true);
     try {
-      let scheduledFor: Date;
-      let label: string;
-      if (selected === "tonight") {
-        scheduledFor = nextAt(19, 0);
-        label = "tonight, 7:30 PM";
-      } else if (selected === "tomorrow") {
-        scheduledFor = nextAt(18, 1);
-        label = "tomorrow, 6:00 PM";
-      } else {
-        if (!customValue) return;
-        scheduledFor = new Date(customValue);
-        label = scheduledFor.toLocaleString();
-      }
-
-      await fetch("/api/check-ins/reschedule", {
+      const res = await fetch("/api/check-ins/reschedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planId, scheduledFor: scheduledFor.toISOString(), label }),
       });
-      router.refresh();
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        const message =
+          typeof data?.error === "string" && data.error.includes("future")
+            ? "Choose a time in the future."
+            : "Could not reschedule. Please try again.";
+        toast({ tone: "error", message });
+        return;
+      }
+      toast({ title: "Rescheduled", message: `Check-in moved to ${label}.` });
       setOpen(false);
+      router.refresh();
     } finally {
       setSaving(false);
     }
   }
 
+  const modal =
+    open && mounted
+      ? createPortal(
+          <div className="modal-backdrop" onMouseDown={closeModal} role="presentation">
+            <section
+              className="nura-modal small reschedule-modal"
+              onMouseDown={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="reschedule-title"
+            >
+              <button type="button" className="modal-close" onClick={closeModal} aria-label="Close">
+                <X />
+              </button>
+              <div className="modal-heading">
+                <span className="modal-icon">
+                  <CalendarDays />
+                </span>
+                <div>
+                  <h2 id="reschedule-title">Reschedule check-in</h2>
+                  <p>Pick a time that works better. Nura will follow up then.</p>
+                </div>
+              </div>
+              <div className="time-options" role="radiogroup" aria-label="Suggested times">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selected === "tonight"}
+                  className={selected === "tonight" ? "selected" : ""}
+                  disabled={!tonightAvailable}
+                  onClick={() => setSelected("tonight")}
+                >
+                  <Clock3 />
+                  <span>
+                    <b>Tonight · 7:30 PM</b>
+                    <small>{tonightAvailable ? "Later today" : "Already passed"}</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selected === "tomorrow"}
+                  className={selected === "tomorrow" ? "selected" : ""}
+                  onClick={() => setSelected("tomorrow")}
+                >
+                  <Clock3 />
+                  <span>
+                    <b>Tomorrow · 6:00 PM</b>
+                    <small>Next evening</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selected === "custom"}
+                  className={selected === "custom" ? "selected" : ""}
+                  onClick={() => setSelected("custom")}
+                >
+                  <CalendarDays />
+                  <span>
+                    <b>Choose another time</b>
+                    <small>Pick any date and time</small>
+                  </span>
+                </button>
+              </div>
+              {selected === "custom" && (
+                <label className="datetime-field">
+                  Date and time
+                  <input
+                    type="datetime-local"
+                    className="datetime-input"
+                    value={customValue}
+                    min={toDatetimeLocalValue(new Date(now.getTime() + 60_000))}
+                    onChange={(e) => setCustomValue(e.target.value)}
+                  />
+                </label>
+              )}
+              <div className="modal-actions">
+                <button type="button" className="secondary-cta" onClick={closeModal} disabled={saving}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary-cta"
+                  onClick={save}
+                  disabled={saving || (selected === "custom" && !customValue) || (selected === "tonight" && !tonightAvailable)}
+                >
+                  {saving ? "Saving…" : "Save time"}
+                </button>
+              </div>
+            </section>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <>
-      <button className="secondary-cta" onClick={() => setOpen(true)}>Reschedule</button>
-      {open && (
-        <div className="modal-backdrop" onMouseDown={() => setOpen(false)}>
-          <section className="nura-modal small" onMouseDown={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setOpen(false)}><X /></button>
-            <span className="modal-icon"><CalendarDays /></span>
-            <h2>Reschedule check-in</h2>
-            <div className="time-options">
-              <button className={selected === "tonight" ? "selected" : ""} onClick={() => setSelected("tonight")}><Clock3 />Tonight · 7:30 PM</button>
-              <button className={selected === "tomorrow" ? "selected" : ""} onClick={() => setSelected("tomorrow")}><Clock3 />Tomorrow · 6:00 PM</button>
-              <button className={selected === "custom" ? "selected" : ""} onClick={() => setSelected("custom")}><CalendarDays />Choose another time</button>
-            </div>
-            {selected === "custom" && (
-              <input
-                type="datetime-local"
-                className="datetime-input"
-                value={customValue}
-                onChange={(e) => setCustomValue(e.target.value)}
-              />
-            )}
-            <div className="modal-actions">
-              <button className="secondary-cta" onClick={() => setOpen(false)}>Cancel</button>
-              <button className="primary-cta" onClick={save} disabled={saving || (selected === "custom" && !customValue)}>
-                {saving ? "Saving…" : "Save time"}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
+      <button type="button" className="secondary-cta" onClick={openModal}>
+        Reschedule
+      </button>
+      {modal}
     </>
   );
-}
-
-export function SuccessToast() {
-  return <div className="success-toast"><CheckCircle2 /><span><b>Saved</b><small>Your update is organised in this Thread.</small></span></div>;
 }

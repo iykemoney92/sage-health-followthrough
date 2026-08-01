@@ -16,6 +16,8 @@ export type NuraPlanCategory =
   | "mental_wellbeing"
   | "sleep_energy"
   | "recovery_aftercare"
+  | "postpartum_aftercare"
+  | "occupational_stress"
   | "therapy_follow_through"
   | "caregiver_support"
   | "general_health";

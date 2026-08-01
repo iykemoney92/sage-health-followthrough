@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "demo:reset": "node scripts/seed-demo-personas.mjs",
+    "e2e:whatsapp": "node scripts/e2e-whatsapp-onboarding.mjs",
     "demo:poll-checkins": "node scripts/trigger-check-ins.mjs"
   },
   "dependencies": {
@@ -18,6 +19,7 @@
     "@supabase/supabase-js": "^2.110.8",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "lottie-react": "^2.4.1",
     "lucide-react": "^1.25.0",
     "mammoth": "^1.12.0",
     "next": "16.2.11",

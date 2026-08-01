@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Bell, BellOff, BellRing } from "lucide-react";
+import { useToast } from "@/components/toast";
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
+}
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -9,54 +18,104 @@ function urlBase64ToUint8Array(base64String: string) {
   return Uint8Array.from(rawData, (char) => char.charCodeAt(0));
 }
 
-type Status = "checking" | "unsupported" | "denied" | "off" | "on";
+type Status = "checking" | "unsupported" | "denied" | "missing_key" | "off" | "on";
 
 async function checkStatus(): Promise<Status> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
     return "unsupported";
   }
+  if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return "missing_key";
   if (Notification.permission === "denied") return "denied";
-  const registration = await navigator.serviceWorker.getRegistration("/sw.js");
-  const subscription = await registration?.pushManager.getSubscription();
+
+  // navigator.serviceWorker.ready only resolves once a service worker is active for this
+  // origin - if enable() has never run, nothing has ever registered one, so .ready hangs
+  // forever and the toggle would stay disabled permanently. getRegistration() resolves
+  // immediately either way, so it's the right check before a subscription exists at all.
+  const registration = await navigator.serviceWorker.getRegistration("/").catch(() => null);
+  if (!registration) return "off";
+
+  const subscription = await registration.pushManager.getSubscription().catch(() => null);
   return subscription ? "on" : "off";
 }
 
 export function PushNotificationsToggle() {
+  const { toast } = useToast();
   const [status, setStatus] = useState<Status>("checking");
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [isIos, setIsIos] = useState(false);
 
   useEffect(() => {
-    // Support/subscription state can only be read in the browser, so this
-    // can't be known during the server render - deferring to an effect is
-    // the correct approach here, not a something-you-forgot-to-do.
+    // Push/Notification APIs are browser-only; hydrate status after mount.
     void checkStatus().then(setStatus);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsIos(/iPhone|iPad|iPod/.test(navigator.userAgent));
   }, []);
 
   async function enable() {
     setBusy(true);
-    setNotice("");
     try {
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
-        setStatus(permission === "denied" ? "denied" : "off");
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+      if (!vapidKey) {
+        setStatus("missing_key");
+        toast({ tone: "error", message: "Push isn’t configured for this environment yet." });
         return;
       }
-      const registration = await navigator.serviceWorker.register("/sw.js");
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ""),
-      });
+
+      if (!("Notification" in window)) {
+        setStatus("unsupported");
+        return;
+      }
+
+      const permission = await withTimeout(
+        Notification.requestPermission(),
+        30000,
+        "Notification permission prompt didn’t resolve — check for a blocked popup or your OS notification settings.",
+      );
+      if (permission !== "granted") {
+        setStatus(permission === "denied" ? "denied" : "off");
+        toast({
+          tone: "info",
+          message:
+            permission === "denied"
+              ? "Notifications are blocked in your browser settings."
+              : "Permission wasn’t granted — you can try again later.",
+        });
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      // Guarded the same way as checkStatus(): should be fast right after a fresh register(),
+      // but a stalled install must never re-lock this button the way an unregistered worker did.
+      await withTimeout(navigator.serviceWorker.ready, 10000, "Service worker took too long to activate.");
+
+      const existing = await registration.pushManager.getSubscription();
+      const subscription =
+        existing
+        || (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        }));
+
       const res = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(subscription.toJSON()),
       });
-      if (!res.ok) throw new Error("subscribe failed");
+      const payload = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; testSent?: number } | null;
+      if (!res.ok || !payload?.ok) {
+        throw new Error(payload?.error || "subscribe failed");
+      }
+
       setStatus("on");
-      setNotice("Notifications on - you'll get a test one now.");
+      toast({
+        title: "Notifications on",
+        message:
+          (payload.testSent ?? 0) > 0
+            ? "You’ll get a test one now."
+            : "Saved — check-ins can reach this browser.",
+      });
     } catch {
-      setNotice("Could not enable notifications. Please try again.");
+      toast({ tone: "error", message: "Could not enable notifications. Please try again." });
     } finally {
       setBusy(false);
     }
@@ -64,9 +123,10 @@ export function PushNotificationsToggle() {
 
   async function disable() {
     setBusy(true);
-    setNotice("");
     try {
-      const registration = await navigator.serviceWorker.getRegistration("/sw.js");
+      const registration =
+        (await navigator.serviceWorker.getRegistration("/"))
+        || (await navigator.serviceWorker.getRegistration("/sw.js"));
       const subscription = await registration?.pushManager.getSubscription();
       if (subscription) {
         await fetch("/api/push/unsubscribe", {
@@ -77,33 +137,65 @@ export function PushNotificationsToggle() {
         await subscription.unsubscribe();
       }
       setStatus("off");
-      setNotice("Notifications off.");
+      toast({ tone: "info", message: "Notifications off." });
     } catch {
-      setNotice("Could not turn off notifications. Please try again.");
+      toast({ tone: "error", message: "Could not turn off notifications. Please try again." });
     } finally {
       setBusy(false);
     }
   }
 
-  if (status === "unsupported") return null;
+  const Icon = status === "on" ? BellRing : status === "denied" ? BellOff : Bell;
 
   return (
-    <section>
-      <h3>Browser notifications</h3>
-      {status === "denied" ? (
-        <p className="muted">Blocked in your browser settings. Allow notifications for this site to turn them back on.</p>
+    <section className="pref-panel">
+      <div className="pref-panel-head">
+        <h3>Browser notifications</h3>
+        <p className="muted">
+          Get a nudge in this browser when a check-in is due.
+          {isIos ? " On iPhone, add Nura to your Home Screen first, then enable notifications." : ""}
+        </p>
+      </div>
+
+      {status === "unsupported" || status === "missing_key" ? (
+        <p className="muted">
+          {status === "missing_key"
+            ? "Push isn’t available in this environment yet. You can still use in-app check-ins."
+            : "This browser doesn’t support push notifications. You can still use in-app check-ins."}
+        </p>
+      ) : status === "denied" ? (
+        <div className="pref-notify-card is-blocked">
+          <span className="pref-choice-icon" aria-hidden>
+            <Icon />
+          </span>
+          <div>
+            <b>Blocked in browser settings</b>
+            <small>Allow notifications for usenura.app, then come back here to turn them on.</small>
+          </div>
+        </div>
       ) : (
-        <label className="toggle-row">
-          Get notified in this browser
-          <input
-            type="checkbox"
-            checked={status === "on"}
-            disabled={busy || status === "checking"}
-            onChange={(event) => (event.target.checked ? enable() : disable())}
-          />
-        </label>
+        <button
+          type="button"
+          className={`pref-notify-card ${status === "on" ? "is-on" : ""}`}
+          disabled={busy || status === "checking"}
+          onClick={() => (status === "on" ? disable() : enable())}
+        >
+          <span className="pref-choice-icon" aria-hidden>
+            <Icon />
+          </span>
+          <span className="pref-choice-copy">
+            <b>{status === "on" ? "Notifications on" : "Show in the browser"}</b>
+            <small>
+              {status === "checking"
+                ? "Checking this browser…"
+                : status === "on"
+                  ? "Tap to turn off for this browser"
+                  : "Tap to allow nudges when a check-in is due"}
+            </small>
+          </span>
+          <span className={`pref-switch-pill ${status === "on" ? "is-on" : ""}`} aria-hidden />
+        </button>
       )}
-      {notice && <p className="profile-save-note">{notice}</p>}
     </section>
   );
 }

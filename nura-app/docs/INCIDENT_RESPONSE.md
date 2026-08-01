@@ -11,7 +11,7 @@ Solo-maintained at this stage - one on-call: the founder. Update this doc the mo
 
 | Level | Definition | Example |
 |---|---|---|
-| SEV1 | Full outage, or any real user data exposed/leaked | Site down, RLS bypass exposing another user's Threads |
+| SEV1 | Full outage, or any real user data exposed/leaked | Site down, RLS bypass exposing another user's Care plans |
 | SEV2 | Core feature broken for many users, no data exposure | Check-ins not sending, sign-up broken |
 | SEV3 | Degraded or broken for a subset of users | One integration (e.g. voice transcription) failing |
 | SEV4 | Cosmetic or low-impact | UI glitch, non-critical broken link |

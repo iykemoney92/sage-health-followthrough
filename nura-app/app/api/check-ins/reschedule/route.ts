@@ -21,6 +21,11 @@ export async function POST(request: NextRequest) {
   }
 
   const { planId, scheduledFor, label } = parsed.data;
+  const when = new Date(scheduledFor);
+  if (Number.isNaN(when.getTime()) || when.getTime() < Date.now() - 60_000) {
+    return NextResponse.json({ ok: false, error: "scheduled time must be in the future" }, { status: 400 });
+  }
+
   const supabase = await getSupabaseSessionClient();
 
   const { data: plan, error: planError } = await supabase
@@ -34,11 +39,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "plan not found" }, { status: 404 });
   }
 
+  // Keep channel/prompt from the soonest open check-in so reschedule doesn't reset them.
+  const { data: existing } = await supabase
+    .from("nura_check_ins")
+    .select("id, channel, prompt")
+    .eq("owner_id", user.id)
+    .eq("plan_id", planId)
+    .is("completed_at", null)
+    .order("scheduled_for", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  // Replace open check-ins for this Journey (same behaviour as chat intake reschedule).
+  const { error: clearError } = await supabase
+    .from("nura_check_ins")
+    .delete()
+    .eq("owner_id", user.id)
+    .eq("plan_id", planId)
+    .is("completed_at", null);
+
+  if (clearError) {
+    return NextResponse.json({ ok: false, error: clearError.message }, { status: 500 });
+  }
+
+  const prompt =
+    (existing?.prompt as string | undefined)?.trim() ||
+    `How have things been with ${plan.title}?`;
+  const channel = (existing?.channel as string | undefined) || "whatsapp";
+
   const { error } = await supabase.from("nura_check_ins").insert({
     owner_id: user.id,
     plan_id: planId,
-    prompt: `How have things been with ${plan.title}?`,
-    scheduled_for: scheduledFor,
+    channel,
+    prompt,
+    scheduled_for: when.toISOString(),
   });
 
   if (error) {
@@ -56,5 +90,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, scheduledFor: when.toISOString() });
 }

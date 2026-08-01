@@ -13,16 +13,16 @@ export function ThreadSearchToolbar({
   category: string;
 }) {
   return (
-    <form className="threads-toolbar">
+    <form className="threads-toolbar journeys-toolbar" method="get" action="/plans">
       <input type="hidden" name="tab" value={tab} />
       <label className="searchbox">
-        <Search />
+        <Search aria-hidden />
         <input
           type="search"
           name="q"
           defaultValue={searchTerm}
-          placeholder="Search threads"
-          aria-label="Search threads"
+          placeholder="Search Care plans"
+          aria-label="Search Care plans"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -35,14 +35,20 @@ export function ThreadSearchToolbar({
         className="category-select"
         name="category"
         defaultValue={category}
+        aria-label="Filter by category"
         onChange={(e) => e.currentTarget.form?.requestSubmit()}
       >
         <option value="">All categories</option>
-        <option value="wellbeing">Wellbeing</option>
-        <option value="health">Health</option>
+        <option value="clinic">Clinic</option>
+        <option value="symptoms">Symptoms</option>
         <option value="medication">Medication</option>
+        <option value="wellbeing">Wellbeing</option>
+        <option value="recovery">Recovery</option>
+        <option value="health">Health</option>
       </select>
-      <Link href="/workspace" className="primary-cta"><Plus /> New thread</Link>
+      <Link href="/workspace" className="primary-cta">
+        <Plus /> New Care plan
+      </Link>
     </form>
   );
 }

@@ -7,7 +7,7 @@ const requestSchema = z.object({
   title: z.string().trim().min(1),
   date: calendarDateSchema,
   start: calendarTimeSchema,
-  channel: z.string().optional().default("In app"),
+  channel: z.string().optional().default("In the app"),
   notes: z.string().optional().default(""),
   eventType: calendarEventTypeSchema.optional().default("appointment"),
 });
@@ -15,8 +15,8 @@ const requestSchema = z.object({
 function channelLabel(channel?: string | null) {
   if (channel === "whatsapp") return "WhatsApp message";
   if (channel === "voice") return "WhatsApp voice";
-  if (channel === "in_app") return "In app";
-  return channel || "In app";
+  if (channel === "in_app" || channel === "In app") return "In the app";
+  return channel || "In the app";
 }
 
 export async function GET() {
@@ -53,12 +53,12 @@ export async function GET() {
     return {
       id: checkIn.id as string,
       source: "check_in" as const,
-      title: `${plan?.title ?? "Thread"} check-in`,
+      title: `${plan?.title ?? "Care plan"} check-in`,
       startsAt: checkIn.scheduled_for as string,
       tone: toneForCalendarEvent("check_in", plan?.category),
       type: "Check-in",
       channel: channelLabel(checkIn.channel as string | null),
-      notes: `Nura will check in about ${plan?.title ?? "this Thread"}.`,
+      notes: `Nura will check in about ${plan?.title ?? "this Care plan"}.`,
       planId: checkIn.plan_id as string | null,
     };
   });

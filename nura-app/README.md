@@ -26,8 +26,8 @@ pnpm build
 
 ## Current Shape
 
-- `/` shows the conversation-first Nura story: chat, voice notes, media, Threads, and follow-through.
-- `/workspace` lets users message Nura, share files/media, continue in WhatsApp, and update Thread context.
+- `/` shows the conversation-first Nura story: chat, voice notes, media, Care plans, and follow-through.
+- `/workspace` lets users message Nura, share files/media, continue in WhatsApp, and update Care plan context.
 - `/plans`, `/calendar`, and `/me` scaffold the main product navigation.
 - `docs/ARCHITECTURE.md` documents the intended product and technical loop.
 - `types/nura.ts` and `lib/schemas/nura.ts` define the first shared contracts.

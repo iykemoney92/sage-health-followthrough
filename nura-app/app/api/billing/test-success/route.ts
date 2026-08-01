@@ -3,7 +3,18 @@ import { getStripeTestCheckoutSession, grantStripeTestPlus } from "@/lib/billing
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { appUrl } from "@/lib/url";
 
+/**
+ * Legacy test-only success handler. Production Checkout uses
+ * `/api/billing/checkout-success` with a mode-aware Stripe secret.
+ */
 export async function GET(request: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    const sessionId = request.nextUrl.searchParams.get("session_id");
+    const url = appUrl("/api/billing/checkout-success", request);
+    if (sessionId) url.searchParams.set("session_id", sessionId);
+    return NextResponse.redirect(url);
+  }
+
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.redirect(appUrl("/login", request));
@@ -30,7 +41,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  const url = appUrl("/billing", request);
-  url.searchParams.set("checkout", "success");
-  return NextResponse.redirect(url);
+  return NextResponse.redirect(appUrl("/today", request));
 }

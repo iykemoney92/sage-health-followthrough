@@ -42,7 +42,7 @@ export function ThreadRowMenu({ planId, status }: { planId: string; status: stri
       <button
         type="button"
         className="thread-row-more-btn"
-        aria-label="Thread options"
+        aria-label="Care plan options"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={(event) => {
@@ -61,7 +61,7 @@ export function ThreadRowMenu({ planId, status }: { planId: string; status: stri
             </button>
           ) : (
             <button type="button" role="menuitem" disabled={saving} onClick={(event) => { event.stopPropagation(); void setStatus("archived"); }}>
-              <Archive /> Archive Thread
+              <Archive /> Archive Care plan
             </button>
           )}
         </div>

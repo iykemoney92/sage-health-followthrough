@@ -61,4 +61,9 @@ describe("createWhatsappHref", () => {
     expect(href).toContain("https://wa.me/12533672877?text=");
     expect(decodeURIComponent(href ?? "")).toContain("Link code: NURA-AB12CD34");
   });
+
+  it("rejects fictional US 555 placeholder numbers", () => {
+    process.env.NEXT_PUBLIC_NURA_WHATSAPP_NUMBER = "15554859474";
+    expect(createWhatsappHref("NURA-AB12CD34")).toBeNull();
+  });
 });

@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
 
 export type StripeCheckoutSession = {
   id?: string;
@@ -19,7 +20,10 @@ export type StripeWebhookEvent = {
 };
 
 export async function getStripeTestCheckoutSession(sessionId: string) {
-  const secretKey = process.env.STRIPE_TEST_SECRET_KEY;
+  const secretKey =
+    process.env.STRIPE_TEST_SECRET_KEY
+    || (process.env.NODE_ENV !== "production" ? process.env.STRIPE_SECRET_KEY : "")
+    || "";
   if (!secretKey) return null;
 
   const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
@@ -35,7 +39,8 @@ export async function getStripeTestCheckoutSession(sessionId: string) {
 export function verifyStripeWebhook(payload: string, signatureHeader: string | null) {
   const webhookSecret = process.env.STRIPE_TEST_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    return process.env.NODE_ENV !== "production";
+    // Fail closed in production — unsigned webhooks must never mutate billing state.
+    return false;
   }
   if (!signatureHeader) return false;
 
@@ -58,7 +63,7 @@ export function verifyStripeWebhook(payload: string, signatureHeader: string | n
 export async function grantStripeTestPlus(supabase: SupabaseClient, ownerId: string) {
   const now = new Date();
   const trialEndsAt = new Date(now);
-  trialEndsAt.setDate(trialEndsAt.getDate() + 7);
+  trialEndsAt.setDate(trialEndsAt.getDate() + CARD_TRIAL_DAYS);
 
   return await supabase
     .from("nura_profiles")

@@ -28,7 +28,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   const nowDone = step.status !== "done";
 
   if (nowDone) {
-    await completeStepAndCascade(supabase, step.id as string, step.milestone_id as string);
+    await completeStepAndCascade(supabase, user.id, step.id as string, step.milestone_id as string);
 
     const { data: plan } = await supabase
       .from("nura_plans")
@@ -41,6 +41,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   } else {
     await supabase.from("nura_plan_steps").update({ status: "active", completed_at: null }).eq("id", step.id);
     await supabase.from("nura_plan_milestones").update({ status: "active" }).eq("id", step.milestone_id);
+    // Un-completing the step that finished the Journey should undo the auto-archive too -
+    // otherwise it's stuck looking "done and archived" while actually having an active step again.
+    await supabase.from("nura_plans").update({ status: "active" }).eq("id", step.plan_id).eq("status", "archived");
   }
 
   const { data: milestoneRow } = await supabase.from("nura_plan_milestones").select("status").eq("id", step.milestone_id).maybeSingle();

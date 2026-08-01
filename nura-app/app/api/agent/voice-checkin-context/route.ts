@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   );
 
   if (!context) {
-    return NextResponse.json({ ok: false, error: "Thread not found" }, { status: 404 });
+    return NextResponse.json({ ok: false, error: "Care plan not found" }, { status: 404 });
   }
 
   return NextResponse.json({

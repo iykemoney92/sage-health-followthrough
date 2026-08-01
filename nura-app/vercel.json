@@ -1,3 +1,9 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/agent/trigger-check-ins",
+      "schedule": "0 8 * * *"
+    }
+  ]
 }

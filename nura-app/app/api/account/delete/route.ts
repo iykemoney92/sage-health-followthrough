@@ -12,7 +12,7 @@ export async function POST() {
   const ownerId = user.id;
 
   // Explicit per-table deletes rather than relying on FK cascade behavior - some tables
-  // (nura_messages.plan_id) use ON DELETE SET NULL rather than CASCADE, so deleting Threads
+  // (nura_messages.plan_id) use ON DELETE SET NULL rather than CASCADE, so deleting Journeys
   // first wouldn't necessarily clear everything else on its own.
   const tables = [
     "nura_plan_steps",

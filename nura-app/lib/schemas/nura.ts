@@ -17,8 +17,11 @@ export const planCategorySchema = z.enum([
   "mental_wellbeing",
   "sleep_energy",
   "recovery_aftercare",
+  "postpartum_aftercare",
+  "occupational_stress",
   "therapy_follow_through",
   "caregiver_support",
+  "personal_hygiene",
   "general_health",
 ]);
 
@@ -45,3 +48,26 @@ export const scheduleCheckInSchema = z.object({
   prompt: z.string().min(1),
   scheduledFor: z.string().datetime(),
 });
+
+/** Shared contract for agent-authored Journey create (onboarding + chat). */
+export const journeyCreatePlanFieldsSchema = z.object({
+  title: z.string().min(1),
+  category: planCategorySchema.default("general_health"),
+  whyThisExists: z.string().min(1),
+  currentFocus: z.string().min(1),
+  nextStep: z.string().min(1),
+});
+
+export const journeyCreateCheckInSchema = z.object({
+  when: z.string().min(1),
+  prompt: z.string().min(1),
+  channel: z.enum(["whatsapp", "in_app", "voice"]),
+});
+
+export const journeyCreatePayloadSchema = journeyCreatePlanFieldsSchema.extend({
+  nextCheckIn: journeyCreateCheckInSchema.nullable().optional(),
+});
+
+export type JourneyCreatePlanFields = z.infer<typeof journeyCreatePlanFieldsSchema>;
+export type JourneyCreateCheckIn = z.infer<typeof journeyCreateCheckInSchema>;
+export type JourneyCreatePayload = z.infer<typeof journeyCreatePayloadSchema>;

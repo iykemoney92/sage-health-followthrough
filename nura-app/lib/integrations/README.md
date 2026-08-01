@@ -12,4 +12,4 @@ Planned adapters:
 
 No app route should call vendor SDKs directly once the real implementation begins.
 
-Nura should have a WhatsApp-first follow-through posture: lightweight daily messages, replies that update Threads, and clear opt-in controls.
+Nura should have a WhatsApp-first follow-through posture: lightweight daily messages, replies that update Care plans, and clear opt-in controls.

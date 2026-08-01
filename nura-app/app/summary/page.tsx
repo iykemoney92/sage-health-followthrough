@@ -28,7 +28,7 @@ async function generateSummary(planTitle: string, entries: string[]): Promise<Ge
         "Never diagnose, prescribe, or give medical advice - just reflect back what they reported. " +
         "Respond with ONLY a JSON object, no markdown fences: " +
         '{"headline": string (one encouraging, neutral sentence about the trend), "patterns": string[] (1-3 short bullet observations), "questions": string[] (1-3 short questions worth raising with a clinician)}',
-      messages: [{ role: "user", content: `Thread: "${planTitle}". Recent self-reported updates:\n${entries.join("\n")}` }],
+      messages: [{ role: "user", content: `Care plan: "${planTitle}". Recent self-reported updates:\n${entries.join("\n")}` }],
     });
     const textBlock = message.content.find((block) => block.type === "text");
     if (!textBlock || textBlock.type !== "text") return FALLBACK_SUMMARY;
@@ -58,7 +58,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
     return (
       <NuraShell userName={displayName} userAvatarUrl={avatarUrl}>
         <div className="dashboard-page summary-page">
-          <div className="summary-head"><div><span className="auth-kicker">SUMMARY</span><h1>No summary yet</h1><p>Start a Thread with Nura and a summary will appear here.</p></div></div>
+          <div className="summary-head"><div><span className="auth-kicker">SUMMARY</span><h1>No summary yet</h1><p>Start a Care plan with Nura and a summary will appear here.</p></div></div>
         </div>
       </NuraShell>
     );
@@ -112,7 +112,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
           </div>
           <div>
             <ExportSummaryButton planTitle={plan.title as string} summary={summary} />
-            <Link href={`/plans/${plan.id}`} className="primary-cta">Back to Thread</Link>
+            <Link href={`/plans/${plan.id}`} className="primary-cta">Back to Care plan</Link>
           </div>
         </div>
         <div className="summary-grid">

@@ -64,14 +64,14 @@ export async function POST(request: NextRequest) {
   }
 
   if (requestedPlanId && !plan) {
-    return NextResponse.json({ ok: false, error: "Thread not found" }, { status: 404 });
+    return NextResponse.json({ ok: false, error: "Care plan not found" }, { status: 404 });
   }
 
   let planId = plan?.id as string | undefined;
   let resolvedTitle = plan?.title ?? planTitle!;
   const resolvedOwnerId = (plan?.owner_id as string | undefined) ?? effectiveOwnerId;
   if (!resolvedOwnerId) {
-    return NextResponse.json({ ok: false, error: "Could not identify the caller for this Thread." }, { status: 404 });
+    return NextResponse.json({ ok: false, error: "Could not identify the caller for this Care plan." }, { status: 404 });
   }
   const paywall = await requirePlusAccess(supabase, resolvedOwnerId, channel === "voice" ? "voice" : "whatsapp");
   if (paywall) return paywall;
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    message: `Check-in scheduled for the ${resolvedTitle} thread on ${scheduledFor} via ${channel}.`,
+    message: `Check-in scheduled for the ${resolvedTitle} Care plan on ${scheduledFor} via ${channel}.`,
     checkIn: { ...checkIn, planTitle: resolvedTitle },
   });
 }

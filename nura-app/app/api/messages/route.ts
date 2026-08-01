@@ -4,8 +4,11 @@ import { enforceThreadLimit } from "@/lib/billing/subscription";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { resolveDecision, applyPlanDecision, applyNextCheckIn, insertConversationTurn, extractPhoneNumber, type PlanContext, type HistoryTurn, type MissedCheckIn } from "@/lib/domain/message-intake";
 import { processAttachments } from "@/lib/ai/attachments";
-import { evaluateAndAdvanceJourney } from "@/lib/domain/plan-journey";
+import { evaluateAndAdvanceJourney, ensureJourney } from "@/lib/domain/plan-journey";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/rate-limit";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const MISSED_STATUSES = ["missed_stale", "missed_consolidated", "failed"];
 const MAX_ATTACHMENT_BASE64_CHARS = 6_000_000; // ~4.5MB raw per file, base64-encoded
@@ -34,7 +37,7 @@ export async function GET() {
   const [{ data, error }, { data: activePlan }] = await Promise.all([
     supabase
     .from("nura_messages")
-    .select("id, plan_id, role, content, created_at")
+    .select("id, plan_id, role, content, created_at, attachments")
     .eq("owner_id", user.id)
     .order("created_at", { ascending: false })
       .limit(50),
@@ -48,6 +51,25 @@ export async function GET() {
   ]);
 
   if (error) {
+    // Pre-migration DBs may not have attachments yet — fall back so chat still loads.
+    if (/attachments/i.test(error.message)) {
+      const { data: legacy, error: legacyError } = await supabase
+        .from("nura_messages")
+        .select("id, plan_id, role, content, created_at")
+        .eq("owner_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (legacyError) {
+        return NextResponse.json({ ok: false, error: legacyError.message }, { status: 500 });
+      }
+      const messages = (legacy ?? []).sort((a, b) => {
+        const byTime = new Date(a.created_at as string).getTime() - new Date(b.created_at as string).getTime();
+        if (byTime !== 0) return byTime;
+        if (a.role === b.role) return 0;
+        return a.role === "user" ? -1 : 1;
+      });
+      return NextResponse.json({ ok: true, messages, activePlan });
+    }
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
@@ -83,7 +105,7 @@ export async function POST(request: NextRequest) {
 
   const { data: plans, error: plansError } = await supabase
     .from("nura_plans")
-    .select("id, title, current_focus, why_this_exists, next_step")
+    .select("id, title, current_focus, why_this_exists, next_step, category")
     .eq("owner_id", user.id)
     .order("updated_at", { ascending: false })
     .limit(10);
@@ -120,7 +142,7 @@ export async function POST(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from("nura_profiles")
-    .select("phone")
+    .select("phone, preferred_checkin_channels")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -130,6 +152,7 @@ export async function POST(request: NextRequest) {
     await supabase.from("nura_profiles").upsert({ id: user.id, phone: mentionedPhone });
   }
   const phoneOnFile = existingPhone || mentionedPhone || null;
+  const allowedChannels = ((profile?.preferred_checkin_channels as string[] | null) ?? ["in_app"]) as ("voice" | "whatsapp" | "in_app")[];
 
   const { data: missedRows } = await supabase
     .from("nura_check_ins")
@@ -141,7 +164,7 @@ export async function POST(request: NextRequest) {
     .limit(5);
 
   const missed: MissedCheckIn[] = (missedRows ?? []).map((row) => ({
-    plan_title: planTitleById.get(row.plan_id as string) ?? "a Thread",
+    plan_title: planTitleById.get(row.plan_id as string) ?? "a Care plan",
     prompt: row.prompt as string,
     scheduled_for: new Date(row.scheduled_for as string).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }),
     reason: row.call_status === "failed" ? "the call failed" : "no answer / too much time passed",
@@ -149,16 +172,26 @@ export async function POST(request: NextRequest) {
 
   const requestedPlan = requestedPlanId ? plans?.find((plan) => plan.id === requestedPlanId) ?? null : null;
   const { attachments: sanitizedAttachments, blocks: attachmentBlocks } = await processAttachments(attachments as MessageAttachment[]);
-  const decision = await resolveDecision(content, plans ?? [], sanitizedAttachments, (contexts ?? []) as PlanContext[], requestedPlan, history, phoneOnFile, missed, attachmentBlocks);
+  const decision = await resolveDecision(content, plans ?? [], sanitizedAttachments, (contexts ?? []) as PlanContext[], requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels);
   const threadLimit = await enforceThreadLimit(supabase, user.id, plans?.length ?? 0, decision.action === "new_plan");
   if (threadLimit) return threadLimit;
 
-  const { planId, planTitle, error: planError } = await applyPlanDecision(supabase, user.id, decision, plans ?? []);
+  const { planId, planTitle, createdPlan, error: planError } = await applyPlanDecision(supabase, user.id, decision, plans ?? []);
   if (planError) {
     return NextResponse.json({ ok: false, error: planError }, { status: 500 });
   }
 
-  const { error: conversationError } = await insertConversationTurn(supabase, user.id, planId, content, decision.reply);
+  const { error: conversationError } = await insertConversationTurn(
+    supabase,
+    user.id,
+    planId,
+    content,
+    decision.reply,
+    sanitizedAttachments.map((file) => ({
+      name: file.name,
+      kind: file.kind === "image" || file.kind === "audio" || file.kind === "document" ? file.kind : "file",
+    })),
+  );
   if (conversationError) {
     return NextResponse.json({ ok: false, error: conversationError }, { status: 500 });
   }
@@ -182,7 +215,10 @@ export async function POST(request: NextRequest) {
     }
 
     const planForJourney = plans?.find((plan) => plan.id === planId);
-    if (planForJourney) {
+    if (createdPlan) {
+      // Draft the roadmap as soon as a Journey is born — don't wait for the plan page.
+      after(() => ensureJourney(supabase, user.id, createdPlan));
+    } else if (planForJourney) {
       // Runs after the response is sent - journey bookkeeping should never delay the visible chat reply.
       after(() => evaluateAndAdvanceJourney(supabase, user.id, planForJourney as never, content, decision.reply));
     }

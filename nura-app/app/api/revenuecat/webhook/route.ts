@@ -1,21 +1,15 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { extendStripeTrialIfNeeded } from "@/lib/billing/extend-stripe-trial";
+import {
+  getPlusProductIds,
+  subscriptionUpdateFor,
+  type RevenueCatEvent,
+} from "@/lib/billing/revenuecat-webhook";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
-import { PLUS_ENTITLEMENT_ID } from "@/lib/billing/subscription";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
-
-type RevenueCatEvent = {
-  id?: string;
-  type?: string;
-  app_user_id?: string;
-  original_app_user_id?: string;
-  product_id?: string;
-  entitlement_ids?: string[];
-  expiration_at_ms?: number | null;
-  event_timestamp_ms?: number;
-};
 
 function safeEqual(a: string, b: string) {
   const left = Buffer.from(a);
@@ -27,31 +21,9 @@ function isUuid(value: string | undefined): value is string {
   return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
 }
 
-function isoFromMs(value: number | null | undefined) {
-  return typeof value === "number" ? new Date(value).toISOString() : null;
-}
-
 function eventIdFor(payloadText: string, event: RevenueCatEvent) {
   if (event.id) return event.id;
   return createHash("sha256").update(payloadText).digest("hex");
-}
-
-function isPlusProduct(event: RevenueCatEvent) {
-  const entitlementIds = event.entitlement_ids ?? [];
-  if (entitlementIds.includes(PLUS_ENTITLEMENT_ID)) return true;
-
-  const plusProductIds = getPlusProductIds();
-  return Boolean(event.product_id && plusProductIds.includes(event.product_id));
-}
-
-function getPlusProductIds() {
-  return (
-    process.env.REVENUECAT_PLUS_PRODUCT_IDS ??
-      "prod_UxrFQntebp8P6e,prod48328e2cc1,price_1TxvWrLRJZHcAjIaS9VlfzTM"
-  )
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
 }
 
 function getSupabaseUsesServiceRole() {
@@ -73,41 +45,39 @@ async function processWithRevenueCatRpc(payload: { event?: RevenueCatEvent }, au
   return NextResponse.json(data ?? { ok: true });
 }
 
-function subscriptionUpdateFor(event: RevenueCatEvent) {
-  const type = event.type ?? "UNKNOWN";
-  const periodEnd = isoFromMs(event.expiration_at_ms);
-  const stillPaid = periodEnd ? new Date(periodEnd).getTime() > Date.now() : false;
-  const plusEvent = isPlusProduct(event);
+async function applyProfileUpdate(
+  event: RevenueCatEvent,
+  update: NonNullable<ReturnType<typeof subscriptionUpdateFor>>,
+) {
+  const supabase = getSupabaseServerClient();
+  const profileUpdate = {
+    ...update,
+    revenuecat_app_user_id: event.app_user_id,
+    revenuecat_original_app_user_id: event.original_app_user_id ?? null,
+    subscription_updated_at: new Date().toISOString(),
+  };
 
-  if (!plusEvent) {
-    return null;
+  const candidates = [
+    event.app_user_id,
+    event.original_app_user_id,
+    ...(event.aliases ?? []),
+  ].filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index);
+
+  for (const candidate of candidates) {
+    const query = supabase.from("nura_profiles").update(profileUpdate);
+    const { data: updatedProfile, error: updateError } = isUuid(candidate)
+      ? await query.eq("id", candidate).select("id").maybeSingle()
+      : await query.eq("revenuecat_app_user_id", candidate).select("id").maybeSingle();
+
+    if (updateError) {
+      return { error: updateError.message, profileId: null as string | null };
+    }
+    if (updatedProfile?.id) {
+      return { error: null as string | null, profileId: updatedProfile.id as string };
+    }
   }
 
-  if (["INITIAL_PURCHASE", "RENEWAL", "UNCANCELLATION", "SUBSCRIPTION_EXTENDED", "TEMPORARY_ENTITLEMENT_GRANT"].includes(type)) {
-    return { subscription_tier: "plus", subscription_status: "active", subscription_current_period_ends_at: periodEnd };
-  }
-
-  if (type === "CANCELLATION") {
-    return {
-      subscription_tier: stillPaid ? "plus" : "free",
-      subscription_status: "cancelled",
-      subscription_current_period_ends_at: periodEnd,
-    };
-  }
-
-  if (type === "BILLING_ISSUE") {
-    return {
-      subscription_tier: stillPaid ? "plus" : "free",
-      subscription_status: stillPaid ? "grace_period" : "expired",
-      subscription_current_period_ends_at: periodEnd,
-    };
-  }
-
-  if (["EXPIRATION", "SUBSCRIPTION_PAUSED"].includes(type)) {
-    return { subscription_tier: "free", subscription_status: "expired", subscription_current_period_ends_at: periodEnd };
-  }
-
-  return null;
+  return { error: null as string | null, profileId: null as string | null };
 }
 
 export async function POST(request: NextRequest) {
@@ -123,7 +93,13 @@ export async function POST(request: NextRequest) {
   }
 
   const payloadText = await request.text();
-  const payload = JSON.parse(payloadText) as { event?: RevenueCatEvent };
+  let payload: { event?: RevenueCatEvent };
+  try {
+    payload = JSON.parse(payloadText) as { event?: RevenueCatEvent };
+  } catch {
+    return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
+  }
+
   const event = payload.event;
   if (!event?.type || !event.app_user_id) {
     return NextResponse.json({ ok: false, error: "invalid_event" }, { status: 400 });
@@ -151,39 +127,70 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: eventInsertError.message }, { status: 500 });
   }
 
-  const update = subscriptionUpdateFor(event);
-  if (!update) {
+  // Align Stripe trial length with CARD_TRIAL_DAYS before we persist dates.
+  let trialExtension: Awaited<ReturnType<typeof extendStripeTrialIfNeeded>> | null = null;
+  if (event.type === "INITIAL_PURCHASE" || event.type === "RENEWAL") {
+    try {
+      trialExtension = await extendStripeTrialIfNeeded(event);
+      if (trialExtension.extended) {
+        logger.info("revenuecat_webhook.stripe_trial_extended", {
+          eventId,
+          subscriptionId: trialExtension.subscriptionId,
+          trialEndsAt: trialExtension.trialEndsAt,
+        });
+      } else if (trialExtension.reason !== "not_needed") {
+        logger.warn("revenuecat_webhook.stripe_trial_extend_skipped", {
+          eventId,
+          reason: trialExtension.reason,
+        });
+      }
+    } catch (error) {
+      logger.warn("revenuecat_webhook.stripe_trial_extend_error", {
+        eventId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // Always map short store trials to the 14-day product promise in our DB,
+  // and best-effort extend the Stripe subscription to match.
+  const appliedUpdate = subscriptionUpdateFor(event, { extendShortTrials: true });
+  if (!appliedUpdate) {
     return NextResponse.json({ ok: true, ignored: true, eventId });
   }
 
-  const profileUpdate = {
-    ...update,
-    revenuecat_app_user_id: event.app_user_id,
-    revenuecat_original_app_user_id: event.original_app_user_id ?? null,
-    subscription_updated_at: new Date().toISOString(),
-  };
-
-  const query = supabase.from("nura_profiles").update(profileUpdate);
-  const { data: updatedProfile, error: updateError } = isUuid(event.app_user_id)
-    ? await query.eq("id", event.app_user_id).select("id").maybeSingle()
-    : await query.eq("revenuecat_app_user_id", event.app_user_id).select("id").maybeSingle();
+  const { error: updateError, profileId } = await applyProfileUpdate(event, appliedUpdate);
 
   if (updateError) {
-    return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: updateError }, { status: 500 });
   }
 
-  if (!updatedProfile) {
-    logger.warn("revenuecat_webhook.profile_not_found", { eventId, eventType: event.type, appUserId: event.app_user_id });
+  if (!profileId) {
+    logger.warn("revenuecat_webhook.profile_not_found", {
+      eventId,
+      eventType: event.type,
+      appUserId: event.app_user_id,
+    });
     return NextResponse.json({ ok: true, eventId, processed: false, reason: "profile_not_found" });
   }
 
   logger.info("revenuecat_webhook.subscription_updated", {
     eventId,
     eventType: event.type,
-    profileId: updatedProfile.id,
-    tier: update.subscription_tier,
-    status: update.subscription_status,
+    periodType: event.period_type ?? null,
+    profileId,
+    tier: appliedUpdate.subscription_tier,
+    status: appliedUpdate.subscription_status,
+    periodEndsAt: appliedUpdate.subscription_current_period_ends_at,
+    trialEndsAt: appliedUpdate.trial_ends_at ?? null,
+    trialExtended: Boolean(trialExtension?.extended),
   });
 
-  return NextResponse.json({ ok: true, eventId, profileId: updatedProfile.id });
+  return NextResponse.json({
+    ok: true,
+    eventId,
+    profileId,
+    status: appliedUpdate.subscription_status,
+    trialExtended: Boolean(trialExtension?.extended),
+  });
 }

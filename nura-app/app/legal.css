@@ -1,0 +1,204 @@
+/* Legal pages — aligned with landing-v2 follow-through look. */
+
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap");
+
+.legal-v2 {
+  --legal-ink: #183129;
+  --legal-muted: #5f6f68;
+  --legal-line: rgba(24, 49, 41, 0.12);
+  --legal-green: #3f7b57;
+  --legal-green-deep: #2f6847;
+  --legal-soft: #edf4eb;
+  --legal-cream: #f7f5ef;
+  --legal-serif: Georgia, "Times New Roman", serif;
+  --legal-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+
+  min-height: 100vh;
+  color: var(--legal-ink);
+  background:
+    radial-gradient(900px 420px at 8% -8%, rgba(63, 123, 87, 0.12), transparent 55%),
+    linear-gradient(180deg, #fbfaf6 0%, var(--legal-cream) 55%, #f3f1ea 100%);
+  font-family: var(--legal-sans);
+}
+
+.legal-v2 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.legal-v2 .legal-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: calc(72px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 5vw 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: rgba(251, 250, 246, 0.88);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--legal-line);
+}
+
+.legal-v2 .legal-nav nav {
+  display: flex;
+  gap: 22px;
+  color: var(--legal-muted);
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.legal-v2 .legal-nav nav a:hover,
+.legal-v2 .legal-nav nav a.is-active {
+  color: var(--legal-green-deep);
+}
+
+.legal-v2 .legal-nav nav a.is-active {
+  font-weight: 700;
+}
+
+.legal-v2 .legal-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--legal-line);
+  border-radius: 999px;
+  background: rgba(255, 252, 247, 0.8);
+  color: var(--legal-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.legal-v2 .legal-back:hover {
+  background: #fff;
+}
+
+.legal-hero {
+  width: min(760px, calc(100% - 10vw));
+  margin: 56px auto 28px;
+}
+
+.legal-kicker {
+  display: block;
+  margin-bottom: 14px;
+  color: var(--legal-green);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.legal-hero h1 {
+  margin: 0;
+  max-width: 16ch;
+  color: var(--legal-ink);
+  font: 600 clamp(32px, 5vw, 46px) / 1.08 var(--legal-serif);
+  letter-spacing: -0.03em;
+}
+
+.legal-hero p {
+  margin: 18px 0 0;
+  max-width: 48ch;
+  color: var(--legal-muted);
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.legal-hero small {
+  display: block;
+  margin-top: 18px;
+  color: #8a948f;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.legal-body {
+  width: min(760px, calc(100% - 10vw));
+  margin: 0 auto 72px;
+  display: grid;
+  gap: 0;
+}
+
+.legal-body article {
+  padding: 28px 0;
+  border-top: 1px solid var(--legal-line);
+  background: transparent;
+}
+
+.legal-body article:last-child {
+  border-bottom: 1px solid var(--legal-line);
+}
+
+.legal-body h2 {
+  margin: 0 0 10px;
+  color: var(--legal-ink);
+  font: 600 22px / 1.25 var(--legal-serif);
+}
+
+.legal-body p {
+  margin: 0;
+  color: var(--legal-muted);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.legal-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 28px 5vw 36px;
+  border-top: 1px solid var(--legal-line);
+  color: var(--legal-muted);
+  font-size: 14px;
+}
+
+.legal-footer p {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.legal-footer nav {
+  display: flex;
+  gap: 18px;
+}
+
+.legal-footer nav a:hover {
+  color: var(--legal-ink);
+}
+
+@media (max-width: 760px) {
+  .legal-v2 .legal-nav nav {
+    display: none;
+  }
+
+  .legal-v2 .legal-back {
+    padding: 0 12px;
+    font-size: 12px;
+  }
+
+  .legal-hero {
+    margin: 36px auto 16px;
+  }
+
+  .legal-hero h1 {
+    max-width: none;
+  }
+
+  .legal-body {
+    margin-bottom: 48px;
+  }
+
+  .legal-body article {
+    padding: 22px 0;
+  }
+
+  .legal-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

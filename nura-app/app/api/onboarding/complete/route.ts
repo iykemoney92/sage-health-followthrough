@@ -1,74 +1,72 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
-import Anthropic from "@anthropic-ai/sdk";
-import { ensureTrialStarted } from "@/lib/billing/subscription";
+import { processAttachments } from "@/lib/ai/attachments";
+import { draftPlanFromIntake } from "@/lib/domain/draft-plan-from-intake";
+import { isPlanCategory, inferJourneyDraft } from "@/lib/domain/journey-naming";
+import {
+  draftFirstCheckInFromIntake,
+  formatCheckInWhenForCopy,
+} from "@/lib/domain/journey-create";
+import { ensureJourney } from "@/lib/domain/plan-journey";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+// Trial starts on the post-onboarding paywall (card 14-day or soft 7-day), not here.
+
+const MAX_ATTACHMENT_BASE64_CHARS = 6_000_000;
 
 const requestSchema = z.object({
   interests: z.array(z.string()).default([]),
   channel: z.string().default("WhatsApp"),
+  checkinChannel: z.string().optional(),
+  checkinChannels: z.array(z.string()).optional(),
   phone: z.string().trim().optional().default(""),
   intake: z.string().default(""),
+  attachments: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        type: z.string().default("application/octet-stream"),
+        kind: z.enum(["image", "audio", "document", "file"]).default("file"),
+        text: z.string().optional().default(""),
+        base64: z.string().max(MAX_ATTACHMENT_BASE64_CHARS).optional(),
+      }),
+    )
+    .optional()
+    .default([]),
   skip: z.boolean().optional().default(false),
 });
 
-const CHANNEL_MAP: Record<string, string> = {
-  "WhatsApp": "whatsapp",
+const CHAT_CHANNEL_MAP: Record<string, string> = {
+  WhatsApp: "whatsapp",
   "In the app": "in_app",
-  "Both": "both",
+  Both: "both",
 };
 
-type PlanDraft = {
-  title: string;
-  why_this_exists: string;
-  current_focus: string;
-  next_step: string;
+const CHECKIN_CHANNEL_MAP: Record<string, string> = {
+  WhatsApp: "whatsapp",
+  "In the app": "in_app",
+  "Phone call": "voice",
 };
 
-const FALLBACK_PLAN: PlanDraft = {
-  title: "Stabilise My Week",
-  why_this_exists: "You shared overwhelm, poor sleep, and a GP walking goal that Nura can help you follow through on.",
-  current_focus: "Keep the next step gentle: sleep, stress, and a realistic daily walk.",
-  next_step: "Nura will check in tomorrow to see how sleep and walking went.",
-};
+function resolveCheckinChannels(labels: string[] | undefined, legacy?: string) {
+  const fromLabels = (labels ?? [])
+    .map((label) => CHECKIN_CHANNEL_MAP[label])
+    .filter((value): value is string => Boolean(value));
+  if (fromLabels.length > 0) return [...new Set(fromLabels)];
+  if (legacy && CHECKIN_CHANNEL_MAP[legacy]) return [CHECKIN_CHANNEL_MAP[legacy]];
+  return ["in_app"];
+}
+
+function primaryCheckin(channels: string[]) {
+  if (channels.includes("voice")) return "voice";
+  if (channels.includes("whatsapp")) return "whatsapp";
+  return "in_app";
+}
 
 function withTimeout<T>(promise: Promise<T>, fallback: T, ms = 4500) {
   return Promise.race([
     promise,
     new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
   ]);
-}
-
-async function draftPlanFromIntake(intake: string): Promise<PlanDraft> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return FALLBACK_PLAN;
-
-  try {
-    const client = new Anthropic({ apiKey });
-    const message = await client.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 300,
-      system:
-        "You turn a short piece of free text from a new Nura user into the start of a health Plan (also called a Thread). " +
-        "Nura organises messy life/health context into small, manageable plans and follows up over time. " +
-        "Respond with ONLY a JSON object, no markdown fences, no extra text, matching exactly: " +
-        '{"title": string (2-4 words, e.g. "Stabilise My Week"), "why_this_exists": string (one sentence), "current_focus": string (one short sentence), "next_step": string (one short sentence)}. ' +
-        "Never diagnose, prescribe, or give medical advice - just organise what the user said.",
-      messages: [{ role: "user", content: intake }],
-    });
-
-    const textBlock = message.content.find((block) => block.type === "text");
-    if (!textBlock || textBlock.type !== "text") return FALLBACK_PLAN;
-
-    const cleaned = textBlock.text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```\s*$/, "");
-    const parsed = JSON.parse(cleaned);
-    if (!parsed.title || !parsed.why_this_exists || !parsed.current_focus || !parsed.next_step) {
-      return FALLBACK_PLAN;
-    }
-    return parsed as PlanDraft;
-  } catch {
-    return FALLBACK_PLAN;
-  }
 }
 
 export async function POST(request: NextRequest) {
@@ -83,27 +81,58 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { interests, channel, phone, intake, skip } = parsed.data;
-  if (!skip && !intake.trim()) {
+  const { interests, channel, checkinChannel, checkinChannels, phone, intake, attachments, skip } = parsed.data;
+  if (!skip && !intake.trim() && attachments.length === 0) {
     return NextResponse.json({ ok: false, error: "intake_required" }, { status: 400 });
   }
+
+  const preferredCheckinChannels = resolveCheckinChannels(checkinChannels, checkinChannel);
+  if (preferredCheckinChannels.length === 0) {
+    return NextResponse.json({ ok: false, error: "channels_required" }, { status: 400 });
+  }
+
+  const chatNeedsPhone = channel === "WhatsApp" || channel === "Both";
+  const checkinNeedsPhone = preferredCheckinChannels.includes("whatsapp") || preferredCheckinChannels.includes("voice");
+  const normalizedPhone = phone ? phone.replace(/[^\d]/g, "") : "";
+  if ((chatNeedsPhone || checkinNeedsPhone) && normalizedPhone.length < 10) {
+    return NextResponse.json({ ok: false, error: "phone_required" }, { status: 400 });
+  }
+
   const supabase = await getSupabaseSessionClient();
 
   const displayName = (user.user_metadata?.display_name as string | undefined) ?? user.email ?? "";
-  const normalizedPhone = phone ? phone.replace(/[^\d]/g, "") : "";
+  const preferredChannel = CHAT_CHANNEL_MAP[channel] ?? "in_app";
+  const preferredCheckinChannel = primaryCheckin(preferredCheckinChannels);
 
-  const { error: profileError } = await supabase.from("nura_profiles").upsert({
+  const profilePayload = {
     id: user.id,
     display_name: displayName,
-    preferred_channel: CHANNEL_MAP[channel] ?? "whatsapp",
+    preferred_channel: preferredChannel,
+    preferred_checkin_channel: preferredCheckinChannel,
+    preferred_checkin_channels: preferredCheckinChannels,
     interests,
     phone: normalizedPhone || null,
-  });
+  };
+
+  let { error: profileError } = await supabase.from("nura_profiles").upsert(profilePayload);
+
+  // Older local DBs may not have newer channel columns yet — still save the rest.
+  if (profileError?.message?.includes("preferred_checkin_channels")) {
+    const { preferred_checkin_channels: _ignored, ...withoutArray } = profilePayload;
+    ({ error: profileError } = await supabase.from("nura_profiles").upsert(withoutArray));
+  }
+  if (profileError?.message?.includes("preferred_checkin_channel")) {
+    const {
+      preferred_checkin_channel: _ignoredChannel,
+      preferred_checkin_channels: _ignoredChannels,
+      ...legacyPayload
+    } = profilePayload;
+    ({ error: profileError } = await supabase.from("nura_profiles").upsert(legacyPayload));
+  }
 
   if (profileError) {
     return NextResponse.json({ ok: false, error: profileError.message }, { status: 500 });
   }
-  await ensureTrialStarted(supabase, user.id);
 
   if (skip) {
     await supabase.auth.updateUser({ data: { onboarding_complete: true } });
@@ -137,43 +166,170 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const plan = await withTimeout(draftPlanFromIntake(intake), FALLBACK_PLAN);
+  const { attachments: sanitizedAttachments } = await processAttachments(attachments);
+  const attachmentNotes = sanitizedAttachments.map((file) => {
+    const excerpt = file.text?.trim();
+    return excerpt ? `${file.name}: ${excerpt.slice(0, 500)}` : file.name;
+  });
+  const plan = await withTimeout(
+    draftPlanFromIntake(intake, attachmentNotes),
+    inferJourneyDraft(intake, attachmentNotes),
+  );
 
-  const { data: createdPlan, error: planError } = await supabase
-    .from("nura_plans")
-    .insert({
-      owner_id: user.id,
-      title: plan.title,
-      status: "active",
-      why_this_exists: plan.why_this_exists,
-      current_focus: plan.current_focus,
-      next_step: plan.next_step,
-    })
-    .select("id")
-    .single();
+  let createdPlan: { id: string } | null = null;
+  {
+    const first = await supabase
+      .from("nura_plans")
+      .insert({
+        owner_id: user.id,
+        title: plan.title,
+        category: plan.category,
+        status: "active",
+        why_this_exists: plan.why_this_exists,
+        current_focus: plan.current_focus,
+        next_step: plan.next_step,
+      })
+      .select("id")
+      .single();
 
-  if (planError || !createdPlan) {
-    return NextResponse.json({ ok: false, error: planError?.message ?? "Could not create Thread" }, { status: 500 });
+    if (first.data) {
+      createdPlan = first.data;
+    } else if (first.error && /category/i.test(first.error.message)) {
+      const retry = await supabase
+        .from("nura_plans")
+        .insert({
+          owner_id: user.id,
+          title: plan.title,
+          status: "active",
+          why_this_exists: plan.why_this_exists,
+          current_focus: plan.current_focus,
+          next_step: plan.next_step,
+        })
+        .select("id")
+        .single();
+      if (retry.error || !retry.data) {
+        return NextResponse.json({ ok: false, error: retry.error?.message ?? "Could not create Care plan" }, { status: 500 });
+      }
+      createdPlan = retry.data;
+    } else {
+      return NextResponse.json({ ok: false, error: first.error?.message ?? "Could not create Care plan" }, { status: 500 });
+    }
   }
 
-  const checkInTime = new Date();
-  checkInTime.setDate(checkInTime.getDate() + 1);
-  checkInTime.setHours(19, 30, 0, 0);
-  const followUpChannel = channel === "In the app" ? "in_app" : "whatsapp";
+  const checkInChannels = preferredCheckinChannels.filter(
+    (c): c is "whatsapp" | "in_app" | "voice" => c === "whatsapp" || c === "in_app" || c === "voice",
+  );
+  const allowedChannels: Array<"whatsapp" | "in_app" | "voice"> =
+    checkInChannels.length > 0 ? checkInChannels : ["whatsapp"];
+  const preferredCheckInForDraft: "whatsapp" | "in_app" | "voice" =
+    preferredCheckinChannel === "voice" ||
+    preferredCheckinChannel === "in_app" ||
+    preferredCheckinChannel === "whatsapp"
+      ? preferredCheckinChannel
+      : "whatsapp";
+
+  const firstCheckIn = await withTimeout(
+    draftFirstCheckInFromIntake({
+      plan: {
+        title: plan.title,
+        category: isPlanCategory(plan.category) ? plan.category : "general_health",
+        whyThisExists: plan.why_this_exists,
+        currentFocus: plan.current_focus,
+        nextStep: plan.next_step,
+      },
+      intake: `${intake.trim()}\n${attachmentNotes.join("\n")}`.trim(),
+      allowedChannels,
+      preferredChannel: preferredCheckInForDraft,
+    }),
+    // Soft fallback only — not a product rule of "tomorrow 19:30".
+    {
+      when: (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 2);
+        d.setHours(18, 20, 0, 0);
+        return d.toISOString();
+      })(),
+      prompt: `How are things going with ${plan.title} — anything Nura should update?`,
+      channel: preferredCheckInForDraft,
+    },
+    5000,
+  );
+
+  const followUpChannel = firstCheckIn.channel;
+  const whenLabel = formatCheckInWhenForCopy(firstCheckIn.when);
+  const assistantCopy =
+    `I’ve built a Care plan from what you shared — tailored to you, not a template — and scheduled a check-in for ${whenLabel}. ` +
+    `We can change the timing anytime.`;
+
+  const userMessage = (intake.trim() || "I shared some notes/documents for Nura to organise.").trim();
+  const messageAttachments = sanitizedAttachments.map((file) => ({
+    name: file.name,
+    kind: file.kind === "image" || file.kind === "audio" || file.kind === "document" ? file.kind : "file",
+  }));
+
+  const userRow = {
+    owner_id: user.id,
+    plan_id: createdPlan.id,
+    role: "user" as const,
+    content: userMessage,
+    attachments: messageAttachments,
+  };
+  const assistantRow = {
+    owner_id: user.id,
+    plan_id: createdPlan.id,
+    role: "assistant" as const,
+    content: assistantCopy,
+    attachments: [] as typeof messageAttachments,
+  };
+
+  let messageInsert = await supabase.from("nura_messages").insert([userRow, assistantRow]);
+  if (messageInsert.error && /attachments/i.test(messageInsert.error.message)) {
+    messageInsert = await supabase.from("nura_messages").insert([
+      { owner_id: user.id, plan_id: createdPlan.id, role: "user", content: userMessage },
+      {
+        owner_id: user.id,
+        plan_id: createdPlan.id,
+        role: "assistant",
+        content: assistantCopy,
+      },
+    ]);
+  }
 
   await Promise.all([
-    supabase.from("nura_messages").insert([
-      { owner_id: user.id, plan_id: createdPlan.id, role: "user", content: intake },
-      { owner_id: user.id, plan_id: createdPlan.id, role: "assistant", content: "I’ve made this a Thread and scheduled a gentle check-in for tomorrow." },
-    ]),
+    Promise.resolve(messageInsert),
+    sanitizedAttachments.length > 0
+      ? supabase.from("nura_source_contexts").insert(
+          sanitizedAttachments.map((file) => ({
+            owner_id: user.id,
+            plan_id: createdPlan.id,
+            kind: file.kind === "image" ? "document_upload" : file.kind === "audio" ? "conversation" : "document_upload",
+            title: file.name,
+            summary: file.text
+              ? `${file.kind} shared during setup: ${file.text.slice(0, 500)}`
+              : `${file.kind} shared during setup (${file.type}).`,
+            requires_user_confirmation: file.kind === "document",
+          })),
+        )
+      : Promise.resolve({ error: null }),
     supabase.from("nura_check_ins").insert({
       owner_id: user.id,
       plan_id: createdPlan.id,
       channel: followUpChannel,
-      prompt: "How did sleep feel last night, and was a short walk realistic today?",
-      scheduled_for: checkInTime.toISOString(),
+      prompt: firstCheckIn.prompt,
+      scheduled_for: firstCheckIn.when,
+      contact_phone: followUpChannel === "voice" || followUpChannel === "whatsapp" ? normalizedPhone || null : null,
     }),
   ]);
+
+  after(() =>
+    ensureJourney(supabase, user.id, {
+      id: createdPlan.id,
+      title: plan.title,
+      why_this_exists: plan.why_this_exists,
+      current_focus: plan.current_focus,
+      next_step: plan.next_step,
+    }),
+  );
 
   await supabase.auth.updateUser({ data: { onboarding_complete: true } });
 

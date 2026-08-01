@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
+import { draftNextCheckInAfterCompletion } from "@/lib/domain/journey-create";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 const requestSchema = z.object({
@@ -20,12 +21,12 @@ async function draftNextStep(planTitle: string, currentFocus: string | null, moo
       model: "claude-sonnet-5",
       max_tokens: 100,
       system:
-        "You help Nura, a warm AI health companion, write the 'next step' line shown on a user's Thread after they complete a check-in. " +
+        "You help Nura, a warm AI health companion, write the 'next step' line shown on a user's Care plan after they complete a check-in. " +
         "Respond with ONLY a single short sentence (no JSON, no quotes, no markdown) describing what happens next or what to keep an eye on. Never diagnose or prescribe.",
       messages: [
         {
           role: "user",
-          content: `Thread: "${planTitle}". Current focus: "${currentFocus ?? "n/a"}". The user just reported feeling "${mood}"${note ? ` and added: "${note}"` : ""}.`,
+          content: `Care plan: "${planTitle}". Current focus: "${currentFocus ?? "n/a"}". The user just reported feeling "${mood}"${note ? ` and added: "${note}"` : ""}.`,
         },
       ],
     });
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
 
   const { data: plan, error: planFetchError } = await supabase
     .from("nura_plans")
-    .select("id, title, current_focus")
+    .select("id, title, current_focus, next_step")
     .eq("id", planId)
     .eq("owner_id", user.id)
     .maybeSingle();
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
 
   const { data: openCheckIn } = await supabase
     .from("nura_check_ins")
-    .select("id")
+    .select("id, recurrence, channel")
     .eq("plan_id", planId)
     .eq("owner_id", user.id)
     .is("completed_at", null)
@@ -109,20 +110,55 @@ export async function POST(request: NextRequest) {
   }
 
   const nextStep = await draftNextStep(plan.title, plan.current_focus, mood, note);
-  const nextCheckInTime = new Date();
-  nextCheckInTime.setDate(nextCheckInTime.getDate() + 3);
-  nextCheckInTime.setHours(19, 30, 0, 0);
 
-  const { error: nextCheckInError } = await supabase.from("nura_check_ins").insert({
-    owner_id: user.id,
-    plan_id: planId,
-    channel: "whatsapp",
-    prompt: `How have things been with ${plan.title} since your last check-in?`,
-    scheduled_for: nextCheckInTime.toISOString(),
-  });
+  // If a recurring series already has further open rows, leave them — don't invent a conflicting one-off.
+  const { data: remainingOpen } = await supabase
+    .from("nura_check_ins")
+    .select("id")
+    .eq("plan_id", planId)
+    .eq("owner_id", user.id)
+    .is("completed_at", null)
+    .limit(1)
+    .maybeSingle();
 
-  if (nextCheckInError) {
-    return NextResponse.json({ ok: false, error: nextCheckInError.message }, { status: 500 });
+  if (!remainingOpen) {
+    const { data: profile } = await supabase
+      .from("nura_profiles")
+      .select("preferred_checkin_channel, preferred_checkin_channels")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const channels = ((profile?.preferred_checkin_channels as string[] | null) ?? []).filter(
+      (c): c is "whatsapp" | "in_app" | "voice" => c === "whatsapp" || c === "in_app" || c === "voice",
+    );
+    const preferredRaw = (profile?.preferred_checkin_channel as string | null) ?? "whatsapp";
+    const preferredChannel =
+      preferredRaw === "voice" || preferredRaw === "in_app" || preferredRaw === "whatsapp" ? preferredRaw : "whatsapp";
+    const allowedChannels = channels.length > 0 ? channels : ([preferredChannel] as Array<"whatsapp" | "in_app" | "voice">);
+
+    const nextCheckIn = await draftNextCheckInAfterCompletion({
+      plan: {
+        title: plan.title as string,
+        current_focus: (plan.current_focus as string) || "",
+        next_step: (plan.next_step as string) || nextStep,
+      },
+      mood,
+      note,
+      allowedChannels,
+      preferredChannel,
+    });
+
+    const { error: nextCheckInError } = await supabase.from("nura_check_ins").insert({
+      owner_id: user.id,
+      plan_id: planId,
+      channel: nextCheckIn.channel,
+      prompt: nextCheckIn.prompt,
+      scheduled_for: nextCheckIn.when,
+    });
+
+    if (nextCheckInError) {
+      return NextResponse.json({ ok: false, error: nextCheckInError.message }, { status: 500 });
+    }
   }
 
   const { error: updatePlanError } = await supabase

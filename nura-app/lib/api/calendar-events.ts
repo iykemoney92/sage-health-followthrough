@@ -34,7 +34,7 @@ export function toneForCalendarEvent(eventType: string, category?: string | null
 }
 
 export function calendarEventTypeLabel(eventType: string) {
-  if (eventType === "medication") return "Medication";
-  if (eventType === "document") return "Document review";
-  return "Appointment";
+  if (eventType === "medication") return "Medication reminder";
+  if (eventType === "document") return "Document or results review";
+  return "Clinic appointment";
 }

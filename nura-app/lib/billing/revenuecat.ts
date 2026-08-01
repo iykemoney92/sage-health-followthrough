@@ -20,9 +20,19 @@ export function getBillingMode() {
 }
 
 export function getRevenueCatSubscriberApiKey() {
-  return process.env.REVENUECAT_REST_API_KEY || process.env.REVENUECAT_PUBLIC_API_KEY || "";
+  // Prefer secret REST key; public web key can still read subscribers for management URL.
+  return (
+    process.env.REVENUECAT_REST_API_KEY
+    || process.env.REVENUECAT_PUBLIC_API_KEY
+    || ""
+  ).replace(/\\n/g, "").trim();
 }
 
 export function hasBillingPortalConfig() {
-  return Boolean(getRevenueCatSubscriberApiKey() || process.env.STRIPE_SECRET_KEY);
+  return Boolean(
+    getRevenueCatSubscriberApiKey()
+      || process.env.STRIPE_SECRET_KEY
+      || process.env.STRIPE_TEST_SECRET_KEY
+      || process.env.STRIPE_CUSTOMER_PORTAL_LOGIN_URL,
+  );
 }

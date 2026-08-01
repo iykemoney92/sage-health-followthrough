@@ -1,24 +1,27 @@
 import Link from "next/link";
-import { CalendarDays, ChevronRight, HeartPulse, MessageCircle, SunMedium } from "lucide-react";
+import { createElement } from "react";
+import {
+  Activity,
+  Baby,
+  Briefcase,
+  CalendarDays,
+  ChevronRight,
+  HeartPulse,
+  MessageCircle,
+  Moon,
+  Pill,
+  Stethoscope,
+  SunMedium,
+} from "lucide-react";
 import { NuraShell } from "@/components/nura-shell";
+import { CareDisclaimer } from "@/components/care-disclaimer";
 import { NuraActions, RescheduleButton } from "@/components/nura-actions";
 import { WhatsAppOpenButton } from "@/components/whatsapp-open-button";
 import { getUserAvatarUrl } from "@/lib/avatar";
+import { categoryLabel, channelLabel, displayJourneyFocus, formatCheckInWhen, isUsefulDisplayText } from "@/lib/domain/journey-naming";
 import { getOrCreateWhatsappLink } from "@/lib/channel-links";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { createWhatsappHref } from "@/lib/whatsapp-link";
-
-const CATEGORY_META: Record<string, { tag: string; tone: string }> = {
-  mental_wellbeing: { tag: "Wellbeing", tone: "wellbeing" },
-  sleep_energy: { tag: "Wellbeing", tone: "wellbeing" },
-  therapy_follow_through: { tag: "Wellbeing", tone: "wellbeing" },
-  caregiver_support: { tag: "Wellbeing", tone: "wellbeing" },
-  medication_follow_through: { tag: "Medication", tone: "medication" },
-};
-
-function categoryMeta(category: string) {
-  return CATEGORY_META[category] ?? { tag: "Health", tone: "health" };
-}
 
 function greeting(hour: number) {
   if (hour < 12) return "Good morning";
@@ -42,6 +45,32 @@ function dateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function categoryIcon(category: string) {
+  switch (category) {
+    case "medication_follow_through":
+      return Pill;
+    case "gp_follow_up":
+      return Stethoscope;
+    case "symptom_monitoring":
+      return Activity;
+    case "sleep_energy":
+      return Moon;
+    case "postpartum_aftercare":
+      return Baby;
+    case "occupational_stress":
+      return Briefcase;
+    case "mental_wellbeing":
+    case "therapy_follow_through":
+      return HeartPulse;
+    default:
+      return HeartPulse;
+  }
+}
+
+function CategoryIcon({ category }: { category: string }) {
+  return createElement(categoryIcon(category));
+}
+
 export default async function TodayPage() {
   const user = await getSessionUser();
   const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email || "there";
@@ -58,7 +87,7 @@ export default async function TodayPage() {
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const todayKey = dateKey(today);
 
-  const [{ data: plans }, { data: weekCheckIns }] = await Promise.all([
+  const [{ data: plans }, { data: weekCheckIns }, { data: nextCheckInRow }, { data: latestUserMessage }] = await Promise.all([
     user
       ? supabase
           .from("nura_plans")
@@ -75,6 +104,27 @@ export default async function TodayPage() {
           .gte("scheduled_for", weekStart.toISOString())
           .lt("scheduled_for", addDays(weekStart, 7).toISOString())
       : Promise.resolve({ data: null }),
+    user
+      ? supabase
+          .from("nura_check_ins")
+          .select("id, plan_id, channel, prompt, scheduled_for, nura_plans(id, title, category, current_focus, next_step)")
+          .eq("owner_id", user.id)
+          .is("completed_at", null)
+          .gte("scheduled_for", new Date(today.getTime() - 2 * 60 * 60 * 1000).toISOString())
+          .order("scheduled_for", { ascending: true })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    user
+      ? supabase
+          .from("nura_messages")
+          .select("content")
+          .eq("owner_id", user.id)
+          .eq("role", "user")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const checkInCountByDay = new Map<string, number>();
@@ -88,93 +138,224 @@ export default async function TodayPage() {
     return { label: WEEKDAY_LABELS[i], day: date.getDate(), count: checkInCountByDay.get(key) ?? 0, isToday: key === todayKey };
   });
 
-  const threads = (plans ?? []).map((plan) => {
-    const meta = categoryMeta(plan.category);
-    return {
-      id: plan.id as string,
-      title: plan.title as string,
-      tag: meta.tag,
-      tone: meta.tone,
-      next: (plan.next_step as string) || "Nura will follow up soon.",
-    };
-  });
+  const relatedPlanRaw = nextCheckInRow?.nura_plans;
+  const relatedPlan = Array.isArray(relatedPlanRaw) ? relatedPlanRaw[0] : relatedPlanRaw;
+  const focusFromCheckIn = relatedPlan
+    ? {
+        id: relatedPlan.id as string,
+        title: relatedPlan.title as string,
+        category: (relatedPlan.category as string) || "general_health",
+        current_focus: (relatedPlan.current_focus as string) || "",
+        next_step: (relatedPlan.next_step as string) || "",
+      }
+    : null;
 
-  const focusPlan = plans?.[0];
+  const latestPlan = plans?.[0]
+    ? {
+        id: plans[0].id as string,
+        title: plans[0].title as string,
+        category: (plans[0].category as string) || "general_health",
+        current_focus: (plans[0].current_focus as string) || "",
+        next_step: (plans[0].next_step as string) || "",
+      }
+    : null;
+
+  const focusPlan = focusFromCheckIn ?? latestPlan;
+  const otherJourneys = (plans ?? [])
+    .filter((plan) => plan.id !== focusPlan?.id)
+    .slice(0, 2)
+    .map((plan) => {
+      const meta = categoryLabel(plan.category as string);
+      return {
+        id: plan.id as string,
+        title: plan.title as string,
+        tag: meta.tag,
+        tone: meta.tone,
+        category: (plan.category as string) || "general_health",
+        next: (plan.next_step as string) || "Nura will follow up soon.",
+      };
+    });
+
+  const focusMeta = categoryLabel(focusPlan?.category ?? "general_health");
+  const nextWhen = nextCheckInRow?.scheduled_for
+    ? formatCheckInWhen(nextCheckInRow.scheduled_for as string)
+    : null;
+  const nextChannel = channelLabel(nextCheckInRow?.channel as string | undefined);
+  const nextPrompt =
+    (nextCheckInRow?.prompt as string | undefined)?.trim() ||
+    focusPlan?.next_step ||
+    "Nura will check in when it’s useful.";
+
+  const latestSnippet = ((latestUserMessage?.content as string | undefined) || "")
+    .replace(/\n*\s*Shared \d+ attachments?:.+$/i, "")
+    .trim()
+    .slice(0, 110);
+
+  const focusSummary = displayJourneyFocus(
+    focusPlan?.current_focus,
+    "Nura is keeping the important parts together.",
+  );
+
+  const attentionLine = focusPlan
+    ? isUsefulDisplayText(latestSnippet)
+      ? `Continuing from: “${latestSnippet}${latestSnippet.length >= 110 ? "…" : ""}”`
+      : nextWhen
+        ? `Next check-in ${nextWhen}${nextChannel ? ` via ${nextChannel}` : ""}.`
+        : displayJourneyFocus(focusPlan.current_focus, "Here’s what needs your attention today.")
+    : "Tell Nura what’s going on — care continues after the appointment.";
 
   return (
     <NuraShell userName={displayName} userAvatarUrl={avatarUrl}>
-      <div className="dashboard-page today-page">
+      <div className="dashboard-page today-page today-v2">
         <header className="dashboard-heading">
           <span className="auth-kicker">TODAY</span>
-          <h1>{greeting(new Date().getHours())}, {firstName} <SunMedium /></h1>
-          <p>Here&apos;s what needs your attention today.</p>
+          <h1>
+            {greeting(today.getHours())}, {firstName} <SunMedium />
+          </h1>
+          <p>{attentionLine}</p>
+          <CareDisclaimer compact />
         </header>
-        <section className="today-next-action">
-          <span className="next-action-icon"><MessageCircle /></span>
-          <div>
-            <small>START HERE</small>
-            <h2>{focusPlan ? "Continue with Nura" : "Start by telling Nura what’s going on"}</h2>
-            <p>
-              {focusPlan
-                ? `Nura has started your ${focusPlan.title} Thread. Add one quick update so it can keep the context useful.`
-                : "Send a message, voice note, image or file. Nura will organise it into your first Thread."}
-            </p>
-          </div>
-          <div className="next-action-buttons">
-            <Link href="/workspace" className="primary-cta"><MessageCircle /> Message in app</Link>
-            {whatsappHref && <WhatsAppOpenButton linked={Boolean(whatsappLink?.linked)} />}
-          </div>
-        </section>
+
         <div className="today-layout">
           <section className="today-main-column">
-            {focusPlan ? (
-              <article className="hero-checkin">
-                <div className="card-label"><span>Next check-in</span><CalendarDays /></div>
-                <h2>{focusPlan.title}</h2>
-                <p className="meta">{(focusPlan.current_focus as string) || "Nura is keeping track of this."}</p>
-                <p className="checkin-copy">{(focusPlan.next_step as string) || "Nura will check in when it's useful."}</p>
-                <div className="button-row">
-                  <Link href={`/check-in?planId=${focusPlan.id}&title=${encodeURIComponent(focusPlan.title as string)}`} className="primary-cta">Start check-in</Link>
-                  <RescheduleButton planId={focusPlan.id as string} />
-                </div>
-              </article>
-            ) : (
-              <article className="hero-checkin">
-                <div className="card-label"><span>Get started</span><CalendarDays /></div>
-                <h2>Nothing organised yet</h2>
-                <p className="checkin-copy">Tell Nura what&apos;s going on and it&apos;ll turn it into your first Thread.</p>
-                <div className="button-row">
-                  <Link href="/workspace" className="primary-cta">Message Nura</Link>
-                </div>
-              </article>
-            )}
-
-            <div className="section-title-row"><h2>Active Threads</h2><Link href="/plans">View all <ChevronRight /></Link></div>
-            {threads.length > 0 ? (
-              <div className="thread-grid">
-                {threads.map((thread) => (
-                  <Link href={`/plans/${thread.id}`} className="thread-card" key={thread.id}>
-                    <div className="thread-card-heading">
-                      <span className={`thread-icon ${thread.tone}`}><HeartPulse /></span>
-                      <span className={`tag ${thread.tone}`}>{thread.tag}</span>
+            <section className="today-attention">
+              {focusPlan && nextCheckInRow ? (
+                <>
+                  <div className="today-attention-kicker">
+                    <span>Needs you now</span>
+                    <span className={`tag ${focusMeta.tone}`}>{focusMeta.tag}</span>
+                  </div>
+                  <div className="today-attention-when">
+                    <CalendarDays aria-hidden />
+                    <div>
+                      <b>{nextWhen}</b>
+                      <small>via {nextChannel}</small>
                     </div>
-                    <h3>{thread.title}</h3>
-                    <small className="next-follow-up-label">Next follow-up</small>
-                    <b className="next-follow-up-value">{thread.next}</b>
+                  </div>
+                  <h2>{focusPlan.title}</h2>
+                  <p className="today-attention-prompt">{nextPrompt}</p>
+                  <div className="button-row today-attention-actions">
+                    <Link
+                      href={`/check-in?planId=${focusPlan.id}&title=${encodeURIComponent(focusPlan.title)}&prompt=${encodeURIComponent(nextPrompt)}`}
+                      className="primary-cta"
+                    >
+                      Do check-in
+                    </Link>
+                    <Link href="/workspace" className="secondary-cta">
+                      <MessageCircle /> Message Nura
+                    </Link>
+                    <RescheduleButton planId={focusPlan.id} />
+                  </div>
+                </>
+              ) : focusPlan ? (
+                <>
+                  <div className="today-attention-kicker">
+                    <span>Your focus</span>
+                    <span className={`tag ${focusMeta.tone}`}>{focusMeta.tag}</span>
+                  </div>
+                  <h2>{focusPlan.title}</h2>
+                  <p className="meta">{displayJourneyFocus(focusPlan.current_focus, "Nura is keeping track of this.")}</p>
+                  <p className="today-attention-prompt">{focusPlan.next_step || "Add an update so Nura can keep this useful."}</p>
+                  <div className="button-row today-attention-actions">
+                    <Link href="/workspace" className="primary-cta">
+                      <MessageCircle /> Message Nura
+                    </Link>
+                    {whatsappHref && <WhatsAppOpenButton linked={Boolean(whatsappLink?.linked)} />}
+                    <Link
+                      href={`/plans/${focusPlan.id}`}
+                      className="secondary-cta"
+                    >
+                      Open Care plan
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="today-attention-kicker">
+                    <span>Get started</span>
+                  </div>
+                  <h2>Nothing organised yet</h2>
+                  <p className="today-attention-prompt">
+                    Share what’s going on — a message, voice note, or attachment — and Nura will turn it into your first Care plan.
+                  </p>
+                  <div className="button-row today-attention-actions">
+                    <Link href="/plans/new" className="primary-cta">
+                      Start a Care plan
+                    </Link>
+                    <Link href="/workspace" className="secondary-cta">
+                      <MessageCircle /> Message Nura
+                    </Link>
+                    {whatsappHref && <WhatsAppOpenButton linked={Boolean(whatsappLink?.linked)} />}
+                  </div>
+                </>
+              )}
+            </section>
+
+            {focusPlan && (
+              <article className="today-focus-card">
+                <div className="today-focus-head">
+                  <span className={`thread-icon ${focusMeta.tone}`}>
+                    <CategoryIcon category={focusPlan.category} />
+                  </span>
+                  <div>
+                    <small>Focus Care plan</small>
+                    <h3>{focusPlan.title}</h3>
+                  </div>
+                  <Link href={`/plans/${focusPlan.id}`} className="today-focus-link">
+                    Roadmap <ChevronRight />
                   </Link>
-                ))}
-              </div>
-            ) : (
-              <p className="checkin-copy">No Threads yet — the first thing you tell Nura will show up here.</p>
+                </div>
+                <p>{focusSummary}</p>
+                <div className="today-focus-next">
+                  <small>Next step</small>
+                  <b>{focusPlan.next_step || "Nura will follow up soon."}</b>
+                </div>
+              </article>
             )}
 
-            <div className="section-title-row week-title"><h2>This week</h2><Link href="/calendar">View calendar <ChevronRight /></Link></div>
+            {otherJourneys.length > 0 && (
+              <>
+                <div className="section-title-row">
+                  <h2>Also active</h2>
+                  <Link href="/plans">
+                    View all <ChevronRight />
+                  </Link>
+                </div>
+                <div className="thread-grid today-also-grid">
+                  {otherJourneys.map((thread) => (
+                      <Link href={`/plans/${thread.id}`} className="thread-card" key={thread.id}>
+                        <div className="thread-card-heading">
+                          <span className={`thread-icon ${thread.tone}`}>
+                            <CategoryIcon category={thread.category} />
+                          </span>
+                          <span className={`tag ${thread.tone}`}>{thread.tag}</span>
+                        </div>
+                        <h3>{thread.title}</h3>
+                        <small className="next-follow-up-label">Next</small>
+                        <b className="next-follow-up-value">{thread.next}</b>
+                      </Link>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="section-title-row week-title">
+              <h2>This week</h2>
+              <Link href="/calendar">
+                Calendar <ChevronRight />
+              </Link>
+            </div>
             <div className="week-strip">
               {weekStrip.map((d) => (
-                <div key={d.label} className={d.isToday ? "is-today" : ""}><small>{d.label}</small><b>{d.day}</b><span className={d.count === 0 ? "empty" : ""}>{d.count === 0 ? "—" : d.count}</span></div>
+                <div key={d.label} className={d.isToday ? "is-today" : ""}>
+                  <small>{d.label}</small>
+                  <b>{d.day}</b>
+                  <span className={d.count === 0 ? "empty" : ""}>{d.count === 0 ? "—" : d.count}</span>
+                </div>
               ))}
             </div>
           </section>
+
           <aside className="today-rail">
             <article className="rail-card quick-actions-card">
               <h3>Quick actions</h3>
@@ -182,10 +363,6 @@ export default async function TodayPage() {
                 compact
                 plans={(plans ?? []).map((plan) => ({ id: plan.id as string, title: plan.title as string }))}
               />
-              <Link href="/calendar" className="rail-view-calendar">
-                <span className="rail-icon"><CalendarDays /></span>
-                <span><b>View calendar</b><small>See your schedule and reminders</small></span>
-              </Link>
             </article>
           </aside>
         </div>

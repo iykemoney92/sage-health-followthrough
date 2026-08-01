@@ -39,7 +39,7 @@ export function DeleteAccountButton() {
             <button className="modal-close" aria-label="Close" onClick={() => setOpen(false)} disabled={deleting}><X /></button>
             <span className="modal-icon danger"><AlertTriangle /></span>
             <h2>Delete your account?</h2>
-            <p>This permanently deletes every Thread, message, check-in, and document you&apos;ve shared with Nura. This cannot be undone.</p>
+            <p>This permanently deletes every Care plan, message, check-in, and document you&apos;ve shared with Nura. This cannot be undone.</p>
             <label htmlFor="confirm-delete">Type <b>DELETE</b> to confirm</label>
             <input
               id="confirm-delete"

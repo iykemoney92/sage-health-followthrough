@@ -18,6 +18,10 @@ export function extractWhatsappLinkCode(text: string) {
 export function createWhatsappHref(code?: string | null, message?: string | null) {
   const number = getNuraWhatsappNumber();
   if (!number) return null;
+  // US 555 numbers are fictional (area or exchange) — never open wa.me to them.
+  if (/^1555\d{7}$/.test(number) || /^1\d{3}555\d{4}$/.test(number) || /^555\d{4}$/.test(number)) {
+    return null;
+  }
   const baseMessage = message || (code ? VERIFY_WHATSAPP_MESSAGE : CONTINUE_WHATSAPP_MESSAGE);
   const text = code ? `${baseMessage}\n\nLink code: ${code}` : baseMessage;
   return `https://wa.me/${number}?text=${encodeURIComponent(text)}`;

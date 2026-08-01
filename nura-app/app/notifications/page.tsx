@@ -44,19 +44,19 @@ export default async function NotificationsPage() {
     ...(upcoming ?? []).map((c) => ({
       icon: "check-in" as const,
       title: "Check-in coming up",
-      copy: `Nura will check in about your ${(c.nura_plans as unknown as { title: string } | null)?.title ?? "Thread"}.`,
+      copy: `Nura will check in about your ${(c.nura_plans as unknown as { title: string } | null)?.title ?? "Care plan"}.`,
       at: c.scheduled_for as string,
     })),
     ...(completed ?? []).map((c) => ({
       icon: "done" as const,
       title: "Check-in completed",
-      copy: `Your ${(c.nura_plans as unknown as { title: string } | null)?.title ?? "Thread"} check-in was saved.`,
+      copy: `Your ${(c.nura_plans as unknown as { title: string } | null)?.title ?? "Care plan"} check-in was saved.`,
       at: c.completed_at as string,
     })),
     ...(observations ?? []).map((o) => ({
       icon: "calendar" as const,
       title: "New update logged",
-      copy: `${(o.nura_plans as unknown as { title: string } | null)?.title ?? "A Thread"}: ${o.label === "mood" ? `feeling ${o.value}` : o.value}`,
+      copy: `${(o.nura_plans as unknown as { title: string } | null)?.title ?? "A Care plan"}: ${o.label === "mood" ? `feeling ${o.value}` : o.value}`,
       at: o.recorded_at as string,
     })),
   ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 8);
@@ -83,7 +83,7 @@ export default async function NotificationsPage() {
               );
             })
           ) : (
-            <p className="checkin-copy">Nothing yet — activity from your Threads will show up here.</p>
+            <p className="checkin-copy">Nothing yet — activity from your Care plans will show up here.</p>
           )}
         </section>
         <Link href="/me/preferences" className="text-arrow">Manage notification preferences</Link>

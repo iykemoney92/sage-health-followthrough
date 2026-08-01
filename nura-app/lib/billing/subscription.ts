@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { CARD_TRIAL_DAYS, SOFT_TRIAL_DAYS } from "@/lib/billing/trial";
 
 export const PLUS_ENTITLEMENT_ID = "plus";
 export const FREE_THREAD_LIMIT = 1;
@@ -24,11 +25,11 @@ function isFuture(value: string | null | undefined) {
   return Boolean(value && new Date(value).getTime() > Date.now());
 }
 
-function trialEndFromStart(value: string | null | undefined) {
+function trialEndFromStart(value: string | null | undefined, days = CARD_TRIAL_DAYS) {
   if (!value) return null;
   const startedAt = new Date(value);
   if (Number.isNaN(startedAt.getTime())) return null;
-  startedAt.setDate(startedAt.getDate() + 7);
+  startedAt.setDate(startedAt.getDate() + days);
   return startedAt.toISOString();
 }
 
@@ -61,7 +62,12 @@ export async function getSubscriptionAccess(
   };
 }
 
-export async function ensureTrialStarted(supabase: SupabaseClient, ownerId: string) {
+/** Starts a no-card soft trial (default 7 days). Skips if already trial/paid. */
+export async function ensureTrialStarted(
+  supabase: SupabaseClient,
+  ownerId: string,
+  days: number = SOFT_TRIAL_DAYS,
+) {
   const { data } = await supabase
     .from("nura_profiles")
     .select("subscription_status, trial_started_at")
@@ -75,7 +81,7 @@ export async function ensureTrialStarted(supabase: SupabaseClient, ownerId: stri
 
   const startedAt = new Date();
   const endsAt = new Date(startedAt);
-  endsAt.setDate(endsAt.getDate() + 7);
+  endsAt.setDate(endsAt.getDate() + days);
 
   await supabase
     .from("nura_profiles")
@@ -110,10 +116,10 @@ export async function requirePlusAccess(
 export async function enforceThreadLimit(
   supabase: SupabaseClient,
   ownerId: string,
-  existingThreadCount: number,
-  isCreatingNewThread: boolean,
+  existingJourneyCount: number,
+  isCreatingNewJourney: boolean,
 ) {
-  if (!isCreatingNewThread || existingThreadCount < FREE_THREAD_LIMIT) return null;
+  if (!isCreatingNewJourney || existingJourneyCount < FREE_THREAD_LIMIT) return null;
   const access = await getSubscriptionAccess(supabase, ownerId);
   return access.hasPlus ? null : plusRequiredResponse("threads");
 }

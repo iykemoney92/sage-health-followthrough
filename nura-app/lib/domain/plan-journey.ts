@@ -1,5 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { composeJourneyCompletionMessage } from "@/lib/domain/message-intake";
+import { sendWhatsappText } from "@/lib/integrations/whatsapp";
+import { sendPushToOwner } from "@/lib/integrations/push";
 
 export type JourneyStep = {
   id: string;
@@ -34,7 +37,7 @@ const FALLBACK_JOURNEY: DraftMilestone[] = [
     title: "Get oriented",
     description: "Make sure Nura understands the full picture before anything else.",
     steps: [
-      { title: "Share what's going on", context_prompt: "Ask the user to fill in any detail about this Thread that hasn't come up yet, so Nura has the full picture." },
+      { title: "Share what's going on", context_prompt: "Ask the user to fill in any detail about this Care plan that hasn't come up yet, so Nura has the full picture." },
       { title: "Confirm the plan", context_prompt: "Check the plan so far makes sense to the user and ask if anything should change before moving forward." },
     ],
   },
@@ -42,7 +45,7 @@ const FALLBACK_JOURNEY: DraftMilestone[] = [
     title: "Build the habit",
     description: "Turn the plan into something that actually happens day to day.",
     steps: [
-      { title: "Log a first update", context_prompt: "Ask the user for a quick honest update on how things have been since this Thread started." },
+      { title: "Log a first update", context_prompt: "Ask the user for a quick honest update on how things have been since this Care plan started." },
       { title: "Talk through a tricky day", context_prompt: "Ask the user to describe a day this was hardest to keep up with, and what got in the way." },
     ],
   },
@@ -51,7 +54,7 @@ const FALLBACK_JOURNEY: DraftMilestone[] = [
     description: "Step back and see what's actually changed.",
     steps: [
       { title: "Review how it's going", context_prompt: "Ask the user to reflect on what's better, what's not, and whether the current approach still fits." },
-      { title: "Decide what's next", context_prompt: "Help the user decide whether to keep going as-is, adjust the plan, or wind this Thread down." },
+      { title: "Decide what's next", context_prompt: "Help the user decide whether to keep going as-is, adjust the plan, or wind this Care plan down." },
     ],
   },
 ];
@@ -88,13 +91,13 @@ async function draftJourney(plan: PlanForJourney): Promise<DraftMilestone[]> {
       model: "claude-sonnet-5",
       max_tokens: 1200,
       system:
-        "You are Nura, a warm AI health and wellbeing companion. Turn one of the user's Threads into a short journey - a small, encouraging roadmap of what working through this Thread with Nura could look like, broken into Milestones, each with a couple of concrete Steps. " +
+        "You are Nura, a warm AI health and wellbeing companion. Turn one of the user's Care plans into a short roadmap - a small, encouraging path of what working through this Care plan with Nura could look like, broken into Milestones, each with a couple of concrete Steps. " +
         "This is not a rigid clinical care plan - it's a light, human structure to help the user feel oriented and see progress. Keep language warm and plain, never clinical. Never diagnose, prescribe, or give medical advice. " +
-        "Produce exactly 3 Milestones. Each Milestone needs 2-3 Steps. Each Step needs a short title (2-6 words, action-oriented, e.g. 'Log how sleep has been') and a context_prompt: one sentence telling Nura specifically what to focus the conversation on when the user starts that Step - this gets used to ground Nura's next reply, so make it concrete and specific to this Thread, not generic.",
+        "Produce exactly 3 Milestones. Each Milestone needs 2-3 Steps. Each Step needs a short title (2-6 words, action-oriented, e.g. 'Log how sleep has been') and a context_prompt: one sentence telling Nura specifically what to focus the conversation on when the user starts that Step - this gets used to ground Nura's next reply, so make it concrete and specific to this Care plan, not generic.",
       tools: [
         {
           name: "build_journey",
-          description: "Record the generated journey of Milestones and Steps for this Thread.",
+          description: "Record the generated journey of Milestones and Steps for this Care plan.",
           input_schema: {
             type: "object",
             properties: {
@@ -132,7 +135,7 @@ async function draftJourney(plan: PlanForJourney): Promise<DraftMilestone[]> {
         {
           role: "user",
           content:
-            `Thread title: ${plan.title}\nWhy this exists: ${plan.why_this_exists}\nCurrent focus: ${plan.current_focus}\nNext step: ${plan.next_step}`,
+            `Care plan title: ${plan.title}\nWhy this exists: ${plan.why_this_exists}\nCurrent focus: ${plan.current_focus}\nNext step: ${plan.next_step}`,
         },
       ],
     });
@@ -192,7 +195,7 @@ export async function respondToStepStart(
       max_tokens: 400,
       system:
         "You are Nura, a warm AI health and wellbeing companion (never a doctor or therapist - no diagnosis, prescriptions, or medical advice). " +
-        `The user just chose to start the Step "${step.title}" (part of the Milestone "${milestone.title}") within their Thread "${plan.title}". ` +
+        `The user just chose to start the Step "${step.title}" (part of the Milestone "${milestone.title}") within their Care plan "${plan.title}". ` +
         `Here's specifically what this Step should focus on: ${step.contextPrompt} ` +
         "Reply with 1-3 warm, natural sentences that kick off this focused part of the conversation - reference the Step's focus directly and ask one genuine, specific question to get things started. Do not just repeat the Step title back at them.",
       messages: [
@@ -209,15 +212,73 @@ export async function respondToStepStart(
   }
 }
 
-export async function completeStepAndCascade(supabase: SupabaseClient, stepId: string, milestoneId: string) {
+export async function completeStepAndCascade(supabase: SupabaseClient, ownerId: string, stepId: string, milestoneId: string) {
   await supabase
     .from("nura_plan_steps")
     .update({ status: "done", completed_at: new Date().toISOString() })
     .eq("id", stepId);
 
+  const { data: milestoneRow } = await supabase.from("nura_plan_milestones").select("plan_id").eq("id", milestoneId).maybeSingle();
   const { data: siblingSteps } = await supabase.from("nura_plan_steps").select("status").eq("milestone_id", milestoneId);
   const allDone = (siblingSteps ?? []).length > 0 && (siblingSteps ?? []).every((s) => s.status === "done");
   await supabase.from("nura_plan_milestones").update({ status: allDone ? "done" : "active" }).eq("id", milestoneId);
+
+  // regeneratePendingJourney (called right after this by every caller) can only ever add more
+  // work while a milestone is still active/pending - once every milestone for the plan is done,
+  // completion is final, so it's safe to check and wrap up right here.
+  if (allDone && milestoneRow?.plan_id) {
+    await maybeFinalizeJourneyCompletion(supabase, ownerId, milestoneRow.plan_id as string).catch(() => null);
+  }
+}
+
+// Fires once, the moment every milestone of a Journey is done: archives the plan and sends the
+// user a genuine wrap-up (WhatsApp if linked/allowed, always logged in-app) instead of leaving
+// completion as a silent state only visible if they happen to open the checklist themselves.
+async function maybeFinalizeJourneyCompletion(supabase: SupabaseClient, ownerId: string, planId: string): Promise<void> {
+  const { data: milestones } = await supabase.from("nura_plan_milestones").select("status").eq("plan_id", planId);
+  if (!milestones || milestones.length === 0 || milestones.some((m) => m.status !== "done")) return;
+
+  const { data: plan } = await supabase
+    .from("nura_plans")
+    .select("id, title, why_this_exists, category, status")
+    .eq("id", planId)
+    .maybeSingle();
+  if (!plan || plan.status === "archived") return;
+
+  const [{ data: profile }, { data: link }] = await Promise.all([
+    supabase.from("nura_profiles").select("display_name, phone, preferred_checkin_channels").eq("id", ownerId).maybeSingle(),
+    supabase.from("nura_channel_links").select("channel_identifier").eq("owner_id", ownerId).eq("provider", "whatsapp").eq("status", "active").maybeSingle(),
+  ]);
+
+  const displayName = ((profile?.display_name as string | null) ?? "").trim();
+  const firstName = displayName.split(" ").filter(Boolean)[0] || "there";
+  const allowedChannels = (profile?.preferred_checkin_channels as string[] | null) ?? ["voice", "whatsapp", "in_app"];
+  const phone = (link?.channel_identifier as string | null) || (profile?.phone as string | null);
+
+  const message = await composeJourneyCompletionMessage(
+    firstName,
+    plan.title as string,
+    (plan.why_this_exists as string | null) ?? "",
+    plan.category as string | null,
+  );
+
+  await supabase.from("nura_plans").update({ status: "archived" }).eq("id", planId);
+  try {
+    await supabase.from("nura_messages").insert({ owner_id: ownerId, plan_id: planId, role: "assistant", content: message, attachments: [] });
+  } catch {
+    // best-effort - the WhatsApp/push send below still carries the message even if this fails
+  }
+
+  if (phone && allowedChannels.includes("whatsapp")) {
+    const outcome = await sendWhatsappText(phone.replace(/[^\d]/g, ""), message).catch(() => null);
+    if (outcome && !outcome.skipped && !outcome.error) return;
+  }
+
+  await sendPushToOwner(ownerId, {
+    title: "Care plan complete",
+    body: `You finished "${plan.title}" - nice work.`,
+    url: `/plans/${planId}`,
+  }).catch(() => null);
 }
 
 type AdjustedDraft = { currentMilestoneSteps: DraftStep[]; upcomingMilestones: DraftMilestone[] };
@@ -245,7 +306,7 @@ async function draftAdjustedJourney(
       model: "claude-sonnet-5",
       max_tokens: 1200,
       system:
-        "You are Nura, a warm AI health and wellbeing companion, quietly revising the journey (Milestones/Steps) for one of the user's Threads based on how the conversation has evolved. " +
+        "You are Nura, a warm AI health and wellbeing companion, quietly revising the journey (Milestones/Steps) for one of the user's Care plans based on how the conversation has evolved. " +
         "Some parts of this journey are already completed and LOCKED - never repeat, contradict, remove, or reference needing to redo them. You are only ever adjusting what's still ahead: the remaining Steps of the milestone currently in progress, and any milestones that haven't started yet. " +
         "Keep what still fits as-is, rewrite anything that no longer matches where the user actually is, add something new if the conversation revealed a real need, or drop something that's no longer relevant. Small, sensible adjustments - do not reinvent the whole journey. It is completely fine to keep things unchanged if nothing warrants a change. Never diagnose, prescribe, or give medical advice.",
       tools: [
@@ -301,7 +362,7 @@ async function draftAdjustedJourney(
         {
           role: "user" as const,
           content:
-            `Thread: ${plan.title}\n\nAlready completed (locked - do not touch):\n${lockedSummary || "Nothing yet."}\n\n` +
+            `Care plan: ${plan.title}\n\nAlready completed (locked - do not touch):\n${lockedSummary || "Nothing yet."}\n\n` +
             `Still ahead (adjustable):\n${adjustableSummary}\n\n` +
             "Based on the conversation, decide whether the remaining journey still fits or needs adjusting, then call adjust_journey with the result (unchanged is a valid answer).",
         },
@@ -455,7 +516,7 @@ export async function evaluateAndAdvanceJourney(
     const satisfied = Boolean((toolUse.input as { satisfied?: boolean }).satisfied);
     if (!satisfied) return;
 
-    await completeStepAndCascade(supabase, activeStep.id as string, activeStep.milestone_id as string);
+    await completeStepAndCascade(supabase, ownerId, activeStep.id as string, activeStep.milestone_id as string);
     await regeneratePendingJourney(supabase, ownerId, plan, [
       { role: "user", content: userContent },
       { role: "assistant", content: replyContent },

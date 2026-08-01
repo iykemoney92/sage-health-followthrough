@@ -13,21 +13,32 @@ Demo attachment files:
 - `docs/demo-files/medication-note.txt`
 - `docs/demo-files/mum-care-notes.txt`
 
+## How a Care plan is born
+
+Care plans are **agent-authored per user**, not hard-coded templates.
+
+1. User shares context (onboarding intake, in-app chat, or WhatsApp) — text, voice note, or attachment.
+2. Nura reasons (`decide` in chat / `draftPlanFromIntake` in onboarding) and writes structured JSON: title, category, why, focus, next step.
+3. On create, Nura also drafts a short roadmap (milestones/steps) and schedules a first check-in with agent-chosen timing, channel, and prompt.
+4. Check-ins show on that user’s calendar; later chat can advance or adjust the roadmap.
+
+Different personas get different plans. Sarah’s sleep/headache follow-through is not the same Care plan as someone starting a new tablet or watching blood pressure after clinic.
+
 ## Where We Are Now
 
 The demo is ready around the core Nura story:
 - Landing page explains Nura as conversation-first health memory and follow-through.
 - Signup creates a user profile with avatar.
 - Login sends incomplete users to onboarding.
-- Onboarding creates the first health Thread.
+- Onboarding creates the first health Care plan.
 - In-app messaging supports text, voice-note demo, and file/media attachments.
-- Attachments become Thread context.
+- Attachments become Care plan context.
 - Nura schedules check-ins into Supabase.
 - Calendar shows scheduled check-ins and manual events.
 - Check-in completion saves progress and schedules the next check-in.
 - Summary generates a non-diagnostic view of reported context.
 - WhatsApp handoff opens the configured Nura test number.
-- Voice-agent context endpoint returns Thread-specific dynamic variables and guardrails.
+- Voice-agent context endpoint returns Care plan-specific dynamic variables and guardrails.
 
 One caveat:
 - `pnpm demo:reset` needs `SUPABASE_SERVICE_ROLE_KEY` in `.env.local`. Without it, create accounts manually through `/signup`.
@@ -53,7 +64,7 @@ Value line:
 Nura remembers Sarah's health context and proactively follows up, so important care advice does not disappear after the appointment.
 ```
 
-## Primary Demo Journey
+## Primary Demo Care plan
 
 Landing:
 ```text
@@ -71,8 +82,8 @@ I'm overwhelmed, barely sleeping, getting headaches, and my GP told me to try a 
 ```
 
 Expected result:
-- Nura creates a Thread like `Stabilise Sleep & Movement`, `Headache Follow-Through`, or similar.
-- Today shows the active Thread and next check-in.
+- Nura creates a Care plan like `Stabilise Sleep & Movement`, `Headache Follow-Through`, or similar.
+- Today shows the active Care plan and next check-in.
 
 In-app messaging:
 - Go to `Message Nura`.
@@ -83,18 +94,18 @@ I slept badly again last night and forgot to walk today. Can you help me stay on
 
 Expected result:
 - Nura replies conversationally.
-- Nura connects the update to Sarah's Thread.
-- Thread context updates.
+- Nura connects the update to Sarah's Care plan.
+- Care plan context updates.
 
 Attachment / context:
 - Attach `docs/demo-files/gp-headache-plan.txt`.
 - Say:
 ```text
-This could also come through WhatsApp as a message, voice note, image, or file. The important point is that it becomes Thread context.
+This could also come through WhatsApp as a message, voice note, image, or file. The important point is that it becomes Care plan context.
 ```
 
 Expected result:
-- Nura stores the file as Thread context.
+- Nura stores the file as Care plan context.
 - Nura should ask for confirmation before turning GP advice into a reminder.
 
 Calendar:
@@ -106,7 +117,7 @@ Nura doesn't just chat. It turns the conversation into follow-through.
 ```
 
 Check-in:
-- Open the scheduled Thread check-in.
+- Open the scheduled Care plan check-in.
 - Choose `About the same`.
 - Add:
 ```text
@@ -131,7 +142,7 @@ WhatsApp / voice:
 - Click WhatsApp handoff.
 - Say:
 ```text
-For the hackathon, this is where the same agent continues through WhatsApp. For voice check-ins, Nura sends ElevenLabs the Thread context dynamically, so the call is specific to Sarah's actual health journey.
+For the hackathon, this is where the same agent continues through WhatsApp. For voice check-ins, Nura sends ElevenLabs the Care plan context dynamically, so the call is specific to Sarah's actual health journey.
 ```
 
 Closing line:
@@ -153,12 +164,12 @@ This is Sarah. She's overwhelmed, sleeping badly, getting headaches, and her GP 
 
 0:45:
 ```text
-She tells Nura naturally. Nura creates a Thread and remembers the context.
+She tells Nura naturally. Nura creates a Care plan and remembers the context.
 ```
 
 1:15:
 ```text
-She shares extra context as a message, voice note, image, or file. Nura attaches it to the same Thread.
+She shares extra context as a message, voice note, image, or file. Nura attaches it to the same Care plan.
 ```
 
 1:45:
@@ -206,7 +217,7 @@ Why use David:
 
 Keep this simple:
 ```text
-Nura's agent uses a small set of server-side tools: create or update a Thread, save context, schedule a check-in, create a calendar event, and fetch Thread context for voice.
+Nura's agent uses a small set of server-side tools: create or update a Care plan, save context, schedule a check-in, create a calendar event, and fetch Care plan context for voice.
 ```
 
 What is implemented:
@@ -216,6 +227,8 @@ What is implemented:
 - Check-in reschedule: `/api/check-ins/reschedule`
 - Voice context for ElevenLabs: `/api/agent/voice-checkin-context`
 - Agent scheduling tool endpoint: `/api/agent/schedule-checkin`
+- Agent browser push tool: `/api/agent/send-push` (header `x-agent-secret`)
+- Check-in dispatcher (voice / WhatsApp / push): `/api/agent/trigger-check-ins`
 
 Say this if asked about MCP:
 ```text
@@ -233,11 +246,11 @@ Before demo:
 - Text message works.
 - Voice-note demo button works.
 - File attachment works.
-- Thread is created or updated.
+- Care plan is created or updated.
 - Calendar shows scheduled check-in.
 - Check-in completion works.
 - Summary opens.
-- WhatsApp handoff opens `https://wa.me/15554859474`.
+- WhatsApp handoff opens `https://wa.me/<NEXT_PUBLIC_NURA_WHATSAPP_NUMBER>` (must be the real Meta WhatsApp Business / test display number — not a 555 placeholder).
 
 Guardrails:
 - Nura does not diagnose.

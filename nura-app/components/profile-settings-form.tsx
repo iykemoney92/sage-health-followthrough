@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Save, Upload } from "lucide-react";
 import { getAvatarUrl } from "@/lib/avatar";
 import { PhoneNumberInput } from "@/components/phone-number-input";
+import { useToast } from "@/components/toast";
 
 export function ProfileSettingsForm({
   displayName,
@@ -18,16 +19,18 @@ export function ProfileSettingsForm({
   phone: string;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [name, setName] = useState(displayName);
   const [photo, setPhoto] = useState(avatarUrl);
   const [phoneNumber, setPhoneNumber] = useState(phone);
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState("");
+  const dirty =
+    name.trim() !== displayName.trim() || photo !== avatarUrl || phoneNumber !== phone;
 
   async function imageToAvatar(file: File) {
     const supportedType = ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type);
     if (!supportedType) {
-      setNotice("Choose a JPG, PNG, WebP or GIF photo.");
+      toast({ tone: "warning", message: "Choose a JPG, PNG, WebP or GIF photo." });
       return;
     }
 
@@ -47,7 +50,7 @@ export function ProfileSettingsForm({
       canvas.height = size;
       const context = canvas.getContext("2d");
       if (!context) {
-        setNotice("Could not prepare that photo. Try another image.");
+        toast({ tone: "error", message: "Could not prepare that photo. Try another image." });
         return;
       }
 
@@ -57,21 +60,24 @@ export function ProfileSettingsForm({
       context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
       const nextPhoto = canvas.toDataURL("image/jpeg", 0.72);
       if (nextPhoto.length > 80_000) {
-        setNotice("That photo is still too large. Try a smaller image.");
+        toast({ tone: "warning", message: "That photo is still too large. Try a smaller image." });
         return;
       }
       setPhoto(nextPhoto);
-      setNotice("Photo ready. Save changes to update your profile.");
+      toast({ tone: "info", message: "Photo ready. Save changes to update your profile." });
     } catch {
-      setNotice("That photo could not be loaded. Try a JPG or PNG image.");
+      toast({ tone: "error", message: "That photo could not be loaded. Try a JPG or PNG image." });
     } finally {
       URL.revokeObjectURL(url);
     }
   }
 
   async function save() {
+    if (!name.trim()) {
+      toast({ tone: "warning", message: "Add a name before saving." });
+      return;
+    }
     setSaving(true);
-    setNotice("");
     try {
       const res = await fetch("/api/profile", {
         method: "PATCH",
@@ -80,10 +86,10 @@ export function ProfileSettingsForm({
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
-        setNotice("Could not save profile. Try a smaller photo or save again.");
+        toast({ tone: "error", message: data?.error || "Could not save profile. Try a smaller photo or save again." });
         return;
       }
-      setNotice("Profile saved.");
+      toast({ title: "Saved", message: "Your profile is up to date." });
       router.refresh();
     } finally {
       setSaving(false);
@@ -93,10 +99,17 @@ export function ProfileSettingsForm({
   return (
     <div className="settings-panels profile-edit-panels">
       <section>
+        <h3>Photo & name</h3>
+        <p className="muted">This is how you appear across Nura.</p>
         <div className="profile-picture-editor centered">
           <label className="profile-photo-picker" htmlFor="avatar-file">
-            <span className="profile-photo large" style={{ backgroundImage: `url(${photo || getAvatarUrl(name || email)})` }} />
-            <span className="profile-photo-badge"><Upload size={13} /></span>
+            <span
+              className="profile-photo large"
+              style={{ backgroundImage: `url(${photo || getAvatarUrl(name || email)})` }}
+            />
+            <span className="profile-photo-badge">
+              <Upload size={13} />
+            </span>
           </label>
           <input
             id="avatar-file"
@@ -109,17 +122,37 @@ export function ProfileSettingsForm({
             }}
           />
         </div>
-        <label>Name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
-        <label>Email<input value={email} disabled /></label>
+        <label>
+          Name
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name" />
+        </label>
+        <label>
+          Email
+          <input value={email} disabled />
+        </label>
+        <p className="muted field-hint">Email comes from your sign-in and can’t be edited here.</p>
       </section>
       <section>
         <h3>Check-in number</h3>
-        <p className="muted">Number Nura can check in on for scheduled reminders.</p>
-        <label htmlFor="profile-phone">Phone<PhoneNumberInput id="profile-phone" value={phoneNumber} onChange={setPhoneNumber} /></label>
+        <p className="muted">
+          Number Nura can call for scheduled voice check-ins. WhatsApp linking lives under Connected apps.
+        </p>
+        <label htmlFor="profile-phone">
+          Phone
+          <PhoneNumberInput id="profile-phone" value={phoneNumber} onChange={setPhoneNumber} />
+        </label>
       </section>
-      {notice && <p className="profile-save-note">{notice}</p>}
-      <button className="primary-cta profile-save-button" type="button" onClick={save} disabled={saving || !name.trim()}>
-        {saving ? "Saving..." : <><Save /> Save changes</>}
+      <button
+        className="primary-cta profile-save-button"
+        type="button"
+        onClick={save}
+        disabled={saving || !name.trim() || !dirty}
+      >
+        {saving ? "Saving..." : (
+          <>
+            <Save /> Save changes
+          </>
+        )}
       </button>
     </div>
   );

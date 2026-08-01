@@ -53,7 +53,7 @@ Profile photo:
 - Use any clear user photo from the machine if available.
 - If not, initials are fine for the hackathon.
 
-## Sarah Demo Journey
+## Sarah Demo Care plan
 
 ### 1. Landing
 
@@ -99,7 +99,7 @@ I'm overwhelmed, barely sleeping, getting headaches, and my GP told me to try a 
 ```
 
 Expected:
-- Nura creates Sarah's first Thread.
+- Nura creates Sarah's first Care plan.
 - Sarah lands on Today.
 - Today highlights the next best action: message Nura in-app or continue via WhatsApp.
 
@@ -112,7 +112,7 @@ Sarah does not need to fill out a medical form. A normal message is enough for N
 
 Action:
 - Show the highlighted start action.
-- Show the created Thread and check-in area.
+- Show the created Care plan and check-in area.
 
 Say:
 ```text
@@ -120,7 +120,7 @@ The important thing is that Nura has turned a messy real-life message into somet
 ```
 
 Expected:
-- A Thread appears, usually around headaches, sleep, stress, or routine.
+- A Care plan appears, usually around headaches, sleep, stress, or routine.
 - A check-in/reminder is visible or prepared.
 
 ### 5. In-App Messaging
@@ -134,7 +134,7 @@ I slept badly again last night and forgot to walk today. Can you help me stay on
 
 Expected:
 - Nura replies warmly.
-- Nura connects the update to the existing Thread.
+- Nura connects the update to the existing Care plan.
 - Nura may suggest a gentle next step or check-in.
 
 Say:
@@ -155,12 +155,12 @@ GP advice: try a 10-minute walk daily, monitor headaches and sleep, avoid skippi
 ```
 
 Expected:
-- Nura treats the attachment or voice note as Thread context.
+- Nura treats the attachment or voice note as Care plan context.
 - Nura uses it to update the conversation and follow-through plan.
 
 Say:
 ```text
-This same context could arrive as a WhatsApp text, image, voice note, PDF, or document. Nura keeps it connected to the right Thread.
+This same context could arrive as a WhatsApp text, image, voice note, PDF, or document. Nura keeps it connected to the right Care plan.
 ```
 
 ### 7. Calendar
@@ -176,7 +176,7 @@ Nura does not just chat. It turns the conversation into follow-through.
 
 Expected:
 - Scheduled check-ins/reminders are visible.
-- Calendar items are tied to Sarah's Thread context.
+- Calendar items are tied to Sarah's Care plan context.
 
 ### 8. Check-In
 
@@ -218,7 +218,7 @@ Expected:
 
 Say:
 ```text
-For the demo, the same agent can continue through WhatsApp. The link code associates the WhatsApp sender with Sarah's Nura account, so future messages can update the right Thread.
+For the demo, the same agent can continue through WhatsApp. The link code associates the WhatsApp sender with Sarah's Nura account, so future messages can update the right Care plan.
 ```
 
 Important:
@@ -238,12 +238,12 @@ This is Sarah. She is overwhelmed, sleeping badly, getting headaches, and her GP
 
 0:45:
 ```text
-She tells Nura naturally. Nura creates a Thread and remembers the context.
+She tells Nura naturally. Nura creates a Care plan and remembers the context.
 ```
 
 1:15:
 ```text
-She shares extra context as a message, voice note, image, or file. Nura attaches it to the same Thread.
+She shares extra context as a message, voice note, image, or file. Nura attaches it to the same Care plan.
 ```
 
 1:45:
@@ -292,17 +292,17 @@ Use David if:
 
 If asked how the agent schedules:
 ```text
-The agent uses server-side tools to create or update Threads, save context, schedule check-ins, and create calendar events. The conversation is the interface, but the actions are structured.
+The agent uses server-side tools to create or update Care plans, save context, schedule check-ins, and create calendar events. The conversation is the interface, but the actions are structured.
 ```
 
 If asked about WhatsApp linking:
 ```text
-The first WhatsApp handoff includes a Nura link code. When the user sends it, the webhook links that WhatsApp sender to the logged-in Nura account, so future WhatsApp messages can update the right health Thread.
+The first WhatsApp handoff includes a Nura link code. When the user sends it, the webhook links that WhatsApp sender to the logged-in Nura account, so future WhatsApp messages can update the right health Care plan.
 ```
 
 If asked about voice:
 ```text
-Voice check-ins receive Thread-specific context dynamically, so the call is about Sarah's actual journey rather than a generic script.
+Voice check-ins receive Care plan-specific context dynamically, so the call is about Sarah's actual journey rather than a generic script.
 ```
 
 If asked about safety:
@@ -314,11 +314,11 @@ Nura does not diagnose, prescribe, or replace clinical care. It organises user-p
 
 - Landing loads.
 - Signup works with a fresh Sarah email.
-- Onboarding creates a Thread.
+- Onboarding creates a Care plan.
 - Today highlights the next action.
 - In-app messaging works.
 - Attachment or voice-note demo works.
-- Thread context updates.
+- Care plan context updates.
 - Calendar shows follow-through.
 - Check-in completion works.
 - Summary opens.
