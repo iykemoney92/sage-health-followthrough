@@ -4,6 +4,8 @@ name: Nura Deploy
 # - Pull requests → Vercel preview (when VERCEL_TOKEN is configured)
 # - main → production after the reusable CI workflow passes
 #
+# Builds remotely on Vercel (CI already validated typecheck/lint/test/build locally).
+#
 # Setup (once):
 #   1. Create a Vercel token: https://vercel.com/account/tokens
 #   2. gh secret set VERCEL_TOKEN
@@ -69,25 +71,11 @@ jobs:
         if: steps.vercel.outputs.skip == 'false'
         run: npm install -g vercel@50
 
-      - name: Pull Vercel env
-        if: steps.vercel.outputs.skip == 'false'
-        run: vercel pull --yes --environment=preview --token="${{ secrets.VERCEL_TOKEN }}"
-        env:
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-
-      - name: Build
-        if: steps.vercel.outputs.skip == 'false'
-        run: vercel build --token="${{ secrets.VERCEL_TOKEN }}"
-        env:
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-
       - name: Deploy preview
         id: deploy
         if: steps.vercel.outputs.skip == 'false'
         run: |
-          url=$(vercel deploy --prebuilt --token="${{ secrets.VERCEL_TOKEN }}")
+          url=$(vercel deploy --yes --token="${{ secrets.VERCEL_TOKEN }}")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Preview: $url"
         env:
@@ -153,24 +141,10 @@ jobs:
         if: steps.vercel.outputs.skip == 'false'
         run: npm install -g vercel@50
 
-      - name: Pull Vercel env
-        if: steps.vercel.outputs.skip == 'false'
-        run: vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
-        env:
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-
-      - name: Build
-        if: steps.vercel.outputs.skip == 'false'
-        run: vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
-        env:
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-
       - name: Deploy production
         if: steps.vercel.outputs.skip == 'false'
         run: |
-          url=$(vercel deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}")
+          url=$(vercel deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}")
           echo "Production deploy: $url"
         env:
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
