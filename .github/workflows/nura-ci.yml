@@ -1,23 +1,24 @@
 name: Nura CI
 
+# Reusable quality gate. Triggered by Nura Deploy (and manually via workflow_dispatch).
 on:
-  push:
-    branches: [main]
-    paths:
-      - "nura-app/**"
-      - ".github/workflows/nura-ci.yml"
-  pull_request:
-    branches: [main]
-    paths:
-      - "nura-app/**"
-      - ".github/workflows/nura-ci.yml"
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: nura-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 defaults:
   run:
     working-directory: nura-app
 
+permissions:
+  contents: read
+
 jobs:
-  build:
+  quality:
+    name: Typecheck, lint, test, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,3 +44,12 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      # Compile-time catch before Vercel. Values are stubs — production env lives on Vercel.
+      - name: Build
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder
+          NEXT_PUBLIC_APP_URL: https://usenura.app
+          NEXT_PUBLIC_SITE_URL: https://usenura.app

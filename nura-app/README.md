@@ -21,8 +21,35 @@ pnpm install
 pnpm dev
 pnpm lint
 pnpm typecheck
+pnpm test
 pnpm build
 ```
+
+## CI/CD
+
+GitHub Actions + Vercel. Entry workflow: **Nura Deploy** (calls reusable **Nura CI**, then deploys).
+
+| Stage | Workflow | What |
+|---|---|---|
+| CI | [nura-ci.yml](../.github/workflows/nura-ci.yml) | `typecheck` → `lint` → `test` → `build` |
+| CD | [nura-deploy.yml](../.github/workflows/nura-deploy.yml) | PR → Vercel preview; `main` → production (`usenura.app`) |
+
+Triggers on changes under `nura-app/**`. Monorepo scoping: `vercel.json` `ignoreCommand` skips Vercel Git builds when the commit did not touch `nura-app/`.
+
+Until `VERCEL_TOKEN` is set, deploy jobs soft-skip and **Vercel Git** remains the production deployer. After the token is set, Actions can own previews + prod (optionally turn off automatic production deploys in Vercel → Git to avoid doubles).
+
+### One-time Actions deploy setup
+
+```bash
+# From https://vercel.com/account/tokens
+gh secret set VERCEL_TOKEN
+
+# Repo variables (already set for this project if using the default Nura Vercel project):
+gh variable set VERCEL_ORG_ID --body "team_ySN0QFvlHlmOVbv3HT7bE1aS"
+gh variable set VERCEL_PROJECT_ID --body "prj_NH05v3xvJuoIKUYBgfOSUlEReSa5"
+```
+
+In GitHub → Settings → Branches, require **Nura Deploy / Quality gate** before merging to `main`.
 
 ## Current Shape
 
