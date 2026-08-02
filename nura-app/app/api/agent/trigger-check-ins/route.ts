@@ -6,6 +6,7 @@ import { buildVoiceCheckinContext } from "@/lib/domain/voice-checkin-context";
 import { sendPushToOwner } from "@/lib/integrations/push";
 import { sendWhatsappText } from "@/lib/integrations/whatsapp";
 import { composeCheckinOpener, composeMissedCallFollowup } from "@/lib/domain/message-intake";
+import { scheduleIdleWellnessCheckIns } from "@/lib/domain/idle-wellness";
 
 function toE164(digits: string) {
   return digits.startsWith("+") ? digits : `+${digits}`;
@@ -228,6 +229,14 @@ async function runTriggerCheckIns(request: NextRequest) {
   const now = new Date();
   const nowIso = now.toISOString();
 
+  // When Care-plan cadence has gone quiet (no open check-ins / no recent contact), invent a
+  // gentle wellness check-in so Nura still reaches out — empty appointment calendar does not
+  // block this. Inserted rows are due immediately and fall through the normal claim path below.
+  const idle = await scheduleIdleWellnessCheckIns(supabase, now).catch(() => ({
+    scheduled: [] as string[],
+    skipped: 0,
+  }));
+
   const { data: dueCheckIns, error: dueError } = await supabase
     .from("nura_check_ins")
     .select("id, owner_id, plan_id, prompt, scheduled_for, contact_phone, channel, nura_plans(title, category)")
@@ -242,7 +251,12 @@ async function runTriggerCheckIns(request: NextRequest) {
   }
 
   if (!dueCheckIns || dueCheckIns.length === 0) {
-    return NextResponse.json({ ok: true, triggered: [] });
+    return NextResponse.json({
+      ok: true,
+      triggered: [],
+      idleScheduled: idle.scheduled.length,
+      idleSkipped: idle.skipped,
+    });
   }
 
   // Claim these rows atomically before doing anything else. Previously triggered_at was
@@ -265,7 +279,12 @@ async function runTriggerCheckIns(request: NextRequest) {
   const claimedIds = new Set((claimed ?? []).map((row) => row.id as string));
   const claimedCheckIns = (dueCheckIns as DueCheckIn[]).filter((c) => claimedIds.has(c.id));
   if (claimedCheckIns.length === 0) {
-    return NextResponse.json({ ok: true, triggered: [] });
+    return NextResponse.json({
+      ok: true,
+      triggered: [],
+      idleScheduled: idle.scheduled.length,
+      idleSkipped: idle.skipped,
+    });
   }
 
   // Resolve a call-target phone per check-in: the check-in's own contact_phone
@@ -552,7 +571,12 @@ async function runTriggerCheckIns(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, triggered: results });
+  return NextResponse.json({
+    ok: true,
+    triggered: results,
+    idleScheduled: idle.scheduled.length,
+    idleSkipped: idle.skipped,
+  });
 }
 
 /** Vercel Cron uses GET; agent/manual triggers use POST. */
