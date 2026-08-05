@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { enforceThreadLimit, getSubscriptionAccess, plusRequiredResponse, requirePlusAccess } from "./subscription";
+import {
+  enforceThreadLimit,
+  getSubscriptionAccess,
+  isSubscriptionLockedOut,
+  plusRequiredResponse,
+  requirePlusAccess,
+} from "./subscription";
 
 function fakeSupabase(profileRow: Record<string, unknown> | null): SupabaseClient {
   const builder = {
@@ -42,6 +48,7 @@ describe("getSubscriptionAccess", () => {
       OWNER_ID,
     );
     expect(access.hasPlus).toBe(false);
+    expect(access.status).toBe("expired");
   });
 
   it("grants access for an active paid subscription", async () => {
@@ -84,6 +91,7 @@ describe("getSubscriptionAccess", () => {
       OWNER_ID,
     );
     expect(access.hasPlus).toBe(false);
+    expect(access.status).toBe("expired");
   });
 
   it("denies access once fully expired", async () => {
@@ -92,6 +100,32 @@ describe("getSubscriptionAccess", () => {
       OWNER_ID,
     );
     expect(access.hasPlus).toBe(false);
+  });
+});
+
+describe("isSubscriptionLockedOut", () => {
+  it("locks expired trial users", () => {
+    expect(
+      isSubscriptionLockedOut({
+        tier: "free",
+        status: "expired",
+        hasPlus: false,
+        trialEndsAt: new Date(Date.now() - 86400000).toISOString(),
+        currentPeriodEndsAt: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not lock brand-new free users who never started a trial", () => {
+    expect(
+      isSubscriptionLockedOut({
+        tier: "free",
+        status: "free",
+        hasPlus: false,
+        trialEndsAt: null,
+        currentPeriodEndsAt: null,
+      }),
+    ).toBe(false);
   });
 });
 

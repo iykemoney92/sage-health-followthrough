@@ -4,6 +4,8 @@ import { CARD_TRIAL_DAYS, SOFT_TRIAL_DAYS } from "@/lib/billing/trial";
 
 export const PLUS_ENTITLEMENT_ID = "plus";
 export const FREE_THREAD_LIMIT = 1;
+/** Days before trial end to send the renewal reminder email. */
+export const TRIAL_REMINDER_DAYS_BEFORE = 4;
 
 export type SubscriptionAccess = {
   tier: "free" | "plus";
@@ -45,21 +47,70 @@ export async function getSubscriptionAccess(
 
   const profile = (data ?? {}) as ProfileSubscriptionRow;
   const tier = profile.subscription_tier === "plus" ? "plus" : "free";
-  const status = ["trialing", "active", "grace_period", "cancelled", "expired"].includes(profile.subscription_status ?? "")
+  let status = ["trialing", "active", "grace_period", "cancelled", "expired"].includes(profile.subscription_status ?? "")
     ? profile.subscription_status as SubscriptionAccess["status"]
     : "free";
   const trialEndsAt = profile.trial_ends_at ?? trialEndFromStart(profile.trial_started_at);
   const paidUntil = profile.subscription_current_period_ends_at;
   const activePaidStatus = status === "active" || status === "grace_period" || (status === "cancelled" && isFuture(paidUntil));
-  const hasPlus = (tier === "plus" && activePaidStatus) || (status === "trialing" && isFuture(trialEndsAt));
+  const trialActive = status === "trialing" && isFuture(trialEndsAt);
+  const hasPlus = (tier === "plus" && activePaidStatus) || trialActive;
+
+  // Surface past trials as expired even if the webhook hasn't flipped the row yet.
+  if (!hasPlus && status === "trialing" && trialEndsAt && !isFuture(trialEndsAt)) {
+    status = "expired";
+  }
+  if (!hasPlus && status === "cancelled" && !isFuture(paidUntil)) {
+    status = "expired";
+  }
 
   return {
-    tier,
+    tier: hasPlus ? tier : status === "expired" ? "free" : tier,
     status,
     hasPlus,
     trialEndsAt: trialEndsAt ?? null,
     currentPeriodEndsAt: paidUntil ?? null,
   };
+}
+
+/** True when the user previously had a trial/subscription that is no longer valid. */
+export function isSubscriptionLockedOut(access: SubscriptionAccess) {
+  if (access.hasPlus) return false;
+  if (access.status === "expired") return true;
+  if (access.status === "cancelled") return true;
+  return Boolean(access.trialEndsAt && !isFuture(access.trialEndsAt));
+}
+
+/**
+ * Persist expired status for trials/periods that have lapsed.
+ * Must use a service-role client (subscription columns are protected from user writes).
+ */
+export async function markExpiredSubscriptionIfNeeded(
+  supabase: SupabaseClient,
+  ownerId: string,
+  access?: SubscriptionAccess,
+): Promise<SubscriptionAccess> {
+  const current = access ?? (await getSubscriptionAccess(supabase, ownerId));
+  if (current.hasPlus || current.status !== "expired") return current;
+
+  const { data } = await supabase
+    .from("nura_profiles")
+    .select("subscription_status")
+    .eq("id", ownerId)
+    .maybeSingle();
+  const stored = (data as ProfileSubscriptionRow | null)?.subscription_status;
+  if (stored === "expired") return current;
+
+  await supabase
+    .from("nura_profiles")
+    .update({
+      subscription_tier: "free",
+      subscription_status: "expired",
+      subscription_updated_at: new Date().toISOString(),
+    })
+    .eq("id", ownerId);
+
+  return { ...current, tier: "free", status: "expired", hasPlus: false };
 }
 
 /** Starts a no-card soft trial (default 7 days). Skips if already trial/paid. */

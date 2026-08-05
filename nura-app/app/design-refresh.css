@@ -904,6 +904,32 @@ a.secondary-cta {
   max-width: 52ch;
 }
 
+/* Chat: keep the legal note as a full-width strip under the header —
+   not a left-hugging orphan that looks like overflow text. */
+.chat-main > .care-disclaimer.compact {
+  flex: 0 0 auto;
+  width: min(840px, calc(100% - 40px));
+  max-width: none;
+  box-sizing: border-box;
+  margin: 10px auto 0;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(63, 123, 87, 0.14);
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  line-height: 1.4;
+  color: #6b7a70;
+  text-wrap: pretty;
+}
+
+@media (max-width: 900px) {
+  .chat-main > .care-disclaimer.compact {
+    width: calc(100% - 28px);
+    margin-top: 8px;
+    padding: 8px 12px;
+  }
+}
+
 .mobile-nav-chat {
   font-weight: 600;
 }
@@ -6018,27 +6044,104 @@ body:has(.chat-page) {
 
 
 /* Onboarding enforced trial paywall */
-.mobile-onboarding.step-7 .paywall-screen {
+.mobile-onboarding.step-7 .paywall-screen,
+.mobile-onboarding.step-8 .paywall-screen {
   display: grid;
   gap: 14px;
 }
-.mobile-onboarding.step-7 .paywall-benefits {
+.mobile-onboarding.step-7 .paywall-benefits,
+.mobile-onboarding.step-8 .paywall-benefits {
   margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
   gap: 10px;
 }
-.mobile-onboarding.step-7 .paywall-benefits li {
+.mobile-onboarding.step-7 .paywall-benefits li,
+.mobile-onboarding.step-8 .paywall-benefits li {
   display: flex;
   align-items: center;
   gap: 10px;
   font-size: 14px;
   color: #2f4036;
 }
-.mobile-onboarding.step-7 .paywall-cta {
+.mobile-onboarding.step-7 .paywall-cta,
+.mobile-onboarding.step-8 .paywall-cta {
   width: 100%;
   justify-content: center;
+}
+
+/* Expired trial lock screen */
+.billing-lock-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 28px 16px calc(28px + env(safe-area-inset-bottom, 0px));
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(63, 123, 87, 0.16), transparent 70%),
+    linear-gradient(180deg, #f3f7f2 0%, #faf9f5 48%, #f0ebe3 100%);
+  color: #183129;
+}
+.billing-lock-shell {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 22px;
+  justify-items: center;
+}
+.billing-lock-card {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  padding: 28px 24px 22px;
+  border: 1px solid rgba(24, 49, 41, 0.1);
+  border-radius: 22px;
+  background: rgba(255, 252, 247, 0.96);
+  box-shadow: 0 18px 48px rgba(24, 49, 41, 0.08);
+}
+.billing-lock-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #edf4eb;
+  color: #2f6847;
+}
+.billing-lock-card h1 {
+  margin: 0;
+  font: 600 28px/1.2 Georgia, "Times New Roman", serif;
+  letter-spacing: -0.02em;
+  color: #183129;
+}
+.billing-lock-card > p {
+  margin: 0;
+  font: 400 15px/1.55 "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  color: #5f6f68;
+}
+.billing-lock-benefits {
+  margin: 4px 0 8px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+.billing-lock-benefits li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 550 14px/1.35 "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  color: #2f4036;
+}
+.billing-lock-cta,
+.billing-lock-secondary {
+  width: 100%;
+  justify-content: center;
+}
+.billing-lock-signout {
+  margin: 4px auto 0;
 }
 
 /* ============================================================

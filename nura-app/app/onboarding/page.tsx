@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
@@ -117,7 +117,7 @@ function WelcomeArt() {
   );
 }
 
-function DesktopCopy({ step }: { step: number }) {
+function DesktopCopy({ step, trialExpired }: { step: number; trialExpired?: boolean }) {
   const copy =
     step === 2
       ? ["You talk. Nura organises. Life keeps moving.", "Three moves: share what’s going on, let it become a Care plan, and let Nura bring the next step back when you need it."]
@@ -131,12 +131,14 @@ function DesktopCopy({ step }: { step: number }) {
               ? ["Connect WhatsApp to this account.", "Open WhatsApp with your unique link code so Nura can match messages and check-ins to you."]
               : step === 7
                 ? ["Stay in the loop.", "Turn on browser notifications so a check-in or reply from Nura reaches you even when the tab isn’t open. Optional — skip it if you’d rather not."]
-                : ["Start your free trial.", `Add a card to unlock Nura fully. You won’t be charged for ${CARD_TRIAL_DAYS} days, and you can cancel anytime before then.`];
+                : trialExpired
+                  ? ["Your free trial has ended.", "Upgrade to Plus to unlock your Care plans and check-ins again. Everything you shared stays saved."]
+                  : ["Start your free trial.", `Add a card to unlock Nura fully. You won’t be charged for ${CARD_TRIAL_DAYS} days, and you can cancel anytime before then.`];
 
   return (
     <aside className="onboarding-desktop-copy">
       <NuraLogo />
-      <span className="auth-kicker">SET UP YOUR NURA</span>
+      <span className="auth-kicker">{trialExpired && step === 8 ? "TRIAL ENDED" : "SET UP YOUR NURA"}</span>
       <h2>{copy[0]}</h2>
       <p>{copy[1]}</p>
       <div className="onboarding-desktop-note">
@@ -148,11 +150,14 @@ function DesktopCopy({ step }: { step: number }) {
 }
 
 function OnboardingFlow() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
   // Stripe/RevenueCat checkout cancellations land back here with ?paywall=1 —
   // send those users straight back to the paywall step instead of step 1.
+  const paywallReason = searchParams.get("reason");
   const [step, setStep] = useState(() => (searchParams.get("paywall") === "1" ? 8 : 1));
+  const trialExpired = paywallReason === "expired";
   const [selected, setSelected] = useState<string[]>([]);
   const [interestError, setInterestError] = useState<string | null>(null);
   const [chatChannelsSelected, setChatChannelsSelected] = useState<string[]>(["In the app"]);
@@ -167,6 +172,7 @@ function OnboardingFlow() {
   const [intakeError, setIntakeError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [skippingSetup, setSkippingSetup] = useState(false);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [whatsappLinked, setWhatsappLinked] = useState(false);
@@ -329,11 +335,16 @@ function OnboardingFlow() {
       void completeOnboarding();
       return;
     }
+    if (step === 7) {
+      setStep(8);
+      router.replace("/onboarding?paywall=1");
+      return;
+    }
     setStep((current) => current + 1);
   };
 
   const completeOnboarding = async (options?: { skipIntake?: boolean }) => {
-    if (submitting) return;
+    if (submitting || skippingSetup) return;
     if (!assertChannelsReady() || !assertPhoneReady()) {
       setStep(5);
       return;
@@ -382,6 +393,33 @@ function OnboardingFlow() {
     } catch {
       setSubmitError("Something went wrong saving that. Please try again.");
       setSubmitting(false);
+    }
+  };
+
+  const skipSetup = async () => {
+    if (submitting || skippingSetup) return;
+    setSkippingSetup(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch("/api/onboarding/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skipSetup: true, skip: true }),
+      });
+      if (!res.ok) {
+        throw new Error("Could not skip setup.");
+      }
+      setStep(8);
+      router.replace("/onboarding?paywall=1");
+    } catch {
+      setSubmitError("Couldn’t skip setup right now. Please try again.");
+      toast({
+        tone: "warning",
+        title: "Couldn’t skip setup",
+        message: "Please try again in a moment.",
+      });
+    } finally {
+      setSkippingSetup(false);
     }
   };
 
@@ -539,8 +577,16 @@ function OnboardingFlow() {
             </div>
             <WelcomeArt />
             <div className="mobile-welcome-actions">
-              <button className="primary-cta onboarding-primary" onClick={() => setStep(2)}>
+              <button className="primary-cta onboarding-primary" onClick={() => setStep(2)} disabled={skippingSetup}>
                 Get started
+              </button>
+              <button
+                className="skip-intake-button"
+                type="button"
+                onClick={() => void skipSetup()}
+                disabled={skippingSetup}
+              >
+                {skippingSetup ? "Skipping…" : "Skip setup for now"}
               </button>
             </div>
           </div>
@@ -565,7 +611,7 @@ function OnboardingFlow() {
           </div>
 
           <div className="onboarding-desktop-layout">
-            <DesktopCopy step={step} />
+            <DesktopCopy step={step} trialExpired={trialExpired} />
             <section className="onboarding-card">
               {step === 2 && (
                 <>
@@ -901,21 +947,32 @@ function OnboardingFlow() {
 
               {step === 8 && (
                 <div className="paywall-screen">
-                  <span className="auth-kicker">START YOUR TRIAL</span>
-                  <h1>Start your {CARD_TRIAL_DAYS}-day free trial</h1>
+                  <span className="auth-kicker">{trialExpired ? "TRIAL ENDED" : "START YOUR TRIAL"}</span>
+                  <h1>
+                    {trialExpired
+                      ? "Your free trial has ended"
+                      : `Start your ${CARD_TRIAL_DAYS}-day free trial`}
+                  </h1>
                   <p className="onboarding-intro paywall-intro">
-                    Last step before your dashboard. Add a card to keep Nura going after the trial. You won’t be charged for {CARD_TRIAL_DAYS} days, and you can cancel anytime before then.
+                    {trialExpired
+                      ? "Nura is paused until you upgrade to Plus. Renew to keep your Care plans, check-ins, and conversations going."
+                      : `Last step before your dashboard. Add a card to keep Nura going after the trial. You won’t be charged for ${CARD_TRIAL_DAYS} days, and you can cancel anytime before then.`}
                   </p>
                   <ul className="paywall-benefits">
                     <li><Check size={14} strokeWidth={3} /> Unlimited Care plans and check-ins</li>
                     <li><Check size={14} strokeWidth={3} /> Voice, WhatsApp, and document uploads</li>
                     <li><Check size={14} strokeWidth={3} /> Cancel anytime before the trial ends</li>
                   </ul>
-                  <a href="/api/billing/checkout" className="primary-cta onboarding-primary paywall-cta">
-                    <CreditCard size={18} /> Start {CARD_TRIAL_DAYS}-day free trial
+                  <a
+                    href={trialExpired ? "/api/billing/checkout?return=locked" : "/api/billing/checkout"}
+                    className="primary-cta onboarding-primary paywall-cta"
+                  >
+                    <CreditCard size={18} /> {trialExpired ? "Upgrade to Plus" : `Start ${CARD_TRIAL_DAYS}-day free trial`}
                   </a>
                   <p className="control-note">
-                    A card is required to start the trial — you won’t be charged until day {CARD_TRIAL_DAYS + 1}.
+                    {trialExpired
+                      ? "Your Care plans stay saved — upgrade to unlock them again."
+                      : `A card is required to start the trial — you won’t be charged until day ${CARD_TRIAL_DAYS + 1}.`}
                   </p>
                 </div>
               )}
@@ -950,7 +1007,7 @@ function OnboardingFlow() {
                       className="primary-cta onboarding-primary"
                       type="button"
                       onClick={goNext}
-                      disabled={submitting || !channelsReady || (needsPhone && !phoneIsValid)}
+                      disabled={submitting || skippingSetup || !channelsReady || (needsPhone && !phoneIsValid)}
                     >
                       {submitting ? (
                         <>
@@ -970,12 +1027,32 @@ function OnboardingFlow() {
                     >
                       Continue <ArrowRight />
                     </button>
+                  ) : step === 2 || step === 3 ? (
+                    <>
+                      <button
+                        className="primary-cta onboarding-primary"
+                        type="button"
+                        onClick={goNext}
+                        disabled={(step === 3 && selected.length === 0) || skippingSetup}
+                      >
+                        Continue <ArrowRight />
+                      </button>
+                      <button
+                        className="skip-intake-button"
+                        type="button"
+                        onClick={() => void skipSetup()}
+                        disabled={skippingSetup}
+                      >
+                        {skippingSetup ? "Skipping…" : "Skip setup for now"}
+                      </button>
+                      {submitError && step < 5 ? <p className="auth-error">{submitError}</p> : null}
+                    </>
                   ) : (
                     <button
                       className="primary-cta onboarding-primary"
                       type="button"
                       onClick={goNext}
-                      disabled={step === 3 && selected.length === 0}
+                      disabled={skippingSetup}
                     >
                       Continue <ArrowRight />
                     </button>

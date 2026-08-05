@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncPlusFromRevenueCat } from "@/lib/billing/sync-plus";
-import { getSubscriptionAccess } from "@/lib/billing/subscription";
+import {
+  getSubscriptionAccess,
+  isSubscriptionLockedOut,
+  markExpiredSubscriptionIfNeeded,
+} from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
 import { appUrl } from "@/lib/url";
@@ -31,6 +35,10 @@ export async function GET(request: NextRequest) {
   }
 
   if (!access.hasPlus) {
+    access = await markExpiredSubscriptionIfNeeded(supabase, user.id, access);
+    if (isSubscriptionLockedOut(access)) {
+      return NextResponse.redirect(appUrl("/billing/locked", request));
+    }
     const paywall = appUrl("/onboarding", request);
     paywall.searchParams.set("paywall", "1");
     return NextResponse.redirect(paywall);

@@ -279,6 +279,68 @@ usenura.app
 `;
 }
 
+function formatTrialEndDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export function trialReminderEmailHtml({
+  billingUrl,
+  trialEndsAt,
+  firstName,
+  daysLeft = 4,
+}: {
+  billingUrl: string;
+  trialEndsAt: string;
+  firstName?: string;
+  daysLeft?: number;
+}) {
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  const endLabel = formatTrialEndDate(trialEndsAt);
+  return nuraEmailShell({
+    preview: `Your Nura trial ends in ${daysLeft} days — renew to keep Care plans going.`,
+    eyebrow: "Trial reminder",
+    title: `Your trial ends in ${daysLeft} days.`,
+    bodyHtml: `${greeting}<br/><br/>Just a heads-up: your free Nura trial ends on <strong>${endLabel}</strong>. After that, Care plans and check-ins pause until you upgrade to Plus.<br/><br/>You can renew anytime — your health context stays saved.`,
+    ctaLabel: "Manage billing",
+    ctaUrl: billingUrl,
+    footerNote: "If you already upgraded, you can ignore this email.",
+  });
+}
+
+export function trialReminderEmailText({
+  billingUrl,
+  trialEndsAt,
+  firstName,
+  daysLeft = 4,
+}: {
+  billingUrl: string;
+  trialEndsAt: string;
+  firstName?: string;
+  daysLeft?: number;
+}) {
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  const endLabel = formatTrialEndDate(trialEndsAt);
+  return `Nura — Health follow-through
+
+${greeting}
+
+Your free Nura trial ends in ${daysLeft} days (${endLabel}).
+After that, Care plans and check-ins pause until you upgrade to Plus.
+
+Manage billing:
+${billingUrl}
+
+If you already upgraded, you can ignore this email.
+
+usenura.app
+`;
+}
+
 /** Attach the Nura mark as an inline CID image for branded auth emails. */
 export function nuraEmailLogoAttachment() {
   const content = getEmailLogoBase64();

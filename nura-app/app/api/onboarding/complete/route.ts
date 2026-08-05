@@ -32,7 +32,10 @@ const requestSchema = z.object({
     )
     .optional()
     .default([]),
+  /** Skip intake only (channels still required). */
   skip: z.boolean().optional().default(false),
+  /** Skip the whole setup — defaults to in-app channels and empty intake. */
+  skipSetup: z.boolean().optional().default(false),
 });
 
 const CHAT_CHANNEL_MAP: Record<string, string> = {
@@ -81,19 +84,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { interests, channel, checkinChannel, checkinChannels, phone, intake, attachments, skip } = parsed.data;
-  if (!skip && !intake.trim() && attachments.length === 0) {
+  const { interests, channel, checkinChannel, checkinChannels, phone, intake, attachments, skip, skipSetup } =
+    parsed.data;
+  const skipIntake = skip || skipSetup;
+  if (!skipIntake && !intake.trim() && attachments.length === 0) {
     return NextResponse.json({ ok: false, error: "intake_required" }, { status: 400 });
   }
 
-  const preferredCheckinChannels = resolveCheckinChannels(checkinChannels, checkinChannel);
+  // Full setup skip lands on in-app defaults so the paywall can open immediately.
+  const effectiveChannel = skipSetup ? "In the app" : channel;
+  const effectiveCheckinChannels = skipSetup ? ["In the app"] : checkinChannels;
+  const effectiveInterests = skipSetup ? [] : interests;
+
+  const preferredCheckinChannels = resolveCheckinChannels(effectiveCheckinChannels, checkinChannel);
   if (preferredCheckinChannels.length === 0) {
     return NextResponse.json({ ok: false, error: "channels_required" }, { status: 400 });
   }
 
-  const chatNeedsPhone = channel === "WhatsApp" || channel === "Both";
+  const chatNeedsPhone = effectiveChannel === "WhatsApp" || effectiveChannel === "Both";
   const checkinNeedsPhone = preferredCheckinChannels.includes("whatsapp") || preferredCheckinChannels.includes("voice");
-  const normalizedPhone = phone ? phone.replace(/[^\d]/g, "") : "";
+  const normalizedPhone = skipSetup ? "" : phone ? phone.replace(/[^\d]/g, "") : "";
   if ((chatNeedsPhone || checkinNeedsPhone) && normalizedPhone.length < 10) {
     return NextResponse.json({ ok: false, error: "phone_required" }, { status: 400 });
   }
@@ -101,7 +111,7 @@ export async function POST(request: NextRequest) {
   const supabase = await getSupabaseSessionClient();
 
   const displayName = (user.user_metadata?.display_name as string | undefined) ?? user.email ?? "";
-  const preferredChannel = CHAT_CHANNEL_MAP[channel] ?? "in_app";
+  const preferredChannel = CHAT_CHANNEL_MAP[effectiveChannel] ?? "in_app";
   const preferredCheckinChannel = primaryCheckin(preferredCheckinChannels);
 
   const profilePayload = {
@@ -110,7 +120,7 @@ export async function POST(request: NextRequest) {
     preferred_channel: preferredChannel,
     preferred_checkin_channel: preferredCheckinChannel,
     preferred_checkin_channels: preferredCheckinChannels,
-    interests,
+    interests: effectiveInterests,
     phone: normalizedPhone || null,
   };
 
@@ -134,9 +144,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: profileError.message }, { status: 500 });
   }
 
-  if (skip) {
+  if (skipIntake) {
     await supabase.auth.updateUser({ data: { onboarding_complete: true } });
-    return NextResponse.json({ ok: true, skipped: true });
+    return NextResponse.json({ ok: true, skipped: true, skipSetup: Boolean(skipSetup) });
   }
 
   const { data: existingPlan, error: existingPlanError } = await supabase

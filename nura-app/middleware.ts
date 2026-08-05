@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isSubscriptionLockedOut } from "@/lib/billing/subscription";
 import { getVerifiedSubscriptionAccess } from "@/lib/billing/verified-access";
 
 const PROTECTED_PREFIXES = [
@@ -89,6 +90,7 @@ export async function middleware(request: NextRequest) {
 
   // Post-purchase return must stay reachable before the RC webhook lands.
   const isBillingReturn = pathname === "/billing/return" || pathname.startsWith("/billing/return/");
+  const isBillingLocked = pathname === "/billing/locked" || pathname.startsWith("/billing/locked/");
   if (user && isBillingReturn) {
     response.cookies.set("nura_checkout_pending", "1", {
       httpOnly: true,
@@ -99,13 +101,18 @@ export async function middleware(request: NextRequest) {
     });
   }
 
-  // Finished onboarding but no card trial / Plus yet → enforced paywall.
-  if (user && needsPlus && !isBillingReturn && user.user_metadata?.onboarding_complete === true) {
+  // Finished onboarding but no card trial / Plus yet → paywall or expired lock.
+  if (user && needsPlus && !isBillingReturn && !isBillingLocked && user.user_metadata?.onboarding_complete === true) {
     const access = await getVerifiedSubscriptionAccess(supabase, user.id, user.email);
     if (!access.hasPlus) {
       const url = request.nextUrl.clone();
-      url.pathname = "/onboarding";
-      url.searchParams.set("paywall", "1");
+      if (isSubscriptionLockedOut(access)) {
+        url.pathname = "/billing/locked";
+        url.search = "";
+      } else {
+        url.pathname = "/onboarding";
+        url.searchParams.set("paywall", "1");
+      }
       return NextResponse.redirect(url);
     }
   }
@@ -127,6 +134,7 @@ export const config = {
     "/onboarding",
     "/billing",
     "/billing/return",
+    "/billing/locked",
     "/login",
     "/signup",
     "/welcome",

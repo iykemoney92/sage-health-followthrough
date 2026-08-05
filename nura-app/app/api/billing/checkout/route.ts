@@ -39,13 +39,25 @@ function markCheckoutPending(response: NextResponse) {
   return response;
 }
 
+function checkoutCancelUrl(request: NextRequest) {
+  const returnTo = request.nextUrl.searchParams.get("return");
+  if (returnTo === "locked") {
+    return appUrl("/billing/locked", request);
+  }
+  const cancelUrl = appUrl("/onboarding", request);
+  cancelUrl.searchParams.set("paywall", "1");
+  if (returnTo === "expired") {
+    cancelUrl.searchParams.set("reason", "expired");
+  }
+  return cancelUrl;
+}
+
 async function createStripeCheckout(request: NextRequest, user: { id: string; email?: string | null }) {
   const secretKey = getStripeSecretKey();
   if (!secretKey) return null;
 
   const successUrl = `${appUrl("/api/billing/checkout-success", request).toString()}?session_id={CHECKOUT_SESSION_ID}`;
-  const cancelUrl = appUrl("/onboarding", request);
-  cancelUrl.searchParams.set("paywall", "1");
+  const cancelUrl = checkoutCancelUrl(request);
 
   const body = new URLSearchParams({
     mode: "subscription",
@@ -98,18 +110,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(appUrl("/login", request));
   }
 
+  // Primary path: RevenueCat Web Purchase (Stripe is only a fallback if RC isn't configured).
+  const purchaseUrl = getRevenueCatPurchaseUrl();
+  if (purchaseUrl) {
+    const checkoutUrl = new URL(purchaseUrl);
+    checkoutUrl.pathname = `${checkoutUrl.pathname.replace(/\/$/, "")}/${encodeURIComponent(user.id)}`;
+    if (user.email) checkoutUrl.searchParams.set("email", user.email);
+    checkoutUrl.searchParams.set("skip_purchase_success", "true");
+    return markCheckoutPending(NextResponse.redirect(checkoutUrl));
+  }
+
   const stripeCheckout = await createStripeCheckout(request, user);
   if (stripeCheckout) return stripeCheckout;
 
-  const purchaseUrl = getRevenueCatPurchaseUrl();
-  if (!purchaseUrl) {
-    return NextResponse.json({ ok: false, error: "billing_not_configured" }, { status: 503 });
-  }
-
-  const checkoutUrl = new URL(purchaseUrl);
-  checkoutUrl.pathname = `${checkoutUrl.pathname.replace(/\/$/, "")}/${encodeURIComponent(user.id)}`;
-  if (user.email) checkoutUrl.searchParams.set("email", user.email);
-  checkoutUrl.searchParams.set("skip_purchase_success", "true");
-
-  return markCheckoutPending(NextResponse.redirect(checkoutUrl));
+  return NextResponse.json({ ok: false, error: "billing_not_configured" }, { status: 503 });
 }

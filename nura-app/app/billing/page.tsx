@@ -13,9 +13,10 @@ import {
 import { NuraShell } from "@/components/nura-shell";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { reconcileShortCardTrial } from "@/lib/billing/reconcile-trial";
-import { getSubscriptionAccess } from "@/lib/billing/subscription";
+import { getSubscriptionAccess, markExpiredSubscriptionIfNeeded } from "@/lib/billing/subscription";
 import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
 import { getWhatsappConnectionStatus } from "@/lib/channel-links";
+import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 function formatDate(value: string | null) {
@@ -33,7 +34,14 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
   if (user) {
     await reconcileShortCardTrial(supabase, user.id);
   }
-  const access = user ? await getSubscriptionAccess(supabase, user.id) : null;
+  let access = user ? await getSubscriptionAccess(supabase, user.id) : null;
+  if (user && access && !access.hasPlus && access.status === "expired") {
+    try {
+      access = await markExpiredSubscriptionIfNeeded(getSupabaseServerClient(), user.id, access);
+    } catch {
+      // Keep computed access if service role isn't available locally.
+    }
+  }
   const whatsapp = user
     ? await getWhatsappConnectionStatus(supabase, user.id)
     : { linked: false, pendingCode: null, expiresAt: null };
@@ -52,7 +60,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
         ? "Cancelling"
         : "Plus active"
     : access?.status === "expired"
-      ? "Expired"
+      ? "Trial expired"
       : "Free";
   const statusCopy = isTrialing && trialEnds
     ? `Your free trial runs until ${trialEnds} (then US$9.99/month unless you cancel).`
@@ -60,7 +68,9 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
       ? `Cancelled — Plus stays on until ${paidUntil}.`
       : access?.hasPlus && paidUntil
         ? `Your paid access runs until ${paidUntil}.`
-        : `Upgrade when you’re ready for voice, WhatsApp follow-up, and more Care plans. New plans include a ${CARD_TRIAL_DAYS}-day free trial.`;
+        : access?.status === "expired"
+          ? `Your free trial${trialEnds ? ` ended on ${trialEnds}` : " has ended"}. Upgrade to Plus to unlock Care plans and check-ins again.`
+          : `Upgrade when you’re ready for voice, WhatsApp follow-up, and more Care plans. New plans include a ${CARD_TRIAL_DAYS}-day free trial.`;
 
   const features = [
     {
@@ -130,8 +140,11 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
               </a>
             ) : (
               <>
-                <a href="/api/billing/checkout" className="primary-cta">
-                  <CreditCard /> Upgrade to Plus
+                <a
+                  href={access?.status === "expired" ? "/api/billing/checkout?return=locked" : "/api/billing/checkout"}
+                  className="primary-cta"
+                >
+                  <CreditCard /> {access?.status === "expired" ? "Renew Plus" : "Upgrade to Plus"}
                 </a>
                 <a href="/api/billing/portal" className="secondary-cta">
                   <Settings /> Manage or cancel
