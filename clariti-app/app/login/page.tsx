@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, LockKeyhole } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const emailConfirmed = searchParams.get("confirmed") === "1";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -30,8 +32,8 @@ export default function LoginPage() {
         return;
       }
 
-      const next = new URLSearchParams(window.location.search).get("next");
-      router.push(next ?? "/");
+      const next = searchParams.get("next");
+      router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
       router.refresh();
     } catch {
       setError("Supabase is not configured yet. Add the Supabase env vars to enable auth.");
@@ -45,9 +47,13 @@ export default function LoginPage() {
       <section className="clariti-auth-panel">
         <Link href="/" className="clariti-brand"><span className="clariti-mark">C</span><strong>Clariti</strong></Link>
         <form className="clariti-auth-card" onSubmit={handleSubmit}>
-          <span className="clariti-kicker">WELCOME BACK</span>
+          <span className="clariti-kicker">{emailConfirmed ? "EMAIL CONFIRMED" : "WELCOME BACK"}</span>
           <h1>Sign in to Clariti</h1>
-          <p>Continue with your saved documents, analyses, calls and follow-ups.</p>
+          <p>
+            {emailConfirmed
+              ? "Your email is verified. Sign in with your password to continue."
+              : "Continue with your saved documents, analyses, calls and follow-ups."}
+          </p>
           <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>
           <label>Password<span className="password-field"><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" required autoComplete="current-password" /><button type="button" onClick={() => setShowPassword((show) => !show)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff /> : <Eye />}</button></span></label>
           {error && <p className="auth-error">{error}</p>}
@@ -58,5 +64,13 @@ export default function LoginPage() {
       </section>
       <aside className="clariti-auth-visual"><div><span>Document clarity</span><h2>Understand the document, then act on the next step.</h2><p>Clariti keeps each analysis, source anchor, call context and follow-up together.</p></div></aside>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

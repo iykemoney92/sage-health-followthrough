@@ -16,6 +16,7 @@ export default function SignupPage() {
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState(false);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -43,6 +44,11 @@ export default function SignupPage() {
         return;
       }
 
+      if (result.requiresEmailConfirmation) {
+        setPendingConfirmation(true);
+        return;
+      }
+
       router.push("/");
       router.refresh();
     } catch {
@@ -50,6 +56,25 @@ export default function SignupPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (pendingConfirmation) {
+    return (
+      <main className="clariti-auth-page">
+        <section className="clariti-auth-panel">
+          <Link href="/" className="clariti-brand"><span className="clariti-mark">C</span><strong>Clariti</strong></Link>
+          <div className="clariti-auth-card">
+            <span className="clariti-kicker">CHECK YOUR EMAIL</span>
+            <h1>Confirm your account</h1>
+            <p>We sent a confirmation link to <strong>{email}</strong>. Open it to verify your email — Clariti will bring you back automatically.</p>
+            <Link href="/login" className="auth-submit" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none" }}>
+              Go to sign in <ArrowRight />
+            </Link>
+          </div>
+        </section>
+        <aside className="clariti-auth-visual"><div><span>Built for the real journey</span><h2>From upload to explanation, call context and follow-up.</h2><ul><li><CheckCircle2 /> Radiology report explanation</li><li><CheckCircle2 /> Medical bill breakdown</li><li><CheckCircle2 /> Insurance EOB decoding</li></ul></div></aside>
+      </main>
+    );
   }
 
   return (

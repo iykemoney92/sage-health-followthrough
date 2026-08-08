@@ -2,9 +2,14 @@
 
 import {
   ArrowUp,
+  ClipboardList,
+  FileHeart,
   FileText,
+  FlaskConical,
+  Hospital,
   Loader2,
   Paperclip,
+  Pill,
   ReceiptText,
   ScanText,
   ShieldCheck,
@@ -13,36 +18,45 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { ClaritiAuthModal } from "@/components/clariti-auth-modal";
 import { ClaritiShell } from "@/components/clariti-shell";
+import type { ClaritiAnalysisKind } from "@/lib/ai/clariti-analysis";
+import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 import { inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
 
-type StarterKind = "medical_bill" | "insurance_eob" | "radiology_report";
+type StarterKind = ClaritiAnalysisKind;
 
-const starters = [
-  {
-    kind: "medical_bill",
-    title: "Explain a medical bill",
-    meta: "Charges, flags and what to ask next",
-    prompt: "Please explain this medical bill in plain English, break down the charges, flag anything unusual, and tell me what I should ask next.",
-    uploadHint: "Upload your medical bill, invoice or statement to continue.",
-    Icon: ReceiptText,
-  },
-  {
-    kind: "radiology_report",
-    title: "Understand a radiology report",
-    meta: "Findings, anatomy and clinician questions",
-    prompt: "Please explain this radiology report in plain English, clarify the findings and anatomy mentioned, and suggest useful questions I can ask my clinician.",
-    uploadHint: "Upload your radiology report, scan report or clear image to continue.",
-    Icon: ScanText,
-  },
-  {
-    kind: "insurance_eob",
-    title: "Decode an insurance EOB",
-    meta: "What was billed, covered and left to you",
-    prompt: "Please decode this insurance EOB, explain what was billed and covered, what I may owe, and flag anything I should query with the insurer or provider.",
-    uploadHint: "Upload your EOB or explanation-of-benefits document to continue.",
-    Icon: ShieldCheck,
-  },
-] as const;
+const starterIcons: Partial<Record<ClaritiAnalysisKind, typeof ReceiptText>> = {
+  medical_bill: ReceiptText,
+  insurance_eob: ShieldCheck,
+  radiology_report: ScanText,
+  lab_results: FlaskConical,
+  discharge_summary: Hospital,
+  medication_context: Pill,
+  pathology_report: FileHeart,
+  visit_notes: ClipboardList,
+  unknown: FileText,
+};
+
+const starterOrder: ClaritiAnalysisKind[] = [
+  "medical_bill",
+  "insurance_eob",
+  "radiology_report",
+  "lab_results",
+  "discharge_summary",
+  "medication_context",
+  "unknown",
+];
+
+const starters = starterOrder.map((kind) => {
+  const meta = getClaritiKindMeta(kind);
+  return {
+    kind,
+    title: meta.starterTitle,
+    meta: meta.starterMeta,
+    prompt: meta.starterPrompt,
+    uploadHint: meta.uploadHint,
+    Icon: starterIcons[kind] ?? FileText,
+  };
+});
 
 const extractionLabels: Record<string, string> = {
   text: "text file",
@@ -120,6 +134,13 @@ function HomeContent() {
 
   useEffect(() => {
     const next = searchParams.get("next");
+    const confirmed = searchParams.get("confirmed") === "1";
+
+    if (authenticated && confirmed) {
+      // Session already established via /auth/confirm — drop the query noise.
+      router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
+      return;
+    }
 
     if (searchParams.get("auth") === "1" && !authenticated) {
       queueMicrotask(() => {
@@ -130,7 +151,7 @@ function HomeContent() {
         requestAnimationFrame(() => composerRef.current?.focus());
       });
     }
-  }, [authenticated, searchParams]);
+  }, [authenticated, router, searchParams]);
 
   useEffect(() => {
     if (!extracting) return;
@@ -311,8 +332,8 @@ function HomeContent() {
           <div className="clariti-entry-mark">C</div>
           <h1>What can I help you understand?</h1>
           <p className="clariti-entry-sub">
-            Ask a question and attach one health document. Clariti creates a grounded analysis,
-            then opens a workspace for actions, calls and follow-ups.
+            Attach any confusing health paperwork — bills, EOBs, scans, labs, discharge notes, med lists, and more.
+            Clariti explains it in plain language, then helps you decide what to ask next.
           </p>
 
           <div className="clariti-entry-composer">
@@ -378,7 +399,7 @@ function HomeContent() {
 
           <div className="clariti-entry-trust">
             <ShieldCheck />
-            <span>One document per query keeps Clariti grounded. It explains and organises information; it does not diagnose.</span>
+            <span>One document at a time keeps Clariti honest. It explains paperwork in plain language — it does not diagnose.</span>
           </div>
         </div>
       </section>
@@ -388,6 +409,7 @@ function HomeContent() {
           modeDefault={authMode}
           onClose={() => setAuthOpen(false)}
           onAuthenticated={handleAuthenticated}
+          emailConfirmedNotice={searchParams.get("confirmed") === "1"}
           kicker={authIntent === "navigate" ? "SIGN IN TO CONTINUE" : "SAVE YOUR DOCUMENT"}
           title={authIntent === "navigate" ? "Sign in without losing your ask" : undefined}
           copy={authIntent === "navigate" ? "Create or sign in to Clariti. We will keep you on the Ask Clariti flow and open the page you selected after auth." : undefined}
@@ -417,5 +439,5 @@ function isEmptyOrStarterPrompt(value: string) {
 }
 
 function promptForKind(kind: StarterKind) {
-  return starters.find((starter) => starter.kind === kind)?.prompt ?? "Please explain this health document in plain English, stay grounded in the source text, and tell me what I should ask next.";
+  return getClaritiKindMeta(kind).starterPrompt;
 }
