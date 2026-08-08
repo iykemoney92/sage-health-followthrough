@@ -11,12 +11,12 @@ function claritiAppUrl() {
   if (raw) return raw.replace(/\/$/, "");
   const vercel = (process.env.VERCEL_URL || "").trim();
   if (vercel) return `https://${vercel.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
-  return "https://clariti-health-followthrough.vercel.app";
+  return "https://useclariti.app";
 }
 
 /** Shown as the From display name in inboxes — "Clariti <address>". */
 export function getAuthEmailFrom() {
-  return process.env.AUTH_EMAIL_FROM || "Clariti <hello@usenura.app>";
+  return process.env.AUTH_EMAIL_FROM || "Clariti <hello@useclariti.app>";
 }
 
 export async function sendAuthEmail({ to, subject, html, text, idempotencyKey }: SendEmailInput) {

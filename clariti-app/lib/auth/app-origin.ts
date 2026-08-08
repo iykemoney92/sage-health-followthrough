@@ -18,7 +18,7 @@ export function appOriginFromRequest(request: Request) {
     return `https://${host}`;
   }
 
-  return "https://clariti-health-followthrough.vercel.app";
+  return "https://useclariti.app";
 }
 
 /** Where Supabase should send users after they click the confirmation email. */
