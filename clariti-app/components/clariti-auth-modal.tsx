@@ -82,6 +82,37 @@ export function ClaritiAuthModal({
           <button type="button" className="auth-submit" onClick={() => { setPendingConfirmation(false); setMode("signin"); }}>
             Back to sign in <ArrowRight />
           </button>
+          <button
+            type="button"
+            className="auth-mode-switch"
+            disabled={loading}
+            onClick={() => {
+              void (async () => {
+                setLoading(true);
+                setError(null);
+                try {
+                  const response = await fetch("/api/auth/resend-confirmation", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ email }),
+                  });
+                  const result = await response.json().catch(() => null);
+                  if (!response.ok || !result?.ok) {
+                    setError(result?.error ?? "Could not resend confirmation email.");
+                    setPendingConfirmation(false);
+                    return;
+                  }
+                } catch {
+                  setError("Could not resend confirmation email.");
+                  setPendingConfirmation(false);
+                } finally {
+                  setLoading(false);
+                }
+              })();
+            }}
+          >
+            {loading ? "Sending…" : "Resend confirmation email"}
+          </button>
         </div>
       </div>
     );
