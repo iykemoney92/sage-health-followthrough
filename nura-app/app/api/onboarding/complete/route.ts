@@ -136,24 +136,29 @@ export async function POST(request: NextRequest) {
   };
   if (resolvedTimezone) profilePayload.timezone = resolvedTimezone;
 
-  let { error: profileError } = await supabase.from("nura_profiles").upsert(profilePayload);
+  let payload = profilePayload;
+  let { error: profileError } = await supabase.from("nura_profiles").upsert(payload);
 
   // Older local DBs may not have newer channel columns yet — still save the rest.
+  // Each fallback narrows `payload` further so earlier drops aren't lost on the next retry.
   if (profileError?.message?.includes("preferred_checkin_channels")) {
-    const { preferred_checkin_channels: _ignored, ...withoutArray } = profilePayload;
-    ({ error: profileError } = await supabase.from("nura_profiles").upsert(withoutArray));
+    const { preferred_checkin_channels: _ignored, ...withoutArray } = payload;
+    payload = withoutArray;
+    ({ error: profileError } = await supabase.from("nura_profiles").upsert(payload));
   }
   if (profileError?.message?.includes("preferred_checkin_channel")) {
     const {
       preferred_checkin_channel: _ignoredChannel,
       preferred_checkin_channels: _ignoredChannels,
       ...legacyPayload
-    } = profilePayload;
-    ({ error: profileError } = await supabase.from("nura_profiles").upsert(legacyPayload));
+    } = payload;
+    payload = legacyPayload;
+    ({ error: profileError } = await supabase.from("nura_profiles").upsert(payload));
   }
   if (profileError?.message?.includes("timezone")) {
-    const { timezone: _ignoredTz, ...withoutTz } = profilePayload;
-    ({ error: profileError } = await supabase.from("nura_profiles").upsert(withoutTz));
+    const { timezone: _ignoredTz, ...withoutTz } = payload;
+    payload = withoutTz;
+    ({ error: profileError } = await supabase.from("nura_profiles").upsert(payload));
   }
 
   if (profileError) {
