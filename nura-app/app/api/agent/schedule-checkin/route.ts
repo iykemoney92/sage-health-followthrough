@@ -1,16 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { extractAgentPhoneHeaders, resolveAgentOwnerId } from "@/lib/agent/resolve-owner";
 import { enforceThreadLimit, requirePlusAccess } from "@/lib/billing/subscription";
+import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
+import { wallTimeInTimeZoneToUtcIso } from "@/lib/timezone";
 
-const requestSchema = z.object({
-  ownerId: z.string().uuid().optional(),
-  planId: z.string().uuid().optional(),
-  planTitle: z.string().min(1).optional(),
-  channel: z.enum(["whatsapp", "in_app", "voice"]).default("voice"),
-  prompt: z.string().min(1),
-  scheduledFor: z.string().datetime(),
-}).refine((value) => value.planId || value.planTitle, { message: "Provide planId or planTitle." });
+const requestSchema = z
+  .object({
+    // Explicit ids (preferred). ElevenLabs dynamic vars often arrive as user_id / plan_id.
+    ownerId: z.string().uuid().optional(),
+    user_id: z.string().uuid().optional(),
+    planId: z.string().uuid().optional(),
+    plan_id: z.string().uuid().optional(),
+    planTitle: z.string().min(1).optional(),
+    channel: z.enum(["whatsapp", "in_app", "voice"]).default("voice"),
+    prompt: z.string().min(1),
+    scheduledFor: z.string().datetime(),
+  })
+  .refine((value) => value.planId || value.plan_id || value.planTitle, {
+    message: "Provide planId or planTitle.",
+  });
 
 const DEMO_OWNER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -29,35 +39,72 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { ownerId, planId: requestedPlanId, planTitle, channel, prompt, scheduledFor } = parsed.data;
-  const rawCallerPhone = request.headers.get("x-caller-phone");
-  const callerPhone = rawCallerPhone ? rawCallerPhone.replace(/[^\d]/g, "") : null;
+  const {
+    ownerId: bodyOwnerId,
+    user_id: bodyUserId,
+    planId: bodyPlanId,
+    plan_id: bodyPlanIdSnake,
+    planTitle,
+    channel,
+    prompt,
+    scheduledFor,
+  } = parsed.data;
+  const requestedPlanId = bodyPlanId ?? bodyPlanIdSnake;
+  const { callerPhoneDigits, calledPhoneDigits } = extractAgentPhoneHeaders(request);
+
   let supabase: ReturnType<typeof getSupabaseServerClient>;
   try {
     supabase = getSupabaseServerClient();
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Supabase is not configured" }, { status: 503 });
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Supabase is not configured" },
+      { status: 503 },
+    );
   }
 
-  // Resolve the real caller by phone instead of falling back to a shared demo account -
-  // every inbound call used to silently write into the same fixed owner regardless of who called.
-  let effectiveOwnerId = ownerId ?? null;
-  if (!effectiveOwnerId && callerPhone) {
-    const { data: matchedProfile } = await supabase
-      .from("nura_profiles")
-      .select("id")
-      .eq("phone", callerPhone)
+  const resolved = await resolveAgentOwnerId(supabase, {
+    ownerId: bodyOwnerId ?? bodyUserId ?? null,
+    callerPhoneDigits,
+    calledPhoneDigits,
+    planTitle: planTitle ?? null,
+  });
+
+  let effectiveOwnerId = resolved.ownerId;
+  const contactPhone = resolved.matchedPhone || calledPhoneDigits || null;
+
+  // If the tool only sent planId, trust the plan's owner.
+  if (!effectiveOwnerId && requestedPlanId) {
+    const { data: byId } = await supabase
+      .from("nura_plans")
+      .select("id, title, owner_id")
+      .eq("id", requestedPlanId)
       .maybeSingle();
-    effectiveOwnerId = (matchedProfile?.id as string | undefined) ?? null;
+    if (byId?.owner_id) {
+      effectiveOwnerId = byId.owner_id as string;
+    }
   }
-  if (!effectiveOwnerId && !requestedPlanId) {
-    return NextResponse.json({ ok: false, error: "Could not identify the caller - no matching account for this phone number." }, { status: 404 });
+
+  if (!effectiveOwnerId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Could not identify the caller - no matching account for this phone number.",
+        message:
+          "I couldn’t save that check-in because I couldn’t match this call to a Nura account. Ask them to confirm the follow-up inside the app.",
+        debug: {
+          callerPhoneDigits,
+          calledPhoneDigits,
+          via: resolved.via,
+        },
+      },
+      { status: 404 },
+    );
   }
 
   const planQuery = supabase.from("nura_plans").select("id, title, owner_id");
   const { data: plan, error: planError } = requestedPlanId
     ? await planQuery.eq("id", requestedPlanId).maybeSingle()
-    : await planQuery.eq("owner_id", effectiveOwnerId!).ilike("title", planTitle!).maybeSingle();
+    : await planQuery.eq("owner_id", effectiveOwnerId).ilike("title", planTitle!).maybeSingle();
 
   if (planError) {
     return NextResponse.json({ ok: false, error: planError.message }, { status: 500 });
@@ -75,6 +122,11 @@ export async function POST(request: NextRequest) {
   }
   const paywall = await requirePlusAccess(supabase, resolvedOwnerId, channel === "voice" ? "voice" : "whatsapp");
   if (paywall) return paywall;
+
+  const timeZone = await resolveUserTimeZone(supabase, resolvedOwnerId, {
+    phoneDigits: contactPhone,
+  });
+  const scheduledForUtc = wallTimeInTimeZoneToUtcIso(scheduledFor, timeZone);
 
   if (!planId) {
     const { count } = await supabase
@@ -111,8 +163,8 @@ export async function POST(request: NextRequest) {
       plan_id: planId,
       channel,
       prompt,
-      scheduled_for: scheduledFor,
-      contact_phone: callerPhone || null,
+      scheduled_for: scheduledForUtc,
+      contact_phone: contactPhone,
     })
     .select("id, plan_id, channel, prompt, scheduled_for, created_at, contact_phone")
     .single();
@@ -123,8 +175,10 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    message: `Check-in scheduled for the ${resolvedTitle} Care plan on ${scheduledFor} via ${channel}.`,
+    message: `Check-in scheduled for the ${resolvedTitle} Care plan on ${scheduledForUtc} via ${channel}.`,
     checkIn: { ...checkIn, planTitle: resolvedTitle },
+    resolvedVia: resolved.via ?? "planId",
+    timeZone,
   });
 }
 

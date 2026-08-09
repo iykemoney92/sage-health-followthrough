@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bell, BellOff, BellRing } from "lucide-react";
 import { useToast } from "@/components/toast";
+import { track } from "@/lib/analytics";
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return Promise.race([
@@ -53,6 +54,7 @@ export function PushNotificationsToggle() {
 
   async function enable() {
     setBusy(true);
+    track("push_enable_click");
     try {
       const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
       if (!vapidKey) {
@@ -71,6 +73,7 @@ export function PushNotificationsToggle() {
         30000,
         "Notification permission prompt didn’t resolve — check for a blocked popup or your OS notification settings.",
       );
+      track("push_permission", { result: permission });
       if (permission !== "granted") {
         setStatus(permission === "denied" ? "denied" : "off");
         toast({
@@ -107,6 +110,7 @@ export function PushNotificationsToggle() {
       }
 
       setStatus("on");
+      track("push_enable_success", { test_sent: (payload.testSent ?? 0) > 0 });
       toast({
         title: "Notifications on",
         message:
@@ -115,6 +119,7 @@ export function PushNotificationsToggle() {
             : "Saved — check-ins can reach this browser.",
       });
     } catch {
+      track("push_enable_fail");
       toast({ tone: "error", message: "Could not enable notifications. Please try again." });
     } finally {
       setBusy(false);
@@ -137,6 +142,7 @@ export function PushNotificationsToggle() {
         await subscription.unsubscribe();
       }
       setStatus("off");
+      track("push_disable");
       toast({ tone: "info", message: "Notifications off." });
     } catch {
       toast({ tone: "error", message: "Could not turn off notifications. Please try again." });

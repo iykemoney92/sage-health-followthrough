@@ -6,6 +6,7 @@ import { useState } from "react";
 import { CheckCircle2, MessageCircle, RefreshCw, Unplug } from "lucide-react";
 import { WhatsAppOpenButton } from "@/components/whatsapp-open-button";
 import { useToast } from "@/components/toast";
+import { track } from "@/lib/analytics";
 
 export function WhatsAppConnectionPanel({
   initialLinked,
@@ -32,11 +33,15 @@ export function WhatsAppConnectionPanel({
         toast({ tone: "error", message: "Couldn’t refresh WhatsApp status. Try again." });
         return;
       }
-      setLinked(Boolean(data.linked));
-      setCode(data.linked ? null : (data.code as string | null) ?? null);
+      const nowLinked = Boolean(data.linked);
+      if (nowLinked && !linked) {
+        track("whatsapp_linked", { source: "connections" });
+      }
+      setLinked(nowLinked);
+      setCode(nowLinked ? null : (data.code as string | null) ?? null);
       toast({
-        title: data.linked ? "WhatsApp connected" : "Not connected yet",
-        message: data.linked
+        title: nowLinked ? "WhatsApp connected" : "Not connected yet",
+        message: nowLinked
           ? "Nura can message you on WhatsApp for check-ins."
           : "Open WhatsApp with the connect button, then send the link message.",
       });
@@ -58,6 +63,7 @@ export function WhatsAppConnectionPanel({
       }
       setLinked(false);
       setCode(null);
+      track("whatsapp_disconnect", { source: "connections" });
       toast({ title: "Disconnected", message: "WhatsApp is no longer linked to this account." });
       router.refresh();
     } finally {
@@ -88,8 +94,8 @@ export function WhatsAppConnectionPanel({
 
       {!hasPlus && (
         <p className="connection-plus-note">
-          WhatsApp follow-up is included with Nura Plus or an active trial.{" "}
-          <Link href="/billing">Manage billing</Link>
+          You can chat on WhatsApp on Free. Scheduled WhatsApp check-ins unlock with Plus.{" "}
+          <Link href="/billing">See Plus</Link>
         </p>
       )}
 
@@ -107,7 +113,7 @@ export function WhatsAppConnectionPanel({
             <CheckCircle2 size={16} /> Linked and ready for check-ins
           </p>
           <div className="connection-app-actions">
-            <WhatsAppOpenButton className="secondary-cta" linked>
+            <WhatsAppOpenButton className="secondary-cta" linked source="connections">
               Open WhatsApp
             </WhatsAppOpenButton>
             <button type="button" className="secondary-cta" onClick={refreshStatus} disabled={busy}>
@@ -131,7 +137,7 @@ export function WhatsAppConnectionPanel({
             </p>
           )}
           <div className="connection-app-actions">
-            <WhatsAppOpenButton className="primary-cta" linked={false}>
+            <WhatsAppOpenButton className="primary-cta" linked={false} source="connections">
               Connect WhatsApp
             </WhatsAppOpenButton>
             <button type="button" className="secondary-cta" onClick={refreshStatus} disabled={busy}>

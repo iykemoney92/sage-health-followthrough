@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, X } from "lucide-react";
+import { track } from "@/lib/analytics";
 import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
 
 export function DeleteAccountButton() {
@@ -19,9 +20,11 @@ export function DeleteAccountButton() {
       const res = await fetch("/api/account/delete", { method: "POST" });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
+        track("account_delete_fail");
         setError(data?.error ?? "Could not delete your account. Please try again.");
         return;
       }
+      track("account_delete_confirm");
       const supabase = getSupabaseBrowserClient();
       await supabase.auth.signOut();
       router.push("/");
@@ -32,7 +35,15 @@ export function DeleteAccountButton() {
 
   return (
     <>
-      <button className="danger-button" onClick={() => setOpen(true)}>Delete account</button>
+      <button
+        className="danger-button"
+        onClick={() => {
+          track("account_delete_open");
+          setOpen(true);
+        }}
+      >
+        Delete account
+      </button>
       {open && (
         <div className="modal-backdrop" onMouseDown={() => !deleting && setOpen(false)}>
           <section className="nura-modal small" onMouseDown={(e) => e.stopPropagation()}>

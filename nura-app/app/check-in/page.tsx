@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { NuraLogo } from "@/components/nura-logo";
 import { useToast } from "@/components/toast";
+import { track } from "@/lib/analytics";
 import {
   pickRecorderMimeType,
   voiceMicDeniedMessage,
@@ -77,6 +78,10 @@ function CheckInFlow() {
     }
     releaseMicStream();
   }, []);
+
+  useEffect(() => {
+    track("checkin_start", { has_plan: Boolean(planId) });
+  }, [planId]);
 
   async function transcribeRecording(blob: Blob) {
     if (blob.size === 0) {
@@ -185,9 +190,11 @@ function CheckInFlow() {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error ?? "Something went wrong");
+      track("checkin_complete", { mood: selected });
       setNextStep(typeof data.nextStep === "string" ? data.nextStep : "");
       setDone(true);
     } catch {
+      track("checkin_fail");
       setError("Couldn't save your check-in. Please try again.");
     } finally {
       setSubmitting(false);

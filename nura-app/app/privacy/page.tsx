@@ -8,7 +8,7 @@ function buildSections(supportEmail: string) {
     },
     {
       title: "Who else processes your data",
-      body: "Nura uses a small set of providers to operate: Supabase (database, authentication, and storage), Anthropic (models that help organise shared context), ElevenLabs (voice check-ins and transcription), Twilio and Meta’s WhatsApp Business Platform (calls and WhatsApp delivery), RevenueCat and Stripe (billing), and Vercel (hosting). Each only receives what it needs for that job, and none may use your health context for their own purposes.",
+      body: "Nura uses a small set of providers to operate: Supabase (database, authentication, and storage), Anthropic (models that help organise shared context), ElevenLabs (voice check-ins and transcription), Twilio and Meta’s WhatsApp Business Platform (calls and WhatsApp delivery), RevenueCat and Stripe (billing), Vercel (hosting), and — if you accept analytics cookies — Google Analytics (aggregated product usage). Each only receives what it needs for that job, and none may use your health context for their own purposes.",
     },
     {
       title: "Your channels",
@@ -28,7 +28,7 @@ function buildSections(supportEmail: string) {
     },
     {
       title: "Cookies",
-      body: "Nura uses only essential cookies required to keep you signed in and your session secure. We do not use advertising or third-party tracking cookies.",
+      body: "Nura uses essential cookies to keep you signed in and your session secure. With your consent, we also use Google Analytics cookies to understand how people use Nura (pages visited, device type, and similar usage signals). These are not used for advertising. You can choose Essential only or Accept when the cookie notice appears.",
     },
     {
       title: "Age requirement",

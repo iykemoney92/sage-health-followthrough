@@ -7,6 +7,7 @@ import { NuraLogo, NuraMark } from "@/components/nura-logo";
 import { CareDisclaimer } from "@/components/care-disclaimer";
 import { WhatsAppOpenButton } from "@/components/whatsapp-open-button";
 import { CalendarNavBadge } from "@/components/calendar-nav-badge";
+import { track } from "@/lib/analytics";
 import {
   pickRecorderMimeType,
   voiceMicDeniedMessage,
@@ -289,6 +290,7 @@ export default function WorkspacePage() {
       });
       const data = await res.json();
       if (res.status === 402 && data.upgradeUrl) {
+        track("chat_paywall_hit", { source: "workspace" });
         setMessages((prev) => [
           ...(prev ?? []),
           {
@@ -302,6 +304,11 @@ export default function WorkspacePage() {
         return;
       }
       if (data.ok) {
+        track("chat_send", {
+          source: "workspace",
+          has_attachments: attachments.length > 0,
+          plan_linked: Boolean(data.planId || targetPlanId),
+        });
         if (data.planId) setActivePlan({ id: data.planId, title: data.planTitle });
         setMessages((prev) => [
           ...(prev ?? []),

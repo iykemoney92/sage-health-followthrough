@@ -10,6 +10,13 @@ import {
   type PlanCategory,
 } from "@/lib/domain/journey-naming";
 import { NURA_CORE_IDENTITY, NURA_SAFETY_BOUNDARIES, NURA_TONE } from "@/lib/domain/nura-persona";
+import { primaryCheckinChannel } from "@/lib/domain/checkin-channel";
+import {
+  DEFAULT_TIME_ZONE,
+  describeNowForTimeZone,
+  normalizeTimeZone,
+  wallTimeInTimeZoneToUtcIso,
+} from "@/lib/timezone";
 
 export type CheckInRecurrence = "none" | "daily" | "weekdays" | "weekly";
 
@@ -121,15 +128,10 @@ function missedCheckInContext(missed: MissedCheckIn[]) {
 }
 
 // Picks the best channel for a proactive check-in given what the user currently allows.
-// Prefers staying on the channel the conversation is already happening on (least surprising),
-// then falls back through whatsapp -> in_app -> voice. in_app is the only channel that never
-// needs external config (no phone, no linked WhatsApp), so it's the true last resort.
-function pickDefaultChannel(sourceChannel: "whatsapp" | "in_app", allowed: NextCheckIn["channel"][]): NextCheckIn["channel"] {
-  const preferred: NextCheckIn["channel"] = sourceChannel === "whatsapp" ? "whatsapp" : "voice";
-  if (allowed.includes(preferred)) return preferred;
-  if (allowed.includes("whatsapp")) return "whatsapp";
-  if (allowed.includes("in_app")) return "in_app";
-  return allowed[0] ?? "in_app";
+// Voice/call is preferred when allowed; WhatsApp and in-app are fallbacks. Do not default to
+// WhatsApp just because the current conversation is on WhatsApp.
+function pickDefaultChannel(allowed: NextCheckIn["channel"][]): NextCheckIn["channel"] {
+  return primaryCheckinChannel(allowed);
 }
 
 function isValidNextCheckIn(value: unknown): value is NextCheckIn {
@@ -154,13 +156,14 @@ async function classifyWithClaude(
   sourceChannel: "whatsapp" | "in_app" = "in_app",
   allowedChannels: NextCheckIn["channel"][] = ["voice", "whatsapp", "in_app"],
   requestedPlan: PlanSummary | null = null,
+  timeZone: string = DEFAULT_TIME_ZONE,
 ): Promise<NuraDecision> {
   const hasPhoneOnFile = Boolean(phoneOnFile);
   // A channel can be allowed by preference but still unusable right now (voice with no phone
   // on file) - in_app always works, so it's kept as the one guaranteed fallback.
   const safeAllowedChannels = (hasPhoneOnFile ? allowedChannels : allowedChannels.filter((c) => c !== "voice"));
   const effectiveAllowedChannels = safeAllowedChannels.length > 0 ? safeAllowedChannels : (["in_app"] as NextCheckIn["channel"][]);
-  const defaultCheckInChannel = pickDefaultChannel(sourceChannel, effectiveAllowedChannels);
+  const defaultCheckInChannel = pickDefaultChannel(effectiveAllowedChannels);
   const apiKey = process.env.ANTHROPIC_API_KEY;
   const fallback: NuraDecision = plans.length > 0
     ? { reply: conversationalFallbackReply(content), action: "existing_plan", plan_id: plans[0].id, new_plan: null, next_check_in: null }
@@ -169,7 +172,8 @@ async function classifyWithClaude(
 
   try {
     const client = new Anthropic({ apiKey });
-    const nowIso = new Date().toISOString();
+    const tz = normalizeTimeZone(timeZone);
+    const nowInfo = describeNowForTimeZone(tz);
     const inferredCategory = inferJourneyDraft(content).category;
     const agentContext = buildAgentContext({
       primaryCategory: inferredCategory,
@@ -190,12 +194,13 @@ async function classifyWithClaude(
           ? `\n\nThe user is already inside the "${requestedPlan.title}" Care plan's own conversation view - this message belongs there, so set action to "existing_plan" and plan_id to "${requestedPlan.id}". Respond as a caring companion in an ongoing chat: react to what they said, ask a genuine follow-up when it fits, and do NOT default to "I've organised this / I'll check in" closers. Only mention the Care plan or a check-in when they ask about follow-up or something clearly changed. `
           : "\n\nOnce you do understand it, decide whether this belongs to one of the user's existing Care plans (by id), should start a brand new Care plan, or still needs no Care plan yet (small talk, or you're still asking questions). ") +
         "\n\n" + JOURNEY_NAMING_GUIDANCE + " " +
-        "\n\nWhen you create a NEW Care plan (action = new_plan), that Care plan should almost always come with a proposed follow-up - a plan to help with something isn't really a plan without one. Decide the cadence yourself even if the user never asked for a check-in: a single stressful shift might warrant checking in a couple of days later; a new medication might warrant checking in around the timing the user described; an ongoing pattern like poor sleep might warrant checking in a week out. This does not default to 'tomorrow'. Mention the follow-up lightly in your reply after you've already responded to them as a person (e.g. 'I'll check back in a few days about this — and I'm here if you want to talk before then'). Be proactive, not just reactive: if that follow-up is more than a few hours away, also offer in the same reply to check in sooner if they'd like - e.g. 'Want me to check in with you in a couple of minutes instead, or is that timing fine?' - so the user always has the option of an immediate check-in, not only a future one. " +
-        "\n\nWhen you attach to an EXISTING Care plan instead, only set a fresh next_check_in if something actually changed enough to warrant re-scheduling (new detail, explicit request, or the situation clearly shifted) - otherwise leave it null and let the existing schedule stand. Something the user explicitly asked about ('call me in 5 minutes', 'check in next Tuesday', 'check in on me from time to time') must always be honoured, overriding any existing schedule. The current date/time is " + nowIso + " - compute next_check_in.when as a real ISO 8601 datetime relative to that. " +
+        "\n\nWhen you create a NEW Care plan (action = new_plan), that Care plan should almost always come with a follow-up — but do NOT silently lock in a time and channel. After responding as a person, ask (in the same reply, briefly) when would be a good time to check in, and whether they'd rather a phone call or a WhatsApp text — only offer modes from their allowed list below. While you're waiting for that answer, leave has_next_check_in false (create/attach the Care plan if ready, but don't schedule yet). Once they answer, honour their time and mode exactly and set next_check_in. If they already stated a time and/or mode in this thread, schedule immediately without re-asking. " +
+        "\n\nWhen you attach to an EXISTING Care plan instead, only set a fresh next_check_in if something actually changed enough to warrant re-scheduling (new detail, explicit request, or the situation clearly shifted) - otherwise leave it null and let the existing schedule stand. Something the user explicitly asked about ('call me in 5 minutes', 'check in next Tuesday', 'move my check-in to Friday', 'reschedule to 3pm', 'check in on me from time to time') must always be honoured, overriding any existing schedule for that Care plan. If you're proposing a new follow-up time for an existing Care plan and they haven't said when or how, ask those two things first and leave has_next_check_in false until they answer. " +
+        `\n\nTIMEZONE (critical): The user's timezone is ${tz}. Right now it is ${nowInfo.localLabel} there (UTC ${nowInfo.utcIso}). When the user says a clock time like "12:30pm", "tomorrow at 9", or "Thursday evening", interpret it in THEIR timezone (${tz}), NOT server UTC. Set next_check_in.when as ISO 8601 that includes their offset (e.g. 2026-08-07T12:30:00+01:00) or the correct equivalent instant — never treat their local wall clock as UTC/Z. Confirm times back to them in local terms (e.g. "12:30pm your time"). ` +
         "\n\nIMPORTANT - recurring vs one-off: next_check_in only ever represents a SINGLE point in time by itself, so if the user asks for an ONGOING or REPEATING pattern you MUST also set next_check_in.recurrence, not just pick one date. Phrases like 'check in on me daily', 'remind me every day to take my meds', 'check in each morning', 'check in on weekdays', or 'check in with me weekly' describe a repeating cadence - set recurrence to \"daily\", \"weekdays\", or \"weekly\" accordingly, and set next_check_in.when to the FIRST occurrence only (pick a sensible time of day for the purpose - e.g. morning for a medication reminder - unless the user specifies a time). The system will automatically lay down the full recurring series from that first occurrence; you never need to schedule each one yourself. For a normal single follow-up (the common case), leave recurrence as \"none\". Setting up a recurring reminder REPLACES any previous schedule for that Care plan, so say clearly in your reply what the new pattern is (e.g. 'I'll check in with you every morning at 9am about your medication') rather than only confirming a single date. " +
         "\n\nNura CAN place a real proactive phone check-in call (voice), or follow up on WhatsApp or in-app - never say you are unable to call or check in. " +
         `\n\nThe user has allowed Nura to proactively check in via: ${effectiveAllowedChannels.join(", ")}. next_check_in.channel must always be one of these - never propose a channel they haven't allowed, even if it would otherwise fit. If the user asks for a channel they haven't enabled (e.g. asks you to call when voice isn't in that list), gently say in your reply that you can't call them yet and they can turn calls on in Settings, then schedule the follow-up on the closest allowed channel instead. ` +
-        `\n\nThis conversation is happening over ${sourceChannel === "whatsapp" ? "WhatsApp" : "the in-app chat"}. When you schedule a next_check_in, default its channel to "${defaultCheckInChannel}" unless the user's own words point somewhere else within their allowed channels - e.g. they ask you to call them (channel "voice", if allowed), or explicitly say they'd rather text/chat than be called. Don't silently switch channels on them without a reason to. ` +
+        `\n\nThis conversation is happening over ${sourceChannel === "whatsapp" ? "WhatsApp" : "the in-app chat"}. When you DO schedule a next_check_in and the user did not pick a mode, default its channel to "${defaultCheckInChannel}" (calls preferred when allowed). Do NOT default to WhatsApp just because this chat is on WhatsApp — only use WhatsApp when they ask for a text, voice isn't allowed, or call isn't possible. Honour an explicit preference (call / WhatsApp / in-app) within their allowed channels. ` +
         "\n\n" + (hasPhoneOnFile
           ? `The user's phone number on file is +${phoneOnFile}. When you confirm a voice check-in call, briefly state that exact number (e.g. "I'll call you on +${phoneOnFile}") so they can correct it if it's wrong - don't just silently assume it's still right without saying it.`
           : "The user does NOT have a phone number on file yet. If you're about to promise or schedule a phone check-in call, you must ask for their number in your reply first instead of just confirming a call - something like 'What's the best number to reach you on?' Do not set next_check_in with channel \"voice\" until a number has actually been given (in this message or an earlier one in the history). If they just gave a number in this message, thank them and it will be saved automatically. Until you have a number, prefer scheduling the follow-up on whatsapp or in_app instead of promising a call.") +
@@ -339,12 +344,17 @@ async function classifyWithClaude(
       );
     }
     let nextCheckIn = raw.has_next_check_in && isValidNextCheckIn(raw.next_check_in)
-      ? { ...raw.next_check_in, channel: (raw.next_check_in.channel || defaultCheckInChannel) as NextCheckIn["channel"] }
+      ? {
+          ...raw.next_check_in,
+          channel: (raw.next_check_in.channel || defaultCheckInChannel) as NextCheckIn["channel"],
+          when: wallTimeInTimeZoneToUtcIso(raw.next_check_in.when, tz),
+        }
       : null;
+
     // Defense in depth: the model is told the allowed set, but clamp server-side too in case
     // it ignores that (or the phone-availability check narrowed things after the call started).
     if (nextCheckIn && !effectiveAllowedChannels.includes(nextCheckIn.channel)) {
-      nextCheckIn = { ...nextCheckIn, channel: pickDefaultChannel(sourceChannel, effectiveAllowedChannels) };
+      nextCheckIn = { ...nextCheckIn, channel: pickDefaultChannel(effectiveAllowedChannels) };
     }
 
     let newPlan: NewPlanDraft | null = null;
@@ -392,6 +402,7 @@ export async function resolveDecision(
   attachmentBlocks: Anthropic.ContentBlockParam[] = [],
   sourceChannel: "whatsapp" | "in_app" = "in_app",
   allowedChannels: NextCheckIn["channel"][] = ["voice", "whatsapp", "in_app"],
+  timeZone: string = DEFAULT_TIME_ZONE,
 ): Promise<NuraDecision> {
   const fallback: NuraDecision = requestedPlan
     ? { reply: conversationalFallbackReply(content), action: "existing_plan", plan_id: requestedPlan.id, new_plan: null, next_check_in: null }
@@ -400,7 +411,20 @@ export async function resolveDecision(
       : fallbackNewPlan(content);
 
   return withTimeout(
-    classifyWithClaude(content, plans, attachments, contexts, history, phoneOnFile, missed, attachmentBlocks, sourceChannel, allowedChannels, requestedPlan ?? null),
+    classifyWithClaude(
+      content,
+      plans,
+      attachments,
+      contexts,
+      history,
+      phoneOnFile,
+      missed,
+      attachmentBlocks,
+      sourceChannel,
+      allowedChannels,
+      requestedPlan ?? null,
+      timeZone,
+    ),
     fallback,
   );
 }
@@ -550,20 +574,24 @@ export async function applyNextCheckIn(
   ownerId: string,
   planId: string,
   nextCheckIn: NextCheckIn,
+  timeZone: string = DEFAULT_TIME_ZONE,
 ) {
-  if (nextCheckIn.recurrence && nextCheckIn.recurrence !== "none") {
+  const whenUtc = wallTimeInTimeZoneToUtcIso(nextCheckIn.when, timeZone);
+  const normalized: NextCheckIn = { ...nextCheckIn, when: whenUtc };
+
+  if (normalized.recurrence && normalized.recurrence !== "none") {
     // A recurring ask replaces whatever was previously scheduled for this Journey -
     // clear any open check-ins (single or from an earlier series) before laying the new one down.
     await supabase.from("nura_check_ins").delete().eq("owner_id", ownerId).eq("plan_id", planId).is("completed_at", null);
 
-    const occurrences = generateRecurringOccurrences(new Date(nextCheckIn.when), nextCheckIn.recurrence);
+    const occurrences = generateRecurringOccurrences(new Date(normalized.when), normalized.recurrence);
     const rows = occurrences.map((date) => ({
       owner_id: ownerId,
       plan_id: planId,
-      channel: nextCheckIn.channel,
-      prompt: nextCheckIn.prompt,
+      channel: normalized.channel,
+      prompt: normalized.prompt,
       scheduled_for: date.toISOString(),
-      recurrence: nextCheckIn.recurrence,
+      recurrence: normalized.recurrence,
     }));
 
     if (rows.length > 0) {
@@ -572,7 +600,7 @@ export async function applyNextCheckIn(
     return;
   }
 
-  const when = await avoidSameDayCollision(supabase, ownerId, planId, new Date(nextCheckIn.when));
+  const when = await avoidSameDayCollision(supabase, ownerId, planId, new Date(normalized.when));
 
   // Clear any previously open check-ins for this Journey - including leftover rows from an
   // earlier recurring series - so a one-off reschedule doesn't leave orphaned future occurrences.
@@ -581,8 +609,8 @@ export async function applyNextCheckIn(
   await supabase.from("nura_check_ins").insert({
     owner_id: ownerId,
     plan_id: planId,
-    channel: nextCheckIn.channel,
-    prompt: nextCheckIn.prompt,
+    channel: normalized.channel,
+    prompt: normalized.prompt,
     scheduled_for: when.toISOString(),
     recurrence: null,
   });

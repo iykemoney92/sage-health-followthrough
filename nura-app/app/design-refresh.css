@@ -858,6 +858,13 @@ a.secondary-cta {
   text-decoration: underline;
 }
 
+.cookie-notice-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
 .cookie-notice .secondary-cta {
   flex-shrink: 0;
   background: #f3f1e8;
@@ -865,6 +872,20 @@ a.secondary-cta {
   color: #1f2a22;
   min-height: 38px;
   padding: 0 16px;
+}
+
+.cookie-notice-essential {
+  flex-shrink: 0;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: #c5d0c7;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 @media (max-width: 760px) {
@@ -876,7 +897,12 @@ a.secondary-cta {
     /* Sit above mobile bottom nav / chat composer so the input stays usable */
     bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
-  .cookie-notice .secondary-cta {
+  .cookie-notice-actions {
+    flex-direction: column-reverse;
+    width: 100%;
+  }
+  .cookie-notice .secondary-cta,
+  .cookie-notice-essential {
     width: 100%;
     justify-content: center;
   }
@@ -5115,6 +5141,50 @@ body:has(.mobile-onboarding) .nura-toast-viewport {
   width: 100%;
 }
 
+.pref-preferred-mode {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.pref-preferred-mode > .muted {
+  margin: 0 !important;
+  color: #6f7872 !important;
+  font: 500 13px/1.45 "DM Sans", ui-sans-serif, system-ui, sans-serif !important;
+}
+
+.pref-preferred-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: #eef2ec;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.pref-preferred-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #345c43;
+  font: 650 13px/1 "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.pref-preferred-btn.is-active {
+  background: #fff;
+  opacity: 1;
+  box-shadow: 0 1px 2px rgb(24 49 41 / 10%);
+}
+
+.pref-preferred-btn:disabled {
+  cursor: default;
+}
+
 .pref-choice-card {
   display: grid !important;
   grid-template-columns: auto minmax(0, 1fr);
@@ -6043,7 +6113,7 @@ body:has(.chat-page) {
 }
 
 
-/* Onboarding enforced trial paywall */
+/* Onboarding trial paywall (skippable → free tier) */
 .mobile-onboarding.step-7 .paywall-screen,
 .mobile-onboarding.step-8 .paywall-screen {
   display: grid;
@@ -6069,6 +6139,9 @@ body:has(.chat-page) {
 .mobile-onboarding.step-8 .paywall-cta {
   width: 100%;
   justify-content: center;
+}
+.mobile-onboarding.step-8 .paywall-screen .skip-intake-button {
+  margin: 4px auto 0;
 }
 
 /* Expired trial lock screen */

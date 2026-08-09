@@ -18,8 +18,8 @@ const PROTECTED_PREFIXES = [
   "/thread-proposal",
 ];
 const AUTH_PAGES = ["/login", "/signup", "/welcome", "/forgot-password", "/auth/check-email"];
-/** Surfaces that require an active Plus trial or paid subscription. */
-const PLUS_REQUIRED_PREFIXES = [
+/** Surfaces that redirect expired/cancelled users to the lock screen. Free tier is allowed. */
+const PLUS_LOCK_PREFIXES = [
   "/today",
   "/plans",
   "/calendar",
@@ -70,7 +70,7 @@ export async function middleware(request: NextRequest) {
 
   const isProtected = PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
   const isAuthPage = AUTH_PAGES.some((prefix) => pathname.startsWith(prefix));
-  const needsPlus = PLUS_REQUIRED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  const needsLockCheck = PLUS_LOCK_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
   if (!user && isProtected) {
     const url = request.nextUrl.clone();
@@ -101,18 +101,14 @@ export async function middleware(request: NextRequest) {
     });
   }
 
-  // Finished onboarding but no card trial / Plus yet → paywall or expired lock.
-  if (user && needsPlus && !isBillingReturn && !isBillingLocked && user.user_metadata?.onboarding_complete === true) {
+  // Finished onboarding with an expired/cancelled subscription → lock screen.
+  // Free users (paywall skipped, never subscribed) keep free-tier access.
+  if (user && needsLockCheck && !isBillingReturn && !isBillingLocked && user.user_metadata?.onboarding_complete === true) {
     const access = await getVerifiedSubscriptionAccess(supabase, user.id, user.email);
-    if (!access.hasPlus) {
+    if (!access.hasPlus && isSubscriptionLockedOut(access)) {
       const url = request.nextUrl.clone();
-      if (isSubscriptionLockedOut(access)) {
-        url.pathname = "/billing/locked";
-        url.search = "";
-      } else {
-        url.pathname = "/onboarding";
-        url.searchParams.set("paywall", "1");
-      }
+      url.pathname = "/billing/locked";
+      url.search = "";
       return NextResponse.redirect(url);
     }
   }

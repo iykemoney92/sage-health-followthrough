@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
-import { getSubscriptionAccess } from "@/lib/billing/subscription";
+import { getSubscriptionAccess, isSubscriptionLockedOut } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { sendWhatsappText } from "@/lib/integrations/whatsapp";
 import { extractWhatsappLinkCode } from "@/lib/whatsapp-link";
@@ -17,6 +17,7 @@ import {
   type MessageAttachment,
 } from "@/lib/domain/message-intake";
 import { evaluateAndAdvanceJourney, ensureJourney, type PlanForJourney } from "@/lib/domain/plan-journey";
+import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 
 export const runtime = "nodejs";
 /** Claude + WhatsApp send can exceed Meta's webhook patience; we ack first then finish here. */
@@ -340,12 +341,14 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
   }
 
   const ownerId = resolved.ownerId;
+  // Free users can chat on WhatsApp (same as in-app). Only expired / lapsed
+  // subscriptions are blocked — proactive outbound check-ins stay Plus-gated elsewhere.
   const access = await getSubscriptionAccess(supabase, ownerId);
-  if (!access.hasPlus) {
+  if (isSubscriptionLockedOut(access)) {
     const firstName = await getFirstName(supabase, ownerId);
     const outbound = await sendWhatsappText(
       phone,
-      `Hi ${firstName}, WhatsApp follow-up is part of Nura Plus. Please open Nura to start or renew Plus, then message me here again.`,
+      `Hi ${firstName}, your Nura Plus trial or subscription has ended, so WhatsApp follow-up is paused. Open Nura to renew Plus, then message me here again.`,
     );
     if (outbound.error) logger.error("whatsapp_webhook.outbound_failed", { phase: "plus_gate", error: outbound.error });
     return;
@@ -409,6 +412,10 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
     kind: item.kind as MessageAttachment["kind"],
   }));
 
+  const timeZone = await resolveUserTimeZone(supabase, ownerId, {
+    phoneDigits: phoneOnFile,
+  });
+
   const decision = await resolveDecision(
     content,
     (plans ?? []) as PlanSummary[],
@@ -421,6 +428,7 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
     [],
     "whatsapp",
     allowedChannels,
+    timeZone,
   );
 
   const { planId, createdPlan, error: planError } = await applyPlanDecision(supabase, ownerId, decision, (plans ?? []) as PlanSummary[]);
@@ -453,7 +461,7 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
     }
 
     if (decision.next_check_in) {
-      await applyNextCheckIn(supabase, ownerId, planId, decision.next_check_in);
+      await applyNextCheckIn(supabase, ownerId, planId, decision.next_check_in, timeZone);
     }
 
     const planForJourney = (plans ?? []).find((plan) => plan.id === planId);

@@ -85,7 +85,7 @@ export async function draftNextCheckInAfterCompletion(input: {
         "Reason a sensible cadence from the Care plan and what they just reported — not a fixed 'in 3 days' rule. " +
         "Respond with ONLY a JSON object, no markdown: " +
         '{"when": ISO8601 datetime, "prompt": string, "channel": "whatsapp"|"in_app"|"voice"}. ' +
-        `Channel must be one of: ${input.allowedChannels.join(", ")}. Prefer "${input.preferredChannel}" unless another allowed channel clearly fits. ` +
+        `Channel must be one of: ${input.allowedChannels.join(", ")}. Prefer "${input.preferredChannel}" (calls over WhatsApp when both are allowed) unless the user's report clearly points elsewhere. ` +
         `Current time is ${nowIso}. when must be in the future. Never diagnose or prescribe.`,
       messages: [
         {
@@ -135,7 +135,7 @@ export async function draftFirstCheckInFromIntake(input: {
         "Choose timing from what they shared (e.g. meds timing, sleep pattern, clinic follow-up window) — not a fixed tomorrow evening. " +
         "Respond with ONLY a JSON object, no markdown: " +
         '{"when": ISO8601 datetime, "prompt": string, "channel": "whatsapp"|"in_app"|"voice"}. ' +
-        `Channel must be one of: ${input.allowedChannels.join(", ")}. Prefer "${input.preferredChannel}". ` +
+        `Channel must be one of: ${input.allowedChannels.join(", ")}. Prefer "${input.preferredChannel}" (calls over WhatsApp when both are allowed). ` +
         `Current time is ${nowIso}. when must be in the future. Never diagnose or prescribe.`,
       messages: [
         {

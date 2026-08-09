@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Download } from "lucide-react";
 import { useToast } from "@/components/toast";
+import { track } from "@/lib/analytics";
 
 export function ExportDataButton() {
   const { toast } = useToast();
@@ -28,6 +29,7 @@ export function ExportDataButton() {
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
+      track("data_export");
       toast({ title: "Export ready", message: "Your Nura data download has started." });
     } catch {
       toast({ tone: "error", message: "Couldn’t export your data. Check your connection." });

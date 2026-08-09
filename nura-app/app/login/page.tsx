@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { AuthAlert, friendlyAuthError } from "@/components/auth-alert";
 import { NuraLogo } from "@/components/nura-logo";
+import { track } from "@/lib/analytics";
 import { AUTH_COPY, normalizeEmail } from "@/lib/auth/helpers";
 import { safeNextPath } from "@/lib/auth/safe-path";
 import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
@@ -82,6 +83,7 @@ export default function LoginPage() {
       if (params.error) {
         window.history.replaceState({}, "", "/login");
         if (active) {
+          track("email_confirm_fail", { error_type: "link_error" });
           setError({
             title: "Confirmation didn’t finish",
             message: (params.errorDescription || "This confirmation link is invalid or has expired.").replace(
@@ -119,6 +121,7 @@ export default function LoginPage() {
         if (!active) return;
 
         if (authError) {
+          track("email_confirm_fail", { error_type: "verify_error" });
           setError({
             title: "Confirmation didn’t finish",
             message: authError.message || "We couldn’t verify that link. Try signing in, or request a new email.",
@@ -128,15 +131,18 @@ export default function LoginPage() {
 
         const { data } = await supabase.auth.getSession();
         if (data.session) {
+          const destination = postAuthPath(data.session?.user);
+          track("email_confirm_success", { destination });
           setNotice({
             title: AUTH_COPY.emailConfirmed.title,
             message: "Your address is verified. Taking you into Nura…",
           });
           window.setTimeout(() => {
-            router.push(postAuthPath(data.session?.user));
+            router.push(destination);
             router.refresh();
           }, 900);
         } else {
+          track("email_confirm_success", { destination: "login" });
           setNotice(AUTH_COPY.emailConfirmed);
         }
       } catch {
@@ -166,6 +172,7 @@ export default function LoginPage() {
     setError(null);
     setNotice(null);
     setLoading(true);
+    track("login_submit", { method: "email" });
 
     const normalized = normalizeEmail(email);
     const supabase = getSupabaseBrowserClient();
@@ -176,6 +183,7 @@ export default function LoginPage() {
     setLoading(false);
 
     if (signInError) {
+      track("login_fail", { error_title: "sign_in_failed" });
       setError(friendlyAuthError(signInError));
       return;
     }
@@ -186,7 +194,12 @@ export default function LoginPage() {
       window.localStorage.removeItem(EMAIL_KEY);
     }
 
-    router.push(postAuthPath(data.user, safeNextPath(new URLSearchParams(window.location.search).get("next"), "")));
+    const destination = postAuthPath(
+      data.user,
+      safeNextPath(new URLSearchParams(window.location.search).get("next"), ""),
+    );
+    track("login_success", { destination });
+    router.push(destination);
     router.refresh();
   }
 

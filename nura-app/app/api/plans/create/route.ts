@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { processAttachments } from "@/lib/ai/attachments";
 import { enforceThreadLimit } from "@/lib/billing/subscription";
+import { primaryCheckinChannel } from "@/lib/domain/checkin-channel";
 import { draftPlanFromIntake } from "@/lib/domain/draft-plan-from-intake";
 import {
   draftFirstCheckInFromIntake,
@@ -86,11 +87,8 @@ export async function POST(request: NextRequest) {
         ? profileChannels
         : ["in_app"];
 
-  const preferredRaw = (profile?.preferred_checkin_channel as string | null) ?? allowedChannels[0];
-  const preferredCheckInForDraft: "whatsapp" | "in_app" | "voice" =
-    preferredRaw === "voice" || preferredRaw === "in_app" || preferredRaw === "whatsapp"
-      ? preferredRaw
-      : allowedChannels[0] ?? "in_app";
+  const preferredRaw = (profile?.preferred_checkin_channel as string | null) ?? null;
+  const preferredCheckInForDraft = primaryCheckinChannel(allowedChannels, preferredRaw);
 
   const normalizedPhone = profile?.phone ? String(profile.phone).replace(/[^\d]/g, "") : "";
   const needsPhone = allowedChannels.includes("whatsapp") || allowedChannels.includes("voice");

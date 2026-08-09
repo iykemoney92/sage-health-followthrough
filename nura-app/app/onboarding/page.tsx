@@ -21,8 +21,10 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { NuraLogo } from "@/components/nura-logo";
 import { PhoneNumberInput } from "@/components/phone-number-input";
 import { PushNotificationsToggle } from "@/components/push-notifications-toggle";
+import { TrackedCheckoutLink } from "@/components/tracked-billing-links";
 import { useToast } from "@/components/toast";
 import { WhatsAppOpenButton } from "@/components/whatsapp-open-button";
+import { track } from "@/lib/analytics";
 import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
 import {
   pickRecorderMimeType,
@@ -182,6 +184,22 @@ function OnboardingFlow() {
   const voiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    track("onboarding_step_view", { step });
+    if (step === 8) {
+      track("paywall_view", {
+        reason: trialExpired ? "expired" : "trial",
+        source: "onboarding",
+      });
+    }
+  }, [step, trialExpired]);
+
+  useEffect(() => {
+    if (searchParams.get("checkout") === "incomplete") {
+      track("checkout_fail", { reason: "incomplete" });
+    }
+  }, [searchParams]);
+
   const releaseMicStream = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -212,7 +230,10 @@ function OnboardingFlow() {
       try {
         const response = await fetch("/api/whatsapp/link?status=1", { cache: "no-store" });
         const data = await response.json().catch(() => null);
-        if (!cancelled && data?.linked) setWhatsappLinked(true);
+        if (!cancelled && data?.linked) {
+          setWhatsappLinked(true);
+          track("whatsapp_linked", { source: "onboarding" });
+        }
       } catch {
         // ignore - next poll will retry
       }
@@ -368,6 +389,7 @@ function OnboardingFlow() {
             ? []
             : intakeAttachments.map(({ name, type, kind, text, base64 }) => ({ name, type, kind, text, base64 })),
           skip,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -387,7 +409,17 @@ function OnboardingFlow() {
         throw new Error("Could not save your details. Please try again.");
       }
 
-      // WhatsApp next (if chosen), then enforced trial paywall last before dashboard.
+      track("onboarding_complete", {
+        skip_intake: skip,
+        needs_whatsapp: needsWhatsappLink,
+        chat_channel: mapChatChannel(chatChannelsSelected),
+        checkin_channels: checkinChannelsSelected.join(","),
+      });
+      if (!skip) {
+        track("first_care_plan_created", { source: "onboarding" });
+      }
+
+      // WhatsApp next (if chosen), then optional trial paywall last before dashboard.
       setStep(needsWhatsappLink ? 6 : 7);
       setSubmitting(false);
     } catch {
@@ -404,11 +436,12 @@ function OnboardingFlow() {
       const res = await fetch("/api/onboarding/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ skipSetup: true, skip: true }),
+        body: JSON.stringify({ skipSetup: true, skip: true, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined }),
       });
       if (!res.ok) {
         throw new Error("Could not skip setup.");
       }
+      track("onboarding_skip_setup");
       setStep(8);
       router.replace("/onboarding?paywall=1");
     } catch {
@@ -910,7 +943,7 @@ function OnboardingFlow() {
                   <div className="whatsapp-connected-badge" role="status">
                     <Check size={16} strokeWidth={3} /> Connected
                   </div>
-                  <WhatsAppOpenButton className="secondary-cta whatsapp-connect-cta" linked />
+                  <WhatsAppOpenButton className="secondary-cta whatsapp-connect-cta" linked source="onboarding" />
                 </div>
               )}
 
@@ -926,7 +959,7 @@ function OnboardingFlow() {
                     <li>Send the prefilled message to Nura</li>
                     <li>Come back here — you’re connected</li>
                   </ol>
-                  <WhatsAppOpenButton className="primary-cta onboarding-primary whatsapp-connect-cta" />
+                  <WhatsAppOpenButton className="primary-cta onboarding-primary whatsapp-connect-cta" source="onboarding" />
                   <p className="control-note">
                     You can also connect later from Today or Workspace. Phone number alone doesn’t complete the link — the code does.
                   </p>
@@ -963,17 +996,31 @@ function OnboardingFlow() {
                     <li><Check size={14} strokeWidth={3} /> Voice, WhatsApp, and document uploads</li>
                     <li><Check size={14} strokeWidth={3} /> Cancel anytime before the trial ends</li>
                   </ul>
-                  <a
+                  <TrackedCheckoutLink
                     href={trialExpired ? "/api/billing/checkout?return=locked" : "/api/billing/checkout"}
                     className="primary-cta onboarding-primary paywall-cta"
+                    source="onboarding_paywall"
+                    cta={trialExpired ? "upgrade_to_plus" : "start_trial"}
                   >
                     <CreditCard size={18} /> {trialExpired ? "Upgrade to Plus" : `Start ${CARD_TRIAL_DAYS}-day free trial`}
-                  </a>
+                  </TrackedCheckoutLink>
                   <p className="control-note">
                     {trialExpired
                       ? "Your Care plans stay saved — upgrade to unlock them again."
                       : `A card is required to start the trial — you won’t be charged until day ${CARD_TRIAL_DAYS + 1}.`}
                   </p>
+                  {!trialExpired ? (
+                    <button
+                      className="skip-intake-button"
+                      type="button"
+                      onClick={() => {
+                        track("paywall_skip", { source: "onboarding" });
+                        router.replace("/today");
+                      }}
+                    >
+                      Skip for now
+                    </button>
+                  ) : null}
                 </div>
               )}
 

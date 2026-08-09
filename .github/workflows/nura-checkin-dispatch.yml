@@ -1,15 +1,16 @@
 name: Nura check-in dispatcher
 
-# Vercel Hobby only allows one cron/day. GitHub Actions polls every 5 minutes
-# so due check-ins fire near their scheduled_for time.
+# Primary scheduler lives on the MigoAI production droplet
+# (/opt/nura/scripts/dispatch-check-ins.sh via root crontab every minute).
+# Keep this workflow for manual re-fire only — GitHub schedule is too unreliable
+# for voice check-ins (jobs often queue for 15+ minutes or get cancelled).
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
   trigger:
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Dispatch due check-ins
         env:
@@ -20,12 +21,14 @@ jobs:
           set -euo pipefail
           SECRET="${AGENT_TOOL_SECRET:-${FALLBACK_AGENT_SECRET:-}}"
           if [ -n "$SECRET" ]; then
-            curl -fsS -X POST "https://usenura.app/api/agent/trigger-check-ins" \
+            curl -fsS --retry 3 --retry-delay 2 --retry-all-errors \
+              -X POST "https://usenura.app/api/agent/trigger-check-ins" \
               -H "content-type: application/json" \
               -H "x-agent-secret: $SECRET" \
               -d '{}'
           elif [ -n "${CRON_SECRET:-}" ]; then
-            curl -fsS -X POST "https://usenura.app/api/agent/trigger-check-ins" \
+            curl -fsS --retry 3 --retry-delay 2 --retry-all-errors \
+              -X POST "https://usenura.app/api/agent/trigger-check-ins" \
               -H "content-type: application/json" \
               -H "Authorization: Bearer $CRON_SECRET" \
               -d '{}'

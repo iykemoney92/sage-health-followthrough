@@ -11,6 +11,7 @@ import "./mobile-landing.css";
 import "./design-refresh.css";
 import "./toast.css";
 import { CookieConsent } from "@/components/cookie-consent";
+import { GoogleAnalytics } from "@/components/google-analytics";
 import { ToastProvider } from "@/components/toast";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
 
@@ -50,6 +51,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <ToastProvider>
           {children}
           <CookieConsent />
+          <GoogleAnalytics />
         </ToastProvider>
       </body>
     </html>

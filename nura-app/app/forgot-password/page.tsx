@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, LockKeyhole } from "lucide-react";
 import { AuthAlert, friendlyAuthError } from "@/components/auth-alert";
 import { NuraLogo } from "@/components/nura-logo";
+import { track } from "@/lib/analytics";
 import { normalizeEmail } from "@/lib/auth/helpers";
 import "../auth.css";
 
@@ -38,6 +39,7 @@ export default function ForgotPasswordPage() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
+        track("password_reset_fail");
         setError(
           friendlyAuthError(
             data?.error || "Password reset couldn’t be sent right now. Try again in a minute.",
@@ -45,6 +47,7 @@ export default function ForgotPasswordPage() {
         );
         return;
       }
+      track("password_reset_request");
       setNotice(data.message || "If an account exists for that email, you’ll get a reset link shortly.");
       if (typeof data.devResetUrl === "string" && data.devResetUrl) {
         setDevResetUrl(data.devResetUrl);

@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { NuraLogo } from "@/components/nura-logo";
+import { TrackedLink } from "@/components/tracked-link";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
 
 // The packaged mobile app (nura-mobile) points its Capacitor shell here
@@ -37,8 +37,22 @@ export default function Welcome() {
             <span className="welcome-float-chip welcome-float-mic" />
           </div>
           <div className="mobile-welcome-actions">
-            <Link href="/signup" className="primary-cta onboarding-primary">Get started</Link>
-            <Link href="/login" className="welcome-login">Sign in</Link>
+            <TrackedLink
+              href="/signup"
+              className="primary-cta onboarding-primary"
+              event="welcome_cta_click"
+              eventParams={{ cta: "get_started" }}
+            >
+              Get started
+            </TrackedLink>
+            <TrackedLink
+              href="/login"
+              className="welcome-login"
+              event="welcome_cta_click"
+              eventParams={{ cta: "sign_in" }}
+            >
+              Sign in
+            </TrackedLink>
           </div>
         </div>
       </section>

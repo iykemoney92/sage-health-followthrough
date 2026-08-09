@@ -1,6 +1,8 @@
 import { CreditCard, FolderHeart, Lock } from "lucide-react";
+import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { NuraLogo } from "@/components/nura-logo";
 import { SignOutButton } from "@/components/sign-out-button";
+import { TrackedCheckoutLink } from "@/components/tracked-billing-links";
 import { getSubscriptionAccess, markExpiredSubscriptionIfNeeded } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
@@ -30,6 +32,8 @@ export default async function BillingLockedPage() {
 
   return (
     <main className="billing-lock-page">
+      <AnalyticsBeacon event="billing_locked_view" />
+      <AnalyticsBeacon event="trial_end_lock" />
       <div className="billing-lock-shell">
         <NuraLogo />
         <div className="billing-lock-card" role="dialog" aria-labelledby="billing-lock-title" aria-modal="true">
@@ -52,13 +56,18 @@ export default async function BillingLockedPage() {
               <CreditCard size={16} strokeWidth={2.2} /> Renew anytime — cancel when you need to
             </li>
           </ul>
-          <a href="/api/billing/checkout?return=locked" className="primary-cta billing-lock-cta">
+          <TrackedCheckoutLink
+            href="/api/billing/checkout?return=locked"
+            className="primary-cta billing-lock-cta"
+            source="billing_locked"
+            cta="upgrade_to_plus"
+          >
             <CreditCard size={18} /> Upgrade to Plus
-          </a>
+          </TrackedCheckoutLink>
           <a href="/billing" className="secondary-cta billing-lock-secondary">
             View billing details
           </a>
-          <SignOutButton className="skip-intake-button billing-lock-signout" />
+          <SignOutButton className="skip-intake-button billing-lock-signout" source="billing_locked" />
         </div>
       </div>
     </main>

@@ -9,6 +9,7 @@ import {
 } from "@/lib/domain/journey-create";
 import { ensureJourney } from "@/lib/domain/plan-journey";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { isValidTimeZone } from "@/lib/timezone";
 // Trial starts on the post-onboarding paywall (card 14-day or soft 7-day), not here.
 
 const MAX_ATTACHMENT_BASE64_CHARS = 6_000_000;
@@ -36,6 +37,8 @@ const requestSchema = z.object({
   skip: z.boolean().optional().default(false),
   /** Skip the whole setup — defaults to in-app channels and empty intake. */
   skipSetup: z.boolean().optional().default(false),
+  /** Browser IANA timezone so check-ins land on the user's wall clock. */
+  timezone: z.string().min(1).max(64).optional(),
 });
 
 const CHAT_CHANNEL_MAP: Record<string, string> = {
@@ -65,6 +68,11 @@ function primaryCheckin(channels: string[]) {
   return "in_app";
 }
 
+function orderChannels(channels: string[]) {
+  const primary = primaryCheckin(channels);
+  return [primary, ...channels.filter((c) => c !== primary)];
+}
+
 function withTimeout<T>(promise: Promise<T>, fallback: T, ms = 4500) {
   return Promise.race([
     promise,
@@ -84,7 +92,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { interests, channel, checkinChannel, checkinChannels, phone, intake, attachments, skip, skipSetup } =
+  const { interests, channel, checkinChannel, checkinChannels, phone, intake, attachments, skip, skipSetup, timezone } =
     parsed.data;
   const skipIntake = skip || skipSetup;
   if (!skipIntake && !intake.trim() && attachments.length === 0) {
@@ -96,7 +104,9 @@ export async function POST(request: NextRequest) {
   const effectiveCheckinChannels = skipSetup ? ["In the app"] : checkinChannels;
   const effectiveInterests = skipSetup ? [] : interests;
 
-  const preferredCheckinChannels = resolveCheckinChannels(effectiveCheckinChannels, checkinChannel);
+  const preferredCheckinChannels = orderChannels(
+    resolveCheckinChannels(effectiveCheckinChannels, checkinChannel),
+  );
   if (preferredCheckinChannels.length === 0) {
     return NextResponse.json({ ok: false, error: "channels_required" }, { status: 400 });
   }
@@ -113,8 +123,9 @@ export async function POST(request: NextRequest) {
   const displayName = (user.user_metadata?.display_name as string | undefined) ?? user.email ?? "";
   const preferredChannel = CHAT_CHANNEL_MAP[effectiveChannel] ?? "in_app";
   const preferredCheckinChannel = primaryCheckin(preferredCheckinChannels);
+  const resolvedTimezone = isValidTimeZone(timezone) ? timezone.trim() : null;
 
-  const profilePayload = {
+  const profilePayload: Record<string, unknown> = {
     id: user.id,
     display_name: displayName,
     preferred_channel: preferredChannel,
@@ -123,6 +134,7 @@ export async function POST(request: NextRequest) {
     interests: effectiveInterests,
     phone: normalizedPhone || null,
   };
+  if (resolvedTimezone) profilePayload.timezone = resolvedTimezone;
 
   let { error: profileError } = await supabase.from("nura_profiles").upsert(profilePayload);
 
@@ -139,13 +151,22 @@ export async function POST(request: NextRequest) {
     } = profilePayload;
     ({ error: profileError } = await supabase.from("nura_profiles").upsert(legacyPayload));
   }
+  if (profileError?.message?.includes("timezone")) {
+    const { timezone: _ignoredTz, ...withoutTz } = profilePayload;
+    ({ error: profileError } = await supabase.from("nura_profiles").upsert(withoutTz));
+  }
 
   if (profileError) {
     return NextResponse.json({ ok: false, error: profileError.message }, { status: 500 });
   }
 
   if (skipIntake) {
-    await supabase.auth.updateUser({ data: { onboarding_complete: true } });
+    await supabase.auth.updateUser({
+      data: {
+        onboarding_complete: true,
+        ...(resolvedTimezone ? { timezone: resolvedTimezone } : {}),
+      },
+    });
     return NextResponse.json({ ok: true, skipped: true, skipSetup: Boolean(skipSetup) });
   }
 
@@ -162,7 +183,12 @@ export async function POST(request: NextRequest) {
   }
 
   if (existingPlan) {
-    await supabase.auth.updateUser({ data: { onboarding_complete: true } });
+    await supabase.auth.updateUser({
+      data: {
+        onboarding_complete: true,
+        ...(resolvedTimezone ? { timezone: resolvedTimezone } : {}),
+      },
+    });
 
     return NextResponse.json({
       ok: true,
@@ -341,7 +367,12 @@ export async function POST(request: NextRequest) {
     }),
   );
 
-  await supabase.auth.updateUser({ data: { onboarding_complete: true } });
+  await supabase.auth.updateUser({
+    data: {
+      onboarding_complete: true,
+      ...(resolvedTimezone ? { timezone: resolvedTimezone } : {}),
+    },
+  });
 
   return NextResponse.json({ ok: true, plan });
 }

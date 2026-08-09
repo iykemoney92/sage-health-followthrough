@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { AuthAlert, friendlyAuthError } from "@/components/auth-alert";
 import { NuraLogo } from "@/components/nura-logo";
+import { track } from "@/lib/analytics";
 import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
 import "../auth.css";
 
@@ -259,9 +260,11 @@ export default function UpdatePasswordPage() {
     const { error: updateError } = await supabase.auth.updateUser({ password });
     setLoading(false);
     if (updateError) {
+      track("password_update_fail");
       setError(friendlyAuthError(updateError));
       return;
     }
+    track("password_update_success");
     clearStashedRecoveryTokens();
     clearRecoveryOk();
     setNotice("Password updated. Taking you to Nura…");

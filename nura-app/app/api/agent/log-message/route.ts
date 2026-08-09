@@ -3,6 +3,7 @@ import { z } from "zod";
 import { enforceThreadLimit, requirePlusAccess } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { resolveDecision, applyPlanDecision, applyNextCheckIn, insertConversationTurn, type PlanContext, type HistoryTurn } from "@/lib/domain/message-intake";
+import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 
 const requestSchema = z.object({
   content: z.string().min(1),
@@ -99,7 +100,8 @@ export async function POST(request: NextRequest) {
     });
 
   // WhatsApp always carries a caller phone, so a voice check-in is always reachable here.
-  const decision = await resolveDecision(content, plans ?? [], [], (contexts ?? []) as PlanContext[], null, history, phone);
+  const timeZone = await resolveUserTimeZone(supabase, ownerId, { phoneDigits: phone });
+  const decision = await resolveDecision(content, plans ?? [], [], (contexts ?? []) as PlanContext[], null, history, phone, [], [], "whatsapp", ["voice", "whatsapp", "in_app"], timeZone);
   const threadLimit = await enforceThreadLimit(supabase, ownerId, plans?.length ?? 0, decision.action === "new_plan");
   if (threadLimit) return threadLimit;
 
@@ -115,7 +117,7 @@ export async function POST(request: NextRequest) {
 
   if (planId) {
     if (decision.next_check_in) {
-      await applyNextCheckIn(supabase, ownerId, planId, decision.next_check_in);
+      await applyNextCheckIn(supabase, ownerId, planId, decision.next_check_in, timeZone);
     }
 
     await supabase

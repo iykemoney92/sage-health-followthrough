@@ -13,6 +13,7 @@ import {
   Stethoscope,
   SunMedium,
 } from "lucide-react";
+import { CheckoutSuccessTracker } from "@/components/checkout-success-tracker";
 import { NuraShell } from "@/components/nura-shell";
 import { CareDisclaimer } from "@/components/care-disclaimer";
 import { NuraActions, RescheduleButton } from "@/components/nura-actions";
@@ -71,7 +72,17 @@ function CategoryIcon({ category }: { category: string }) {
   return createElement(categoryIcon(category));
 }
 
-export default async function TodayPage() {
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = searchParams ? await searchParams : {};
+  const checkout = typeof params.checkout === "string" ? params.checkout : null;
+  const checkoutStatus = typeof params.status === "string" ? params.status : null;
+  const checkoutProvider = typeof params.provider === "string" ? params.provider : null;
+  const transactionId = typeof params.transaction_id === "string" ? params.transaction_id : null;
+
   const user = await getSessionUser();
   const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email || "there";
   const avatarUrl = getUserAvatarUrl(user);
@@ -206,6 +217,12 @@ export default async function TodayPage() {
 
   return (
     <NuraShell userName={displayName} userAvatarUrl={avatarUrl}>
+      <CheckoutSuccessTracker
+        checkout={checkout}
+        status={checkoutStatus}
+        provider={checkoutProvider}
+        transactionId={transactionId}
+      />
       <div className="dashboard-page today-page today-v2">
         <header className="dashboard-heading">
           <span className="auth-kicker">TODAY</span>

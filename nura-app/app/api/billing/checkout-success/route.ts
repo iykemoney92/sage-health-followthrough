@@ -115,7 +115,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  const response = NextResponse.redirect(appUrl("/today", request));
+  const today = appUrl("/today", request);
+  today.searchParams.set("checkout", "success");
+  today.searchParams.set("status", "trialing");
+  today.searchParams.set("provider", "stripe");
+  if (sessionId) today.searchParams.set("transaction_id", sessionId);
+  const response = NextResponse.redirect(today);
   response.cookies.set("nura_checkout_pending", "", {
     httpOnly: true,
     sameSite: "lax",

@@ -41,10 +41,15 @@ export async function GET(request: NextRequest) {
     }
     const paywall = appUrl("/onboarding", request);
     paywall.searchParams.set("paywall", "1");
+    paywall.searchParams.set("checkout", "incomplete");
     return NextResponse.redirect(paywall);
   }
 
-  const response = NextResponse.redirect(appUrl("/today", request));
+  const today = appUrl("/today", request);
+  today.searchParams.set("checkout", "success");
+  today.searchParams.set("status", access.status || "active");
+  today.searchParams.set("provider", "revenuecat");
+  const response = NextResponse.redirect(today);
   response.cookies.set("nura_checkout_pending", "", {
     httpOnly: true,
     sameSite: "lax",

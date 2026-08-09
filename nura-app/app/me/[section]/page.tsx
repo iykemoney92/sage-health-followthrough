@@ -243,6 +243,7 @@ export default async function SettingsSection({
             <PreferencesChannelForm initialChannel={preferredChannel} whatsappLinked={whatsappLinked} />
             <CheckinChannelsForm
               initialChannels={preferredCheckinChannels}
+              initialPreferred={preferredCheckinChannels[0] ?? null}
               whatsappLinked={whatsappLinked}
               hasPhone={Boolean(phone)}
             />

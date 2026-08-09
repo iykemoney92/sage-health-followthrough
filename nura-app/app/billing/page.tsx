@@ -10,7 +10,10 @@ import {
   Settings,
   Sparkles,
 } from "lucide-react";
+import { AnalyticsBeacon } from "@/components/analytics-beacon";
+import { CheckoutFailTracker } from "@/components/checkout-fail-tracker";
 import { NuraShell } from "@/components/nura-shell";
+import { TrackedCheckoutLink, TrackedPortalLink } from "@/components/tracked-billing-links";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { reconcileShortCardTrial } from "@/lib/billing/reconcile-trial";
 import { getSubscriptionAccess, markExpiredSubscriptionIfNeeded } from "@/lib/billing/subscription";
@@ -47,6 +50,9 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
     : { linked: false, pendingCode: null, expiresAt: null };
   const params = searchParams ? await searchParams : {};
   const manageNotice = params.manage === "unavailable";
+  const checkoutParam = typeof params.checkout === "string" ? params.checkout : null;
+  const checkoutFailReason =
+    checkoutParam === "failed" || checkoutParam === "profile-update-failed" ? checkoutParam : null;
   const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email || "You";
   const avatarUrl = getUserAvatarUrl(user);
   const trialEnds = formatDate(access?.trialEndsAt ?? null);
@@ -100,6 +106,12 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
 
   return (
     <NuraShell userName={displayName} userAvatarUrl={avatarUrl}>
+      <AnalyticsBeacon
+        event="billing_page_view"
+        params={{ status: access?.status || "none", has_plus: Boolean(access?.hasPlus) }}
+      />
+      {manageNotice ? <AnalyticsBeacon event="portal_unavailable" /> : null}
+      <CheckoutFailTracker reason={checkoutFailReason} />
       <div className="dashboard-page billing-page billing-v2">
         <Link href="/me" className="back-link">
           <ArrowLeft /> Me
@@ -135,20 +147,22 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
 
           <div className="billing-actions">
             {access?.hasPlus ? (
-              <a href="/api/billing/portal" className="primary-cta">
+              <TrackedPortalLink href="/api/billing/portal" className="primary-cta" hasPlus>
                 <Settings /> Manage or cancel
-              </a>
+              </TrackedPortalLink>
             ) : (
               <>
-                <a
+                <TrackedCheckoutLink
                   href={access?.status === "expired" ? "/api/billing/checkout?return=locked" : "/api/billing/checkout"}
                   className="primary-cta"
+                  source="billing"
+                  cta={access?.status === "expired" ? "renew_plus" : "upgrade_to_plus"}
                 >
                   <CreditCard /> {access?.status === "expired" ? "Renew Plus" : "Upgrade to Plus"}
-                </a>
-                <a href="/api/billing/portal" className="secondary-cta">
+                </TrackedCheckoutLink>
+                <TrackedPortalLink href="/api/billing/portal" className="secondary-cta" hasPlus={false}>
                   <Settings /> Manage or cancel
-                </a>
+                </TrackedPortalLink>
               </>
             )}
           </div>

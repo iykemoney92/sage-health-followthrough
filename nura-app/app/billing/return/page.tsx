@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LoaderCircle } from "lucide-react";
+import { track } from "@/lib/analytics";
 
 /**
  * Instant handoff after hosted checkout.
@@ -11,6 +12,9 @@ export default function BillingReturnPage() {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    track("checkout_return");
+    track("checkout_enter");
+
     const timer = window.setTimeout(() => {
       window.location.replace("/api/billing/enter");
     }, 50);
@@ -30,7 +34,11 @@ export default function BillingReturnPage() {
         <h1>You&apos;re all set</h1>
         <p>Confirming your Plus trial and opening your dashboard…</p>
         {failed ? (
-          <a href="/api/billing/enter" className="primary-cta">
+          <a
+            href="/api/billing/enter"
+            className="primary-cta"
+            onClick={() => track("checkout_enter", { source: "manual_continue" })}
+          >
             Continue to Nura
           </a>
         ) : null}

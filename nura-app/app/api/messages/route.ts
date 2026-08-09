@@ -5,6 +5,7 @@ import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/sup
 import { resolveDecision, applyPlanDecision, applyNextCheckIn, insertConversationTurn, extractPhoneNumber, type PlanContext, type HistoryTurn, type MissedCheckIn } from "@/lib/domain/message-intake";
 import { processAttachments } from "@/lib/ai/attachments";
 import { evaluateAndAdvanceJourney, ensureJourney } from "@/lib/domain/plan-journey";
+import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -172,7 +173,11 @@ export async function POST(request: NextRequest) {
 
   const requestedPlan = requestedPlanId ? plans?.find((plan) => plan.id === requestedPlanId) ?? null : null;
   const { attachments: sanitizedAttachments, blocks: attachmentBlocks } = await processAttachments(attachments as MessageAttachment[]);
-  const decision = await resolveDecision(content, plans ?? [], sanitizedAttachments, (contexts ?? []) as PlanContext[], requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels);
+  const timeZone = await resolveUserTimeZone(supabase, user.id, {
+    phoneDigits: phoneOnFile,
+    authMetadata: (user.user_metadata ?? null) as Record<string, unknown> | null,
+  });
+  const decision = await resolveDecision(content, plans ?? [], sanitizedAttachments, (contexts ?? []) as PlanContext[], requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels, timeZone);
   const threadLimit = await enforceThreadLimit(supabase, user.id, plans?.length ?? 0, decision.action === "new_plan");
   if (threadLimit) return threadLimit;
 
@@ -211,7 +216,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (decision.next_check_in) {
-      await applyNextCheckIn(supabase, user.id, planId, decision.next_check_in);
+      await applyNextCheckIn(supabase, user.id, planId, decision.next_check_in, timeZone);
     }
 
     const planForJourney = plans?.find((plan) => plan.id === planId);

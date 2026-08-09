@@ -18,6 +18,8 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { NuraLogo } from "@/components/nura-logo";
 import { useToast } from "@/components/toast";
+import { TrackedLink } from "@/components/tracked-link";
+import { track } from "@/lib/analytics";
 import {
   pickRecorderMimeType,
   voiceMicDeniedMessage,
@@ -283,6 +285,7 @@ export default function NewCarePlanPage() {
     setChannelError(null);
     setSubmitting(true);
     setSubmitError(null);
+    track("care_plan_create_start");
     try {
       const res = await fetch("/api/plans/create", {
         method: "POST",
@@ -302,11 +305,13 @@ export default function NewCarePlanPage() {
       });
       const data = await res.json().catch(() => null);
       if (res.status === 402) {
+        track("care_plan_create_fail", { error: "plus_required" });
         setSubmitError(data?.message ?? "Nura Plus is needed for more Care plans.");
         setSubmitting(false);
         return;
       }
       if (data?.error === "phone_required") {
+        track("care_plan_create_fail", { error: "phone_required" });
         setSubmitError(data.message ?? "Add a phone number in Me → Channels for WhatsApp or call check-ins.");
         setSubmitting(false);
         return;
@@ -314,9 +319,11 @@ export default function NewCarePlanPage() {
       if (!res.ok || !data?.planId) {
         throw new Error(data?.error ?? "create_failed");
       }
+      track("care_plan_create_success", { source: "plans_new" });
       toast({ tone: "success", title: "Care plan ready", message: data.plan?.title ?? "Opened" });
       router.push(`/plans/${data.planId}`);
     } catch {
+      track("care_plan_create_fail", { error: "create_failed" });
       setSubmitError("Couldn’t start that Care plan. Please try again.");
       setSubmitting(false);
     }
@@ -488,9 +495,14 @@ export default function NewCarePlanPage() {
           {channelError ? <p className="field-error channel-error" role="alert">{channelError}</p> : null}
           {submitError ? <p className="auth-error" role="alert">{submitError}</p> : null}
           {submitError?.includes("Plus") ? (
-            <Link href="/billing" className="text-link">
+            <TrackedLink
+              href="/billing"
+              className="text-link"
+              event="care_plan_upgrade_click"
+              eventParams={{ source: "plans_new" }}
+            >
               View Nura Plus
-            </Link>
+            </TrackedLink>
           ) : null}
         </section>
       )}

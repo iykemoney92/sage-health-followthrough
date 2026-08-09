@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { AuthAlert, friendlyAuthError } from "@/components/auth-alert";
 import { NuraLogo } from "@/components/nura-logo";
+import { track } from "@/lib/analytics";
 import { AUTH_COPY, normalizeEmail } from "@/lib/auth/helpers";
 import "../auth.css";
 
@@ -55,6 +56,7 @@ export default function SignupPage() {
     }
 
     setLoading(true);
+    track("signup_submit", { method: "email" });
     const normalized = normalizeEmail(email);
 
     try {
@@ -72,12 +74,19 @@ export default function SignupPage() {
 
       if (!res.ok || !data?.ok) {
         if (data?.code === "email_exists" || res.status === 409) {
+          track("signup_fail", { error_code: "email_exists" });
           setError(AUTH_COPY.duplicateAccount);
           return;
         }
+        track("signup_fail", { error_code: "signup_error" });
         setError(friendlyAuthError(data?.error || "Couldn’t create your account. Try again."));
         return;
       }
+
+      track("signup_complete", {
+        method: "email",
+        needs_confirmation: Boolean(data.needsConfirmation),
+      });
 
       if (data.needsConfirmation) {
         window.sessionStorage.setItem(PENDING_EMAIL_KEY, normalized);
@@ -93,6 +102,7 @@ export default function SignupPage() {
       router.refresh();
     } catch (err) {
       setLoading(false);
+      track("signup_fail", { error_code: "network" });
       setError(friendlyAuthError(err));
     }
   }

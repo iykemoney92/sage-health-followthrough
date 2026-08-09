@@ -128,6 +128,14 @@ export default function CalendarPage() {
 
   const selected = selectedId ? events.find((event) => event.id === selectedId) : undefined;
 
+  async function reloadEvents() {
+    const res = await fetch("/api/calendar-events");
+    const data = await res.json().catch(() => null);
+    if (data?.ok) {
+      setEvents((data.events as RawEvent[]).map(withLocalDateTime));
+    }
+  }
+
   function openNewEvent() {
     setForm({ ...emptyForm, date: dateKey(cursor) });
     setModalMode("new");
@@ -408,7 +416,15 @@ export default function CalendarPage() {
                         Open Care plan
                       </Link>
                     )}
-                    {selected.planId && <RescheduleButton planId={selected.planId} />}
+                    {selected.planId && (
+                      <RescheduleButton
+                        planId={selected.planId}
+                        onRescheduled={async () => {
+                          await reloadEvents();
+                          closeDetail();
+                        }}
+                      />
+                    )}
                   </>
                 ) : (
                   <>

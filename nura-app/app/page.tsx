@@ -5,6 +5,7 @@ import { LandingSprout } from "@/components/landing-sprout";
 import { LandingReveal } from "@/components/landing-reveal";
 import { LandingReadMore } from "@/components/landing-read-more";
 import { LandingNavChrome } from "@/components/landing-nav-chrome";
+import { TrackedLink } from "@/components/tracked-link";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
 import "./landing.css";
@@ -24,17 +25,32 @@ export default async function LandingPage() {
         </nav>
         <div className="nav-actions">
           {isSignedIn ? (
-            <Link href="/today" className="primary-cta">
+            <TrackedLink
+              href="/today"
+              className="primary-cta"
+              event="landing_cta_click"
+              eventParams={{ cta: "dashboard", placement: "nav" }}
+            >
               Dashboard
-            </Link>
+            </TrackedLink>
           ) : (
             <>
-              <Link href="/login" className="text-link">
+              <TrackedLink
+                href="/login"
+                className="text-link"
+                event="landing_cta_click"
+                eventParams={{ cta: "sign_in", placement: "nav" }}
+              >
                 Sign in
-              </Link>
-              <Link href="/signup" className="primary-cta">
+              </TrackedLink>
+              <TrackedLink
+                href="/signup"
+                className="primary-cta"
+                event="landing_cta_click"
+                eventParams={{ cta: "get_started", placement: "nav" }}
+              >
                 Get started
-              </Link>
+              </TrackedLink>
             </>
           )}
         </div>
@@ -48,13 +64,23 @@ export default async function LandingPage() {
           <p className="landing-hero-support">{NURA_PRODUCT.heroSupport}</p>
           <div className="landing-hero-actions">
             {isSignedIn ? (
-              <Link href="/today" className="primary-cta large">
+              <TrackedLink
+                href="/today"
+                className="primary-cta large"
+                event="landing_cta_click"
+                eventParams={{ cta: "dashboard", placement: "hero" }}
+              >
                 Go to dashboard <ArrowRight size={18} />
-              </Link>
+              </TrackedLink>
             ) : (
-              <Link href="/signup" className="primary-cta large">
+              <TrackedLink
+                href="/signup"
+                className="primary-cta large"
+                event="landing_cta_click"
+                eventParams={{ cta: "get_started", placement: "hero" }}
+              >
                 Get started <ArrowRight size={18} />
-              </Link>
+              </TrackedLink>
             )}
             <a href="#how" className="secondary-cta large">
               See how it works
@@ -119,13 +145,23 @@ export default async function LandingPage() {
           <h2>Your health context stays yours.</h2>
           <p>{NURA_PRODUCT.trustLead}</p>
           {isSignedIn ? (
-            <Link href="/today" className="primary-cta large">
+            <TrackedLink
+              href="/today"
+              className="primary-cta large"
+              event="landing_cta_click"
+              eventParams={{ cta: "dashboard", placement: "trust" }}
+            >
               Open your dashboard
-            </Link>
+            </TrackedLink>
           ) : (
-            <Link href="/signup" className="primary-cta large">
+            <TrackedLink
+              href="/signup"
+              className="primary-cta large"
+              event="landing_cta_click"
+              eventParams={{ cta: "trust_signup", placement: "trust" }}
+            >
               Start with what’s happening today
-            </Link>
+            </TrackedLink>
           )}
         </LandingReveal>
       </section>

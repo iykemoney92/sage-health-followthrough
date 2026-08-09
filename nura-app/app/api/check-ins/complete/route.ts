@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
+import { primaryCheckinChannel } from "@/lib/domain/checkin-channel";
 import { draftNextCheckInAfterCompletion } from "@/lib/domain/journey-create";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
@@ -131,10 +132,9 @@ export async function POST(request: NextRequest) {
     const channels = ((profile?.preferred_checkin_channels as string[] | null) ?? []).filter(
       (c): c is "whatsapp" | "in_app" | "voice" => c === "whatsapp" || c === "in_app" || c === "voice",
     );
-    const preferredRaw = (profile?.preferred_checkin_channel as string | null) ?? "whatsapp";
-    const preferredChannel =
-      preferredRaw === "voice" || preferredRaw === "in_app" || preferredRaw === "whatsapp" ? preferredRaw : "whatsapp";
-    const allowedChannels = channels.length > 0 ? channels : ([preferredChannel] as Array<"whatsapp" | "in_app" | "voice">);
+    const preferredRaw = (profile?.preferred_checkin_channel as string | null) ?? null;
+    const allowedChannels = channels.length > 0 ? channels : (["in_app"] as Array<"whatsapp" | "in_app" | "voice">);
+    const preferredChannel = primaryCheckinChannel(allowedChannels, preferredRaw);
 
     const nextCheckIn = await draftNextCheckInAfterCompletion({
       plan: {

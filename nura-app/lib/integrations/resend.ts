@@ -341,6 +341,94 @@ usenura.app
 `;
 }
 
+function formatCheckInWhen(iso: string, timeZone?: string) {
+  return new Date(iso).toLocaleString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+    ...(timeZone ? { timeZone } : {}),
+  });
+}
+
+export function checkInReminderEmailHtml({
+  workspaceUrl,
+  scheduledFor,
+  planTitle,
+  channel,
+  firstName,
+  minutesBefore = 60,
+  timeZone,
+}: {
+  workspaceUrl: string;
+  scheduledFor: string;
+  planTitle: string;
+  channel: string;
+  firstName?: string;
+  minutesBefore?: number;
+  timeZone?: string;
+}) {
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  const whenLabel = formatCheckInWhen(scheduledFor, timeZone);
+  const channelLabel =
+    channel === "voice" ? "a phone call" : channel === "whatsapp" ? "a WhatsApp message" : "an in-app check-in";
+  const lead =
+    minutesBefore >= 60 && minutesBefore % 60 === 0
+      ? `${minutesBefore / 60} hour${minutesBefore === 60 ? "" : "s"}`
+      : `${minutesBefore} minutes`;
+  return nuraEmailShell({
+    preview: `Nura will check in about ${planTitle} in about ${lead}.`,
+    eyebrow: "Upcoming check-in",
+    title: `Check-in in about ${lead}.`,
+    bodyHtml: `${greeting}<br/><br/>Just a heads-up: Nura will reach out about <strong>${planTitle}</strong> around <strong>${whenLabel}</strong> (${channelLabel}).<br/><br/>You can open your Care plan anytime if you want to share an update early.`,
+    ctaLabel: "Open Care plan",
+    ctaUrl: workspaceUrl,
+    footerNote: "If you already completed this check-in, you can ignore this email.",
+  });
+}
+
+export function checkInReminderEmailText({
+  workspaceUrl,
+  scheduledFor,
+  planTitle,
+  channel,
+  firstName,
+  minutesBefore = 60,
+  timeZone,
+}: {
+  workspaceUrl: string;
+  scheduledFor: string;
+  planTitle: string;
+  channel: string;
+  firstName?: string;
+  minutesBefore?: number;
+  timeZone?: string;
+}) {
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  const whenLabel = formatCheckInWhen(scheduledFor, timeZone);
+  const channelLabel =
+    channel === "voice" ? "a phone call" : channel === "whatsapp" ? "a WhatsApp message" : "an in-app check-in";
+  const lead =
+    minutesBefore >= 60 && minutesBefore % 60 === 0
+      ? `${minutesBefore / 60} hour${minutesBefore === 60 ? "" : "s"}`
+      : `${minutesBefore} minutes`;
+  return `Nura — Health follow-through
+
+${greeting}
+
+Just a heads-up: Nura will reach out about ${planTitle} around ${whenLabel} (${channelLabel}) — in about ${lead}.
+
+Open your Care plan:
+${workspaceUrl}
+
+If you already completed this check-in, you can ignore this email.
+
+usenura.app
+`;
+}
+
 /** Attach the Nura mark as an inline CID image for branded auth emails. */
 export function nuraEmailLogoAttachment() {
   const content = getEmailLogoBase64();

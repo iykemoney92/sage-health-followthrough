@@ -150,7 +150,14 @@ export function NuraActions({
   );
 }
 
-export function RescheduleButton({ planId }: { planId: string }) {
+export function RescheduleButton({
+  planId,
+  onRescheduled,
+}: {
+  planId: string;
+  /** Called after a successful reschedule (e.g. refresh a client-fetched calendar). */
+  onRescheduled?: (scheduledFor: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [selected, setSelected] = useState<RescheduleChoice>("tomorrow");
@@ -223,6 +230,11 @@ export function RescheduleButton({ planId }: { planId: string }) {
       }
       toast({ title: "Rescheduled", message: `Check-in moved to ${label}.` });
       setOpen(false);
+      if (typeof data?.scheduledFor === "string") {
+        onRescheduled?.(data.scheduledFor);
+      } else {
+        onRescheduled?.(scheduledFor.toISOString());
+      }
       router.refresh();
     } finally {
       setSaving(false);
