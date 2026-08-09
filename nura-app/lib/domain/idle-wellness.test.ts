@@ -4,6 +4,7 @@ import {
   idleWellnessPrompt,
   isIdleLongEnough,
   isWithinQuietHours,
+  nextTimeOutsideQuietHours,
   pickIdleChannel,
 } from "./idle-wellness";
 
@@ -37,6 +38,47 @@ describe("isWithinQuietHours", () => {
   });
 });
 
+describe("nextTimeOutsideQuietHours", () => {
+  it("leaves a time outside quiet hours untouched", () => {
+    const midday = new Date("2026-08-02T12:00:00.000Z");
+    const quiet = { enabled: true, start: "22:00", end: "07:00", allowUrgent: true };
+    expect(nextTimeOutsideQuietHours(midday, quiet, "UTC")).toEqual(midday);
+  });
+
+  it("pushes an overnight-window time to the end boundary on the correct day", () => {
+    // 23:30 UTC is inside 22:00-07:00 and after the start boundary, so the window's end (07:00)
+    // falls the next calendar day.
+    const late = new Date("2026-08-02T23:30:00.000Z");
+    const quiet = { enabled: true, start: "22:00", end: "07:00", allowUrgent: true };
+    const result = nextTimeOutsideQuietHours(late, quiet, "UTC");
+    expect(result.toISOString()).toBe("2026-08-03T07:00:00.000Z");
+  });
+
+  it("pushes an early-morning tail of an overnight window to the same-day end boundary", () => {
+    // 03:00 UTC is inside 22:00-07:00 but before the start boundary, so 07:00 is still today.
+    const early = new Date("2026-08-02T03:00:00.000Z");
+    const quiet = { enabled: true, start: "22:00", end: "07:00", allowUrgent: true };
+    const result = nextTimeOutsideQuietHours(early, quiet, "UTC");
+    expect(result.toISOString()).toBe("2026-08-02T07:00:00.000Z");
+  });
+
+  it("pushes a same-day window to its end boundary later the same day", () => {
+    const during = new Date("2026-08-02T14:00:00.000Z");
+    const quiet = { enabled: true, start: "13:00", end: "17:00", allowUrgent: false };
+    const result = nextTimeOutsideQuietHours(during, quiet, "UTC");
+    expect(result.toISOString()).toBe("2026-08-02T17:00:00.000Z");
+  });
+
+  it("respects the user's timezone, not server UTC", () => {
+    // 23:00 local time in America/New_York (UTC-4 in August) is 03:00 UTC the next day.
+    const localLateNight = new Date("2026-08-03T03:00:00.000Z");
+    const quiet = { enabled: true, start: "22:00", end: "07:00", allowUrgent: true };
+    const result = nextTimeOutsideQuietHours(localLateNight, quiet, "America/New_York");
+    // End boundary is 07:00 local time same local day -> 11:00 UTC.
+    expect(result.toISOString()).toBe("2026-08-03T11:00:00.000Z");
+  });
+});
+
 describe("isIdleLongEnough", () => {
   const now = new Date("2026-08-02T12:00:00.000Z");
 
@@ -59,6 +101,10 @@ describe("pickIdleChannel", () => {
 
   it("falls back when preferred is not allowed", () => {
     expect(pickIdleChannel(["in_app"], "voice")).toBe("in_app");
+  });
+
+  it("prefers voice over WhatsApp when no explicit preferred is set", () => {
+    expect(pickIdleChannel(["whatsapp", "in_app", "voice"], null)).toBe("voice");
   });
 });
 

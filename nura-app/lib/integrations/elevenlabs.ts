@@ -63,6 +63,45 @@ export async function placeOutboundCall({ toNumber, dynamicVariables, agentId }:
   return body;
 }
 
+export type RawConversationBody = {
+  status?: string;
+  call_successful?: string | boolean | null;
+  metadata?: { call_duration_secs?: number; duration_secs?: number } | null;
+  analysis?: { call_successful?: string | boolean | null } | null;
+  transcript?: unknown[] | null;
+};
+
+/**
+ * Shared shape parser for a conversation outcome — used both by the polling GET below and by
+ * the ElevenLabs post-call webhook handler, whose payload carries the same fields under `data`.
+ * Keeping this in one place means the poller and the webhook can never disagree about what
+ * counts as "connected".
+ */
+export function parseConversationOutcome(body: RawConversationBody | null): ConversationOutcome | null {
+  if (!body) return null;
+
+  const callSuccessfulRaw = body.analysis?.call_successful ?? body.call_successful ?? null;
+  const callSuccessful =
+    callSuccessfulRaw === true
+      ? "success"
+      : callSuccessfulRaw === false
+        ? "failure"
+        : typeof callSuccessfulRaw === "string"
+          ? callSuccessfulRaw
+          : null;
+
+  const durationSecs =
+    Number(body.metadata?.call_duration_secs ?? body.metadata?.duration_secs ?? 0) || 0;
+  const hasTranscript = Array.isArray(body.transcript) && body.transcript.length > 0;
+
+  return {
+    status: String(body.status ?? "unknown"),
+    callSuccessful,
+    durationSecs,
+    hasTranscript,
+  };
+}
+
 /** Poll ElevenLabs for whether an outbound check-in call was actually answered. */
 export async function getConversationOutcome(conversationId: string): Promise<ConversationOutcome | null> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -74,36 +113,8 @@ export async function getConversationOutcome(conversationId: string): Promise<Co
     });
     if (!response.ok) return null;
 
-    const body = (await response.json().catch(() => null)) as {
-      status?: string;
-      call_successful?: string | boolean | null;
-      metadata?: { call_duration_secs?: number; duration_secs?: number } | null;
-      analysis?: { call_successful?: string | boolean | null } | null;
-      transcript?: unknown[] | null;
-    } | null;
-
-    if (!body) return null;
-
-    const callSuccessfulRaw = body.analysis?.call_successful ?? body.call_successful ?? null;
-    const callSuccessful =
-      callSuccessfulRaw === true
-        ? "success"
-        : callSuccessfulRaw === false
-          ? "failure"
-          : typeof callSuccessfulRaw === "string"
-            ? callSuccessfulRaw
-            : null;
-
-    const durationSecs =
-      Number(body.metadata?.call_duration_secs ?? body.metadata?.duration_secs ?? 0) || 0;
-    const hasTranscript = Array.isArray(body.transcript) && body.transcript.length > 0;
-
-    return {
-      status: String(body.status ?? "unknown"),
-      callSuccessful,
-      durationSecs,
-      hasTranscript,
-    };
+    const body = (await response.json().catch(() => null)) as RawConversationBody | null;
+    return parseConversationOutcome(body);
   } catch {
     return null;
   }

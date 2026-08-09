@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSubscriptionAccess } from "@/lib/billing/subscription";
+import { primaryCheckinChannel, type CheckinChannel } from "@/lib/domain/checkin-channel";
 import { readProfileSettings, type QuietHoursSettings } from "@/lib/profile-settings";
+import { getZonedParts, wallTimeInTimeZoneToUtcIso } from "@/lib/timezone";
+import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 
 /** Minimum silence before Nura invents a wellness check-in (no open Care-plan check-in). */
 export const IDLE_WELLNESS_GAP_MS = 3 * 24 * 60 * 60 * 1000;
@@ -23,17 +26,22 @@ type ProfileRow = {
 };
 
 /**
- * Quiet-hours window using wall-clock HH:MM compared in UTC (prefs have no timezone yet).
+ * Quiet-hours window using the user's wall-clock timezone (not server UTC).
  * Overnight ranges (e.g. 22:00–07:00) are supported.
  */
-export function isWithinQuietHours(now: Date, quiet: QuietHoursSettings): boolean {
+export function isWithinQuietHours(
+  now: Date,
+  quiet: QuietHoursSettings,
+  timeZone = "UTC",
+): boolean {
   if (!quiet.enabled) return false;
 
   const startMins = parseHmToMinutes(quiet.start);
   const endMins = parseHmToMinutes(quiet.end);
   if (startMins === null || endMins === null) return false;
 
-  const nowMins = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const parts = getZonedParts(now, timeZone);
+  const nowMins = parts.hour * 60 + parts.minute;
   if (startMins === endMins) return true;
   if (startMins < endMins) return nowMins >= startMins && nowMins < endMins;
   return nowMins >= startMins || nowMins < endMins;
@@ -46,6 +54,33 @@ function parseHmToMinutes(value: string): number | null {
   const minutes = Number(match[2]);
   if (hours > 23 || minutes > 59) return null;
   return hours * 60 + minutes;
+}
+
+/**
+ * If `when` falls inside the quiet-hours window, pushes it forward to the window's end boundary
+ * (in the user's timezone) instead of just leaving it be. Used to reschedule a voice/WhatsApp
+ * check-in that would otherwise fire overnight, rather than silently skipping it.
+ */
+export function nextTimeOutsideQuietHours(when: Date, quiet: QuietHoursSettings, timeZone = "UTC"): Date {
+  if (!isWithinQuietHours(when, quiet, timeZone)) return when;
+
+  const startMins = parseHmToMinutes(quiet.start);
+  const endMins = parseHmToMinutes(quiet.end);
+  if (startMins === null || endMins === null) return when;
+
+  const parts = getZonedParts(when, timeZone);
+  const nowMins = parts.hour * 60 + parts.minute;
+
+  // Same-day window (start < end): the end boundary is later the same day.
+  // Overnight window (start >= end): being inside it after `start` means the end boundary is
+  // tomorrow; being inside it before `end` (the early-morning tail) means it's later today.
+  const dayOffset = startMins < endMins ? 0 : nowMins >= startMins ? 1 : 0;
+
+  const boundaryDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + dayOffset));
+  const y = boundaryDate.getUTCFullYear();
+  const m = String(boundaryDate.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(boundaryDate.getUTCDate()).padStart(2, "0");
+  return new Date(wallTimeInTimeZoneToUtcIso(`${y}-${m}-${d}T${quiet.end}:00`, timeZone));
 }
 
 export function isIdleLongEnough(lastContactAt: Date | null, now: Date, gapMs = IDLE_WELLNESS_GAP_MS): boolean {
@@ -64,15 +99,11 @@ export function idleWellnessPrompt(planTitle: string): string {
 export function pickIdleChannel(
   preferredChannels: string[] | null | undefined,
   preferredChannel: string | null | undefined,
-): "whatsapp" | "in_app" | "voice" {
-  const allowed = (preferredChannels?.length ? preferredChannels : null) ?? ["in_app"];
-  const preferred = preferredChannel || allowed[0] || "in_app";
-  if (allowed.includes(preferred) && (preferred === "whatsapp" || preferred === "in_app" || preferred === "voice")) {
-    return preferred;
-  }
-  if (allowed.includes("whatsapp")) return "whatsapp";
-  if (allowed.includes("voice")) return "voice";
-  return "in_app";
+): CheckinChannel {
+  const allowed = ((preferredChannels?.length ? preferredChannels : null) ?? ["in_app"]).filter(
+    (c): c is CheckinChannel => c === "whatsapp" || c === "in_app" || c === "voice",
+  );
+  return primaryCheckinChannel(allowed.length > 0 ? allowed : ["in_app"], preferredChannel);
 }
 
 /**
@@ -171,8 +202,12 @@ export async function scheduleIdleWellnessCheckIns(
       const settings = readProfileSettings(
         (authData?.user?.user_metadata ?? null) as Record<string, unknown> | null,
       );
+      const timeZone = await resolveUserTimeZone(supabase, ownerId, {
+        phoneDigits: profile.phone,
+        authMetadata: (authData?.user?.user_metadata ?? null) as Record<string, unknown> | null,
+      });
       // Idle wellness is never "urgent" — always respect quiet hours when enabled.
-      if (isWithinQuietHours(now, settings.quietHours)) {
+      if (isWithinQuietHours(now, settings.quietHours, timeZone)) {
         skipped += 1;
         continue;
       }
