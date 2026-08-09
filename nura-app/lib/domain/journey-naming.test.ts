@@ -49,4 +49,16 @@ describe("inferJourneyDraft", () => {
     const draft = inferJourneyDraft("Work stress and night shift burnout are wiping me out");
     expect(draft.category).toBe("occupational_stress");
   });
+
+  it("does not treat 'spilling' as a medication mention", () => {
+    const draft = inferJourneyDraft(
+      "I’ve been feeling overwhelmed lately and it’s spilling into sleep, work, and how I look after myself.",
+    );
+    expect(draft.category).not.toBe("medication_follow_through");
+  });
+
+  it("does not treat 'pillow' as a medication mention", () => {
+    const draft = inferJourneyDraft("Tossing and turning on my pillow all night, can't sleep");
+    expect(draft.category).not.toBe("medication_follow_through");
+  });
 });

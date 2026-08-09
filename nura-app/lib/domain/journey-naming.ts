@@ -71,7 +71,7 @@ export const JOURNEY_NAMING_GUIDANCE =
 export function inferJourneyDraft(text: string, attachmentHints: string[] = []): JourneyDraftFields {
   const blob = `${text}\n${attachmentHints.join("\n")}`.toLowerCase();
 
-  if (/medication|tablet|dose|prescription|pill|amitriptyline|mg\b/.test(blob)) {
+  if (/\b(medications?|tablets?|doses?|prescriptions?|pills?|amitriptyline)\b|\d+\s?mg\b/.test(blob)) {
     return {
       title: "New medication follow-through",
       category: "medication_follow_through",

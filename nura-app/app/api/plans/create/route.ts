@@ -12,6 +12,8 @@ import { inferJourneyDraft, isPlanCategory } from "@/lib/domain/journey-naming";
 import { ensureJourney } from "@/lib/domain/plan-journey";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
+export const maxDuration = 45;
+
 const MAX_ATTACHMENT_BASE64_CHARS = 6_000_000;
 
 const requestSchema = z.object({
@@ -32,7 +34,10 @@ const requestSchema = z.object({
     .default([]),
 });
 
-function withTimeout<T>(promise: Promise<T>, fallback: T, ms = 4500) {
+// Give the agent real room to answer — this must never be short enough to race out a working
+// Claude call and silently drop to the keyword heuristic (that heuristic is a last-resort safety
+// net for a genuine failure/timeout, not a normal decision path).
+function withTimeout<T>(promise: Promise<T>, fallback: T, ms = 20000) {
   return Promise.race([
     promise,
     new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
@@ -183,7 +188,7 @@ export async function POST(request: NextRequest) {
       prompt: `How are things going with ${plan.title} — anything Nura should update?`,
       channel: preferredCheckInForDraft,
     },
-    5000,
+    15000,
   );
 
   const followUpChannel = firstCheckIn.channel;
