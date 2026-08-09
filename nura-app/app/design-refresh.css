@@ -2753,6 +2753,7 @@ body:has(.mobile-onboarding) .nura-toast-viewport {
     font-size: 22px;
   }
 
+  .today-attention-actions .primary-cta,
   .today-attention-actions .secondary-cta {
     flex: 1 1 auto;
   }
