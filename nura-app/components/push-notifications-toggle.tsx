@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Bell, BellOff, BellRing } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Bell, BellOff, BellRing, Loader2 } from "lucide-react";
 import { useToast } from "@/components/toast";
 import { track } from "@/lib/analytics";
 
@@ -39,11 +39,12 @@ async function checkStatus(): Promise<Status> {
   return subscription ? "on" : "off";
 }
 
-export function PushNotificationsToggle() {
+export function PushNotificationsToggle({ autoRequest = false }: { autoRequest?: boolean } = {}) {
   const { toast } = useToast();
   const [status, setStatus] = useState<Status>("checking");
   const [busy, setBusy] = useState(false);
   const [isIos, setIsIos] = useState(false);
+  const autoRequestedRef = useRef(false);
 
   useEffect(() => {
     // Push/Notification APIs are browser-only; hydrate status after mount.
@@ -51,6 +52,13 @@ export function PushNotificationsToggle() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsIos(/iPhone|iPad|iPod/.test(navigator.userAgent));
   }, []);
+
+  useEffect(() => {
+    if (!autoRequest || autoRequestedRef.current || status !== "off") return;
+    autoRequestedRef.current = true;
+    void enable();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRequest, status]);
 
   async function enable() {
     setBusy(true);
@@ -151,7 +159,7 @@ export function PushNotificationsToggle() {
     }
   }
 
-  const Icon = status === "on" ? BellRing : status === "denied" ? BellOff : Bell;
+  const Icon = busy ? Loader2 : status === "on" ? BellRing : status === "denied" ? BellOff : Bell;
 
   return (
     <section className="pref-panel">
@@ -174,7 +182,7 @@ export function PushNotificationsToggle() {
           <span className="pref-choice-icon" aria-hidden>
             <Icon />
           </span>
-          <div>
+          <div className="pref-choice-copy">
             <b>Blocked in browser settings</b>
             <small>Allow notifications for usenura.app, then come back here to turn them on.</small>
           </div>
@@ -182,21 +190,23 @@ export function PushNotificationsToggle() {
       ) : (
         <button
           type="button"
-          className={`pref-notify-card ${status === "on" ? "is-on" : ""}`}
+          className={`pref-notify-card ${status === "on" ? "is-on" : ""} ${busy ? "is-busy" : ""}`}
           disabled={busy || status === "checking"}
           onClick={() => (status === "on" ? disable() : enable())}
         >
           <span className="pref-choice-icon" aria-hidden>
-            <Icon />
+            <Icon className={busy ? "spin" : undefined} />
           </span>
           <span className="pref-choice-copy">
-            <b>{status === "on" ? "Notifications on" : "Show in the browser"}</b>
+            <b>{busy ? (status === "on" ? "Turning off…" : "Enabling…") : status === "on" ? "Notifications on" : "Show in the browser"}</b>
             <small>
-              {status === "checking"
-                ? "Checking this browser…"
-                : status === "on"
-                  ? "Tap to turn off for this browser"
-                  : "Tap to allow nudges when a check-in is due"}
+              {busy
+                ? "Check for a permission prompt from your browser."
+                : status === "checking"
+                  ? "Checking this browser…"
+                  : status === "on"
+                    ? "Tap to turn off for this browser"
+                    : "Tap to allow nudges when a check-in is due"}
             </small>
           </span>
           <span className={`pref-switch-pill ${status === "on" ? "is-on" : ""}`} aria-hidden />

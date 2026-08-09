@@ -2548,7 +2548,7 @@ body:has(.mobile-onboarding) .nura-toast-viewport {
 }
 
 .today-attention {
-  margin: 0 0 22px;
+  margin: 0 0 26px;
   padding: 18px 18px 16px;
   border: 1px solid #e4e1d8;
   border-radius: 18px;
@@ -2614,7 +2614,7 @@ body:has(.mobile-onboarding) .nura-toast-viewport {
 .today-attention-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .today-attention-actions .primary-cta,
@@ -2623,7 +2623,7 @@ body:has(.mobile-onboarding) .nura-toast-viewport {
 }
 
 .today-focus-card {
-  margin: 0 0 22px;
+  margin: 0 0 26px;
   padding: 16px;
   border: 1px solid #e6e1d8;
   border-radius: 16px;

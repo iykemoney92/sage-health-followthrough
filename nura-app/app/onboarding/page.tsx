@@ -973,7 +973,7 @@ function OnboardingFlow() {
                   <p className="onboarding-intro channel-intro">
                     Optional — get a nudge in this browser when Nura has a check-in or reply for you, even if the tab isn’t open. You can skip this and turn it on later from Me.
                   </p>
-                  <PushNotificationsToggle />
+                  <PushNotificationsToggle autoRequest />
                   <p className="control-note">You can change this anytime from Me → Notifications.</p>
                 </div>
               )}
