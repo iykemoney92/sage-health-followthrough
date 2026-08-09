@@ -2,8 +2,21 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { buildFallbackAnalysis } from "@/lib/domain/clariti-fallback-analysis";
+import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 
-export const claritiDocumentKindSchema = z.enum(["medical_bill", "insurance_eob", "radiology_report"]);
+export const claritiDocumentKindSchema = z.enum([
+  "medical_bill",
+  "insurance_eob",
+  "radiology_report",
+  "lab_results",
+  "discharge_summary",
+  "medication_context",
+  "pathology_report",
+  "referral_letter",
+  "visit_notes",
+  "prior_authorization",
+  "unknown",
+]);
 export type ClaritiAnalysisKind = z.infer<typeof claritiDocumentKindSchema>;
 
 export const claritiSceneSchema = z.object({
@@ -41,33 +54,39 @@ export async function analyzeClaritiDocument(input: AnalyzeInput): Promise<Clari
   const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY);
   if (!hasGatewayAuth && !hasAnthropicKey) return buildFallbackAnalysis(input);
 
+  const kindMeta = getClaritiKindMeta(input.kind);
+
   try {
     const result = await generateObject({
       model: hasGatewayAuth
         ? process.env.AI_GATEWAY_MODEL ?? "anthropic/claude-sonnet-4.6"
         : anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
       schema: claritiAnalysisSchema,
-      maxOutputTokens: 2400,
+      maxOutputTokens: 2600,
       schemaName: "ClaritiDocumentAnalysis",
-      schemaDescription: "A conservative, source-grounded consumer explanation of one health document.",
-      temperature: 0.1,
+      schemaDescription: "A warm, simple, source-grounded explanation of one health document for a non-expert reader.",
+      temperature: 0.2,
       system:
-        "You are Clariti, a conservative consumer health document copilot. Explain only what is in the supplied document. " +
-        "Do not diagnose, prescribe, decide coverage, or tell the user they definitely owe money. Distinguish source text from explanation. " +
-        "Use careful language such as 'the report describes', 'the document appears to show', and 'ask your clinician/insurer/provider'. " +
-        "Keep summary and plainEnglish concise. Put detail into keyPoints, metrics, flags, questions, and nextActions instead of long paragraphs. " +
+        "You are Clariti, a friendly helper who explains confusing health paperwork in everyday language. " +
+        "Talk like a calm, clear person — not a doctor, lawyer, or insurance clerk. Prefer short words and short sentences. " +
+        "Avoid jargon. If a medical or billing term appears in the document, explain it in plain words right away. " +
+        "Explain only what is in the supplied document. Do not diagnose, prescribe, decide coverage, or tell the user they definitely owe money. " +
+        "Use humble phrasing such as 'this looks like', 'the document says', and 'ask your doctor / insurer / billing team'. " +
+        "Keep summary and plainEnglish concise and human. Put detail into keyPoints, metrics, flags, questions, and nextActions. " +
+        "Questions and nextActions should sound like something a real person would say out loud. " +
+        "Flag labels are short headlines the user sees first, so keep them calm and specific rather than blunt or alarming — " +
+        "prefer 'Some changes since your last scan' over 'Things have gotten worse', and 'A nerve is being touched' over dramatic phrasing. " +
+        "Reserve severity 'urgent' only for findings that need prompt medical attention; use 'check' for things worth discussing with a clinician, and 'info' for reassuring or purely informational notes. " +
         "For urgent symptoms or emergency language, tell the user to seek urgent or emergency care.",
       prompt:
-        `Document type: ${input.kind}\n` +
+        `Document type: ${input.kind} (${kindMeta.title})\n` +
         `User question: ${input.question}\n\n` +
         `Document text:\n${input.documentText.slice(0, 12000)}\n\n` +
-        "Return kind, title, summary, plainEnglish, sourceAnchors, keyPoints, metrics, flags, questions, nextActions, safetyNote and exactly 5 videoScenes. " +
-        "summary must be one sentence. plainEnglish must be 2-3 short sentences. safetyNote must be one short sentence. " +
-        "Every keyPoint, metric and flag must be grounded in a source phrase from the document. " +
-        "For radiology_report videoScenes, use report wording, anatomy illustration, main finding, what needs clinician context, and questions to ask. " +
-        "For medical_bill videoScenes, use document orientation, charge breakdown, payments/adjustments, charges to verify, and next billing questions. " +
-        "For insurance_eob videoScenes, use EOB orientation, billed/allowed/paid flow, patient responsibility, bill comparison, and next insurer/provider questions. " +
-        "Each scene must be grounded in a source phrase and must not invent findings.",
+        "Return kind, title, summary, plainEnglish, sourceAnchors, keyPoints, metrics, flags, questions, nextActions, and safetyNote. " +
+        "Do not include videoScenes in this first-pass response — Clariti builds those later if needed. " +
+        "summary must be one plain sentence a friend could understand. plainEnglish must be 2-3 short everyday sentences. safetyNote must be one short reassuring sentence. " +
+        "keyPoint labels should be everyday phrases, not clinical headings. " +
+        "Every keyPoint, metric and flag must be grounded in a source phrase from the document.",
     });
 
     return normalizeSourceLabels(claritiAnalysisSchema.parse(result.object), input.documentText);

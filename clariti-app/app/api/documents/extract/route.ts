@@ -174,7 +174,7 @@ async function extractWithVisionImages(
           type: "text",
           text:
             `Extract the readable text from this health document image/PDF (${filename}). ` +
-            "Return only text that is visibly present in the pages. Preserve section headings such as PROCEDURE, FINDINGS, IMPRESSION, CONCLUSION, CHARGES, or PATIENT RESPONSIBILITY. " +
+            "Return only text that is visibly present in the pages. Preserve section headings such as PROCEDURE, FINDINGS, IMPRESSION, CONCLUSION, DIAGNOSIS, CHARGES, PATIENT RESPONSIBILITY, REFERENCE RANGE, MEDICATIONS, PLAN, FOLLOW-UP, DISCHARGE, AUTHORIZATION, or REFERRAL. " +
             "Do not summarize, diagnose, calculate, or infer missing words. If a page has no readable clinical/document text, write [no readable text on page].",
         },
         ...images.flatMap((image) => [

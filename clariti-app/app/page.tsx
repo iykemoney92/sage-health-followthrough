@@ -294,8 +294,16 @@ function HomeContent() {
         documentText: textForAnalysis,
         fileName: selectedFile?.name,
         documentId,
+        requestId: crypto.randomUUID(),
         createdAt: Date.now(),
+        status: "pending",
       }));
+      try {
+        window.sessionStorage.removeItem("clariti-boot-lock");
+        window.sessionStorage.removeItem("clariti-active-session-id");
+      } catch {
+        // ignore
+      }
       router.push("/workspace?new=1");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Clariti could not process this document.");

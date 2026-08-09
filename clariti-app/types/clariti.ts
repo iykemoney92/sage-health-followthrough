@@ -2,7 +2,13 @@ export type ClaritiDocumentKind =
   | "medical_bill"
   | "insurance_eob"
   | "radiology_report"
+  | "lab_results"
+  | "discharge_summary"
   | "medication_context"
+  | "pathology_report"
+  | "referral_letter"
+  | "visit_notes"
+  | "prior_authorization"
   | "unknown";
 
 export type ClaritiSessionStatus = "draft" | "active" | "complete" | "needs_review";

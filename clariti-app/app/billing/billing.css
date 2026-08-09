@@ -1,0 +1,45 @@
+.clariti-billing-page{width:min(880px,100%);margin:0 auto;padding:42px 24px 80px}
+.billing-hero{max-width:640px;margin-bottom:28px}
+.billing-hero h1{margin:10px 0 0;font:500 36px/1.14 Georgia,"Times New Roman",serif;letter-spacing:-.03em;color:#21332f}
+.billing-hero-copy{margin:14px 0 0;color:#61726d;font-size:15px;line-height:1.6}
+.billing-alert{margin-bottom:20px;padding:13px 16px;border-radius:14px;background:#fbf3e7;color:#8a5a1f;border:1px solid #f0dcb8;font-size:13px;font-weight:600}
+.billing-status-card{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:24px;background:#fff;border:1px solid #e1e8e4;border-radius:22px;box-shadow:0 10px 30px rgba(35,63,55,.05)}
+.billing-status-copy{min-width:260px;flex:1}
+.billing-status-copy small{color:#8b978f;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+.billing-status-title-row{display:flex;align-items:center;gap:10px;margin-top:6px}
+.billing-status-title-row h2{margin:0;font-size:22px;color:#1f302c;letter-spacing:-.02em}
+.billing-status-pill{padding:5px 11px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.04em}
+.billing-status-pill.is-on{background:#e9f3f0;color:#2f6e66}
+.billing-status-pill.is-off{background:#f2f5f3;color:#6d7975}
+.billing-status-copy>p{margin:8px 0 0;color:#65746f;font-size:13px;line-height:1.55}
+.billing-usage-row{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px}
+.billing-usage-row span{padding:7px 12px;border-radius:10px;background:#f2f5f3;color:#3d4f49;font-size:11px;font-weight:700}
+.billing-actions{display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+.billing-primary-cta{display:inline-flex;align-items:center;gap:8px;text-decoration:none;background:#4d8d83;color:#fff;border-radius:13px;padding:13px 20px;font-size:13px;font-weight:800;white-space:nowrap;box-shadow:0 10px 24px rgba(77,141,131,.28)}
+.billing-primary-cta svg{width:16px;height:16px}
+.billing-active-note{display:inline-flex;align-items:center;gap:8px;color:#2f6e66;font-size:13px;font-weight:700}
+.billing-active-note svg{width:18px;height:18px}
+.billing-features{margin-top:36px}
+.billing-features h3{margin:0 0 14px;font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#7b8985}
+.billing-feature-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.billing-feature-card{display:flex;gap:14px;padding:18px;background:#fff;border:1px solid #e3e9e6;border-radius:18px;box-shadow:0 6px 20px rgba(35,63,55,.03)}
+.billing-feature-icon{width:40px;height:40px;flex:none;border-radius:12px;background:#edf5f2;color:#2f6e66;display:grid;place-items:center}
+.billing-feature-icon svg{width:19px;height:19px}
+.billing-feature-card b{display:block;color:#1f302c;font-size:13.5px;letter-spacing:-.01em}
+.billing-feature-card p{margin:5px 0 0;color:#6c7975;font-size:12px;line-height:1.5}
+.billing-plans{margin-top:32px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.billing-plan-card{padding:22px;border-radius:20px;border:1px solid #e1e8e4;background:#fff}
+.billing-plan-card b{display:block;margin-top:6px;font-size:19px;color:#1f302c;letter-spacing:-.02em}
+.billing-plan-card p{margin:8px 0 0;color:#6c7975;font-size:12px;line-height:1.5}
+.billing-plan-eyebrow{font-size:10px;font-weight:800;letter-spacing:.1em;color:#7b8985}
+.billing-plan-annual{background:linear-gradient(150deg,#f5faf8,#edf6f3);border-color:#cfe3dc}
+.billing-plan-annual .billing-plan-eyebrow{color:#2f6e66}
+.billing-footnote{margin:34px 0 0;color:#93a09b;font-size:11px;line-height:1.6;max-width:640px}
+@media(max-width:760px){
+  .clariti-billing-page{padding:28px 16px 64px}
+  .billing-hero h1{font-size:27px}
+  .billing-status-card{flex-direction:column;align-items:stretch}
+  .billing-actions{align-items:stretch}
+  .billing-primary-cta{justify-content:center}
+  .billing-feature-grid,.billing-plans{grid-template-columns:1fr}
+}

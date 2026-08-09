@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Bell, CalendarClock, ChevronRight, Phone, RefreshCw } from "lucide-react";
+import { Bell, CalendarClock, ChevronRight, Mail, RefreshCw } from "lucide-react";
 import { ClaritiShell } from "@/components/clariti-shell";
 
 type FollowUpRow = {
   id: string;
   session_id: string;
-  channel: "phone" | "in_app";
+  channel: "email" | "phone" | "in_app";
   action: string;
   document_title: string;
   document_kind: string;
@@ -19,19 +19,25 @@ type FollowUpRow = {
   created_at?: string | null;
 };
 
+async function fetchFollowUpRows(): Promise<FollowUpRow[]> {
+  const response = await fetch("/api/follow-ups", { cache: "no-store" });
+  const payload = await response.json();
+  if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not load follow-ups");
+  return payload.followUps ?? [];
+}
+
 export default function FollowUpsPage() {
   const [followUps, setFollowUps] = useState<FollowUpRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   async function loadFollowUps() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/follow-ups", { cache: "no-store" });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not load follow-ups");
-      setFollowUps(payload.followUps ?? []);
+      setFollowUps(await fetchFollowUpRows());
+      setNow(Date.now());
     } catch (caught) {
       setFollowUps([]);
       setError(caught instanceof Error ? caught.message : "Could not load follow-ups");
@@ -41,16 +47,32 @@ export default function FollowUpsPage() {
   }
 
   useEffect(() => {
-    void loadFollowUps();
+    let cancelled = false;
+    fetchFollowUpRows()
+      .then((rows) => {
+        if (cancelled) return;
+        setFollowUps(rows);
+        setNow(Date.now());
+      })
+      .catch((caught) => {
+        if (cancelled) return;
+        setFollowUps([]);
+        setError(caught instanceof Error ? caught.message : "Could not load follow-ups");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const grouped = useMemo(() => {
-    const now = Date.now();
     return {
       upcoming: followUps.filter((item) => new Date(item.scheduled_for).getTime() >= now && !item.triggered_at),
       completed: followUps.filter((item) => new Date(item.scheduled_for).getTime() < now || item.triggered_at),
     };
-  }, [followUps]);
+  }, [followUps, now]);
 
   return (
     <ClaritiShell>
@@ -58,8 +80,8 @@ export default function FollowUpsPage() {
         <header className="followups-heading">
           <div>
             <p className="clariti-kicker">FOLLOW-UPS</p>
-            <h1>Scheduled calls</h1>
-            <p>Clariti keeps document context, call purpose, timing and phone number together.</p>
+            <h1>Email check-ins</h1>
+            <p>Clariti emails you later about a saved document to ask if anything changed or needs further analysis.</p>
           </div>
           <button type="button" onClick={() => void loadFollowUps()} disabled={loading}>
             <RefreshCw className={loading ? "spinning" : ""} /> Refresh
@@ -68,8 +90,8 @@ export default function FollowUpsPage() {
 
         {error ? <p className="followups-error">{error}</p> : null}
 
-        <FollowUpSection title="Upcoming" empty="No upcoming follow-ups yet." rows={grouped.upcoming} />
-        <FollowUpSection title="Past or triggered" empty="Completed calls will appear here." rows={grouped.completed} />
+        <FollowUpSection title="Upcoming" empty="No upcoming email check-ins yet." rows={grouped.upcoming} />
+        <FollowUpSection title="Past or sent" empty="Sent check-ins will appear here." rows={grouped.completed} />
       </main>
 
       <style jsx global>{`
@@ -87,10 +109,10 @@ function FollowUpSection({ empty, rows, title }: { empty: string; rows: FollowUp
         <div className="followups-list">
           {rows.map((row) => (
             <Link className="followup-row" href={`/workspace?sessionId=${row.session_id}`} key={row.id}>
-              <span className="followup-icon">{row.channel === "phone" ? <Phone /> : <Bell />}</span>
+              <span className="followup-icon">{row.channel === "email" || looksLikeEmail(row.phone_number) ? <Mail /> : <Bell />}</span>
               <span className="followup-main">
                 <strong>{row.action || row.document_title}</strong>
-                <span>{row.document_title} · {row.phone_number ?? "No phone saved"}</span>
+                <span>{row.document_title} · {row.phone_number ?? "Account email"}</span>
               </span>
               <span className="followup-meta">
                 <span>{formatFollowUpTime(row.scheduled_for)}</span>
@@ -119,4 +141,8 @@ function formatFollowUpTime(value: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function looksLikeEmail(value?: string | null) {
+  return Boolean(value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
 }

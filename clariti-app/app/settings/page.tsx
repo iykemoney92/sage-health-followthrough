@@ -5,6 +5,7 @@ import {
   BrainCircuit,
   ChevronRight,
   CircleHelp,
+  CreditCard,
   FileText,
   LockKeyhole,
   LogOut,
@@ -74,6 +75,7 @@ export default function SettingsPage() {
   const [account, setAccount] = useState<AccountState>({ configured: false, authenticated: false, user: null });
   const [counts, setCounts] = useState<CountsState>({ documents: 0, conversations: 0, followUps: 0 });
   const [followUps, setFollowUps] = useState<FollowUpRow[]>([]);
+  const [billing, setBilling] = useState<{ hasPlus: boolean; status: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
   const [panel, setPanel] = useState<SettingsPanel>(null);
@@ -83,17 +85,19 @@ export default function SettingsPage() {
 
     async function loadSettings() {
       try {
-        const [authResponse, documentsResponse, sessionsResponse, followUpsResponse] = await Promise.all([
+        const [authResponse, documentsResponse, sessionsResponse, followUpsResponse, billingResponse] = await Promise.all([
           fetch("/api/auth/status"),
           fetch("/api/documents"),
           fetch("/api/sessions"),
           fetch("/api/follow-ups"),
+          fetch("/api/billing/access").catch(() => null),
         ]);
 
         const authPayload = await authResponse.json();
         const documentsPayload = documentsResponse.ok ? await documentsResponse.json() : null;
         const sessionsPayload = sessionsResponse.ok ? await sessionsResponse.json() : null;
         const followUpsPayload = followUpsResponse.ok ? await followUpsResponse.json() : null;
+        const billingPayload = billingResponse?.ok ? await billingResponse.json() : null;
         const savedFollowUps = followUpsPayload?.ok ? followUpsPayload.followUps ?? [] : [];
 
         if (!alive) return;
@@ -109,11 +113,13 @@ export default function SettingsPage() {
           followUps: savedFollowUps.length,
         });
         setFollowUps(savedFollowUps);
+        setBilling(billingPayload?.ok ? { hasPlus: Boolean(billingPayload.hasPlus), status: billingPayload.status } : null);
       } catch {
         if (!alive) return;
         setAccount({ configured: false, authenticated: false, user: null });
         setCounts({ documents: 0, conversations: 0, followUps: 0 });
         setFollowUps([]);
+        setBilling(null);
       } finally {
         if (alive) setLoading(false);
       }
@@ -140,13 +146,14 @@ export default function SettingsPage() {
 
   const preferenceRows: SettingsRowData[] = [
     { Icon: Mic2, title: "Voice explanation", copy: "Clariti call context for document follow-ups", meta: "Ready", action: () => setPanel("voice") },
-    { Icon: Bell, title: "Follow-up reminders", copy: "Phone follow-ups scheduled from document actions", meta: loading ? "..." : String(counts.followUps), action: () => router.push("/follow-ups") },
+    { Icon: Bell, title: "Follow-up reminders", copy: "Email check-ins scheduled from document actions", meta: loading ? "..." : String(counts.followUps), action: () => router.push("/follow-ups") },
     { Icon: SlidersHorizontal, title: "Analysis preferences", copy: "Plain language, source-grounded explanations", meta: "Default", action: () => setPanel("preferences") },
   ];
 
   const claritiRows: SettingsRowData[] = [
     { Icon: BrainCircuit, title: "Saved analyses", copy: "Conversations created from your documents", meta: loading ? "..." : String(counts.conversations), action: () => router.push("/history") },
     { Icon: FileText, title: "Documents", copy: "Health documents attached to Clariti", meta: loading ? "..." : String(counts.documents), action: () => router.push("/documents") },
+    { Icon: CreditCard, title: "Clariti Plus", copy: "Unlimited analyses, videos, compare, and follow-ups", meta: loading ? "..." : billing?.hasPlus ? "Plus" : "Free", action: () => router.push("/billing") },
     { Icon: UserRound, title: "Account", copy: account.configured ? "Supabase authentication connected" : "Supabase not configured", meta: account.authenticated ? "Signed in" : "Signed out", action: () => setPanel("account") },
   ];
 

@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { claritiAnalysisSchema } from "@/lib/ai/clariti-analysis";
+import { requirePlusAccess } from "@/lib/billing/subscription";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
 
 const requestSchema = z.object({
   sessionId: z.string().default("clariti-session"),
-  channel: z.enum(["phone", "in_app"]).default("phone"),
+  channel: z.enum(["email", "in_app"]).default("email"),
   scheduledFor: z.string().datetime(),
   action: z.string().min(1),
-  phoneNumber: z.string().trim().min(7).optional(),
+  email: z.string().trim().email().optional(),
   analysis: claritiAnalysisSchema,
 });
 
@@ -53,15 +54,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { action, analysis, channel, phoneNumber, scheduledFor, sessionId } = parsed.data;
+  const { action, analysis, channel, email, scheduledFor, sessionId } = parsed.data;
   const user = await getSessionUser();
   if (hasSupabaseBrowserConfig() && !user) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
+  const checkInEmail = (email ?? user?.email ?? "").trim().toLowerCase();
+  if (!checkInEmail) {
+    return NextResponse.json({ ok: false, error: "An email address is required for Clariti check-ins." }, { status: 400 });
+  }
+
   const callPrompt =
-    `Follow up about "${analysis.title}". Focus on this action: ${action}. ` +
-    `${phoneNumber ? `Call the user on ${phoneNumber}. ` : ""}` +
+    `Email check-in about "${analysis.title}". Focus on this action: ${action}. ` +
+    `Ask whether anything changed, whether they need further analysis or comparison with a newer report, and what they want Clariti to look at next. ` +
     `Use only the stored Clariti analysis and remind the user to confirm clinical, billing, or coverage decisions with the right professional.`;
 
   let persistedId: string | null = null;
@@ -69,6 +75,9 @@ export async function POST(request: NextRequest) {
 
   if (user) {
     const supabase = await getSupabaseSessionClient();
+    const plusResponse = await requirePlusAccess(supabase, user.id, "follow_ups");
+    if (plusResponse) return plusResponse;
+
     const { data: session, error: sessionError } = await supabase
       .from("clariti_sessions")
       .select("id")
@@ -88,7 +97,8 @@ export async function POST(request: NextRequest) {
       document_title: analysis.title,
       document_kind: analysis.kind,
       call_prompt: callPrompt,
-      phone_number: phoneNumber,
+      // Reuse phone_number column as contact destination for email check-ins.
+      phone_number: checkInEmail,
       safety_note: analysis.safetyNote,
       scheduled_for: scheduledFor,
       analysis_payload: analysis,
@@ -109,11 +119,15 @@ export async function POST(request: NextRequest) {
         .select("id")
         .maybeSingle();
       persistedId = (fallbackData?.id as string | undefined) ?? null;
+    } else if (error) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     } else {
       persistedId = (data?.id as string | undefined) ?? null;
     }
 
-    const confirmation = `Done. I saved ${phoneNumber ?? "the phone number"} for ${new Date(scheduledFor).toLocaleString()}. Purpose: ${action}.`;
+    const confirmation =
+      `Done. I’ll email ${checkInEmail} around ${new Date(scheduledFor).toLocaleString()} to check in about: ${action}. ` +
+      "Clariti will ask if anything changed or if you need further analysis.";
     const { data: messageData } = await supabase
       .from("clariti_messages")
       .insert({ session_id: sessionId, role: "assistant", content: confirmation })
@@ -129,7 +143,7 @@ export async function POST(request: NextRequest) {
       sessionId,
       channel,
       scheduledFor,
-      phoneNumber,
+      email: checkInEmail,
       action,
       documentTitle: analysis.title,
       callPrompt,

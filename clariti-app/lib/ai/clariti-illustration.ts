@@ -1,5 +1,6 @@
 import { generateText, type GeneratedFile } from "ai";
 import { claritiVideoAnalysisSchema, type ClaritiVideoAnalysis } from "@/lib/ai/clariti-video";
+import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 
 export const claritiIllustrationAnalysisSchema = claritiVideoAnalysisSchema;
 export type ClaritiIllustrationAnalysis = ClaritiVideoAnalysis;
@@ -58,11 +59,9 @@ Strict accuracy rules:
 - Use only the details below. Do not invent findings, diagnosis, urgency, symptoms, charges, coverage, treatment, or outcomes.
 - Do not include PHI, patient identifiers, MRNs, barcodes, hospital names, or real document screenshots.
 - Include a small readable footer: "Educational only. Not a diagnosis or final billing decision."
-- Keep labels concise and medically careful.
+- Keep labels concise, everyday, and medically careful.
 
-${analysis.kind === "radiology_report" ? buildRadiologyArtDirection(analysis) : ""}
-${analysis.kind === "medical_bill" ? buildBillArtDirection() : ""}
-${analysis.kind === "insurance_eob" ? buildEobArtDirection() : ""}
+${buildKindArtDirection(analysis)}
 
 Grounded key points:
 ${keyPoints || analysis.summary}
@@ -75,6 +74,29 @@ ${analysis.safetyNote}
 
 Visual quality: accurate medical/product illustration, clean editorial healthcare style, detailed but not frightening, light background, teal accent, polished enough for a patient-facing app. Do not create SVG, wireframe UI, hand-drawn icons, or generic clip art.
 `.trim();
+}
+
+function buildKindArtDirection(analysis: ClaritiIllustrationAnalysis) {
+  const family = getClaritiKindMeta(analysis.kind).uiFamily;
+  if (analysis.kind === "radiology_report") return buildRadiologyArtDirection(analysis);
+  if (analysis.kind === "medical_bill") return buildBillArtDirection();
+  if (analysis.kind === "insurance_eob") return buildEobArtDirection();
+  if (family === "lab") {
+    return "Lab art direction: create a clear results visual highlighting key markers and whether they sit inside or outside printed ranges using only source wording.";
+  }
+  if (family === "medication") {
+    return "Medication art direction: create a clear medicine-list visual with names, doses, and timing cues from the source text only.";
+  }
+  if (family === "care_plan") {
+    return "Care-plan art direction: create a simple timeline visual for what happened, what to do next, and any warning or follow-up cues from the source text.";
+  }
+  if (family === "clinical_report") {
+    return "Clinical-report art direction: create an accurate simplified educational diagram for the finding described in the source text, with calm neutral labels.";
+  }
+  if (family === "money") {
+    return "Money/auth art direction: create a clear status and next-step visual using only source-grounded amounts, decisions, and deadlines.";
+  }
+  return "Generic document art direction: create a clean patient-education summary card for the main takeaway and next question from the source text.";
 }
 
 function buildRadiologyArtDirection(analysis: ClaritiIllustrationAnalysis) {

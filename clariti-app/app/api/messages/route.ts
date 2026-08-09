@@ -3,6 +3,8 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 import { z } from "zod";
 import { claritiAnalysisSchema } from "@/lib/ai/clariti-analysis";
+import { requirePlusAccess } from "@/lib/billing/subscription";
+import { getRecentClaritiAnalyses, hasCompareIntent, type ClaritiHistoryEntry } from "@/lib/domain/clariti-history";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
 
 const requestSchema = z.object({
@@ -11,6 +13,7 @@ const requestSchema = z.object({
   analysis: claritiAnalysisSchema,
   followUpDraft: z.object({
     action: z.string().optional(),
+    email: z.string().optional(),
     phoneNumber: z.string().optional(),
     timingText: z.string().optional(),
   }).optional(),
@@ -36,7 +39,21 @@ export async function POST(request: NextRequest) {
     sessionId,
     supabase,
   });
-  const assistantContent = await generateGroundedFollowUp(content, analysis, recoveredDraft);
+
+  let compareEntries: ClaritiHistoryEntry[] = [];
+  if (hasCompareIntent(content)) {
+    compareEntries = await getRecentClaritiAnalyses(supabase, user.id, {
+      kinds: [analysis.kind],
+      excludeSessionId: sessionId,
+      limit: 3,
+    });
+    if (compareEntries.length > 0) {
+      const plusResponse = await requirePlusAccess(supabase, user.id, "compare");
+      if (plusResponse) return plusResponse;
+    }
+  }
+
+  const assistantContent = await generateGroundedFollowUp(content, analysis, recoveredDraft, compareEntries);
   const userMessageCreatedAt = new Date();
   const assistantMessageCreatedAt = new Date(userMessageCreatedAt.getTime() + 1);
 
@@ -79,25 +96,42 @@ async function recoverFollowUpDraftFromSavedThread({
     content,
     ...(data ?? []).map((message) => String(message.content ?? "")),
   ].join("\n");
-  const hasSchedulingIntent = /follow-up|follow up|call me|call back|phone call|schedule|appointment|reminder|preferred day|preferred time|what day and time|what time works/i.test(threadText);
+  const hasSchedulingIntent = /follow-up|follow up|check[- ]?in|email me|schedule|appointment|reminder|preferred day|preferred time|what day and time|what time works/i.test(threadText);
   if (!explicitDraft && !hasSchedulingIntent) return undefined;
 
   return {
     action: explicitDraft?.action ?? analysis.nextActions[0] ?? "review this document with the right professional",
-    phoneNumber: explicitDraft?.phoneNumber ?? extractPhoneNumber(threadText) ?? undefined,
+    email: explicitDraft?.email ?? extractEmailAddress(threadText) ?? undefined,
     timingText: explicitDraft?.timingText ?? (hasSchedulingTime(threadText) ? threadText : undefined),
   };
 }
 
-async function generateGroundedFollowUp(question: string, analysis: z.infer<typeof claritiAnalysisSchema>, followUpDraft?: FollowUpDraft) {
+function buildCompareContext(compareEntries: ClaritiHistoryEntry[]) {
+  if (compareEntries.length === 0) return "No earlier saved documents of the same kind were found to compare against.";
+  return compareEntries
+    .map((entry, index) => {
+      const metrics = entry.metrics.slice(0, 6).map((metric) => `${metric.label}: ${metric.value}`).join("; ");
+      const points = entry.keyPoints.slice(0, 4).map((point) => `${point.label} - ${point.detail}`).join(" | ");
+      const savedOn = new Date(entry.createdAt).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+      return `Earlier document ${index + 1} (saved ${savedOn}), "${entry.title}": ${entry.summary} Metrics: ${metrics || "none saved"}. Key points: ${points || "none saved"}.`;
+    })
+    .join("\n");
+}
+
+async function generateGroundedFollowUp(
+  question: string,
+  analysis: z.infer<typeof claritiAnalysisSchema>,
+  followUpDraft?: FollowUpDraft,
+  compareEntries: ClaritiHistoryEntry[] = [],
+) {
   const hasGatewayAuth = Boolean(process.env.VERCEL_OIDC_TOKEN || process.env.AI_GATEWAY_API_KEY);
   const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY);
-  if (!hasGatewayAuth && !hasAnthropicKey) return buildGroundedFollowUp(question, analysis, followUpDraft);
+  if (!hasGatewayAuth && !hasAnthropicKey) return buildGroundedFollowUp(question, analysis, followUpDraft, compareEntries);
 
   const draftContext = followUpDraft
     ? [
       followUpDraft.action ? `Follow-up purpose already in progress: ${followUpDraft.action}.` : "",
-      followUpDraft.phoneNumber ? `Known phone number already captured: ${followUpDraft.phoneNumber}. Do not ask for the phone number again.` : "",
+      followUpDraft.email ? `Known email already captured: ${followUpDraft.email}. Do not ask for the email again.` : "",
       followUpDraft.timingText ? `Known timing context already captured: ${followUpDraft.timingText}. Do not ask for timing again unless it is ambiguous.` : "",
     ].filter(Boolean).join(" ")
     : "No follow-up scheduling draft is active.";
@@ -108,26 +142,35 @@ async function generateGroundedFollowUp(question: string, analysis: z.infer<type
         ? process.env.AI_GATEWAY_MODEL ?? "anthropic/claude-sonnet-4.6"
         : anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
       temperature: 0.2,
-      maxOutputTokens: 180,
+      maxOutputTokens: 260,
       system:
-        "You are Clariti, a careful consumer health document copilot. Answer conversationally, but only from the saved analysis. " +
-        "Do not diagnose, prescribe, make final coverage/payment decisions, or invent document findings. " +
-        "Keep replies concise: usually 1-3 short sentences and under 55 words. " +
-        "If the user asks for a phone follow-up, ask only for missing fields: phone number and preferred day/time. Never invent or suggest a default date/time. " +
-        "If the user provides a phone number but no time, ask for the preferred day/time only. " +
-        "If the user provides both phone number and timing, acknowledge briefly that it can be scheduled. " +
+        "You are Clariti, a warm helper who explains confusing health paperwork in everyday language. Answer conversationally, but only from the saved analysis and, if provided, the saved earlier documents. " +
+        "Sound human and simple — not technical. Prefer short words. If you must use a medical or billing term, explain it in plain English. " +
+        "Do not diagnose, prescribe, make final coverage/payment decisions, or invent document findings, numbers, or dates that are not in the saved data. " +
+        "Keep replies concise: usually 1-4 short sentences, longer only for lists the user asked for, and under 130 words. " +
+        "Phone calls are disabled. If the user asks for a follow-up or check-in, schedule an email check-in only. Ask only for missing fields: preferred day/time (and email only if not already known). Never invent or suggest a default date/time. " +
+        "If the user provides timing, acknowledge briefly that the email check-in can be scheduled. " +
+        "Clarify that Clariti will email to ask whether anything changed or if they need further analysis. " +
         "If the user asks for a clinician/doctor question list, create a short prioritized list grounded in saved source anchors. " +
+        "COMPARE REQUESTS: if earlier saved documents are supplied below, compare the current saved analysis against them using only their stored metrics/key points. " +
+        "Name what changed (numbers, status, findings) in plain words, note anything that looks better, worse, or unclear, and always end with a line telling the user to confirm the change with their clinician or billing office — never diagnose why a value changed. " +
+        "If no earlier documents are supplied but the user asked to compare, say Clariti could not find an earlier saved document of that kind to compare against. " +
+        "CREATIVE BUT GROUNDED HELPERS you can produce when asked, always sourced from the saved analysis/comparison and never invented: " +
+        "(1) a short prioritized visit question list, (2) a calm, factual draft message the user could send to their insurer or billing office, " +
+        "(3) a plain-language glossary of 3-6 terms that appear in the saved analysis, (4) a short numbered timeline of what to do next in order, " +
+        "(5) a note flagging any contradiction between the current and an earlier saved document (e.g. two different amounts owed) so the user can ask about it. " +
         "Include one short Source phrase when useful. " +
-        "Write plain text only: no markdown, emoji, bold markers, or headings. Numbered question lists are allowed only when the user asks for questions.",
+        "Write plain text only: no markdown, emoji, bold markers, or headings. Numbered lists are allowed only when the user asked for a list, timeline, or questions.",
       prompt:
         `User message: ${question}\n\n` +
         `Follow-up draft state: ${draftContext}\n\n` +
         `Saved analysis JSON:\n${JSON.stringify(analysis).slice(0, 9000)}\n\n` +
+        `Earlier saved documents for comparison (only used if the user asked to compare):\n${buildCompareContext(compareEntries)}\n\n` +
         "Write the next Clariti reply. Be specific to this user message. Do not add scheduling details the user did not provide.",
     });
-    return cleanAssistantReply(result.text) || buildGroundedFollowUp(question, analysis, followUpDraft);
+    return cleanAssistantReply(result.text) || buildGroundedFollowUp(question, analysis, followUpDraft, compareEntries);
   } catch {
-    return buildGroundedFollowUp(question, analysis, followUpDraft);
+    return buildGroundedFollowUp(question, analysis, followUpDraft, compareEntries);
   }
 }
 
@@ -141,30 +184,40 @@ function cleanAssistantReply(value: string) {
     .trim();
 }
 
-function buildGroundedFollowUp(question: string, analysis: z.infer<typeof claritiAnalysisSchema>, followUpDraft?: FollowUpDraft) {
+function buildGroundedFollowUp(
+  question: string,
+  analysis: z.infer<typeof claritiAnalysisSchema>,
+  followUpDraft?: FollowUpDraft,
+  compareEntries: ClaritiHistoryEntry[] = [],
+) {
   const lower = question.toLowerCase();
   const source = analysis.sourceAnchors[0] ?? "the saved document analysis";
   const amountPoint = analysis.metrics.find((metric) => /\$|£|amount|paid|due|responsibility|billed/i.test(`${metric.label} ${metric.value}`));
   const matchingPoint = analysis.keyPoints.find((point) => lower.includes(point.label.toLowerCase().split(" ")[0])) ?? analysis.keyPoints[0];
   const mainPoint = formatPoint(matchingPoint);
-  const phoneNumber = extractPhoneNumber(question) ?? followUpDraft?.phoneNumber;
+  const email = extractEmailAddress(question) ?? followUpDraft?.email;
   const timingText = `${followUpDraft?.timingText ?? ""} ${question}`.trim();
   const hasTime = hasSchedulingTime(timingText);
 
-  if (/schedule|follow-up|follow up|call back|phone follow|reminder|set.*time/.test(lower)) {
+  if (hasCompareIntent(question)) {
+    if (compareEntries.length === 0) {
+      return `I could not find an earlier saved ${analysis.kind.replaceAll("_", " ")} document to compare this against. Save another one and ask again.`;
+    }
+    return buildFallbackComparison(analysis, compareEntries);
+  }
+
+  if (/schedule|follow-up|follow up|check[- ]?in|email me|reminder|set.*time/.test(lower)) {
     const action = analysis.nextActions[0] ?? "review this document with the relevant clinician or provider";
-    if (phoneNumber && hasTime) return "Got it. I have the phone number and timing, so I can save the follow-up now.";
-    if (phoneNumber) return `Got the phone number. What day and time should Clariti use for the follow-up? Source: ${matchingPoint.sourceAnchor}.`;
-    if (hasTime) return `I have the timing. What phone number should Clariti call? Source: ${matchingPoint.sourceAnchor}.`;
-    return `Yes. I can set up a focused phone follow-up for ${action}. Send the best phone number and preferred day/time. Source: ${matchingPoint.sourceAnchor}.`;
+    if (hasTime) return `Got it. I can schedule an email check-in for that time about: ${action}. Clariti will ask if anything changed or if you need further analysis.`;
+    return `Yes. I can set an email check-in for ${action}. What day and time should Clariti email you? Source: ${matchingPoint.sourceAnchor}.`;
   }
 
-  if (phoneNumber && !hasTime) {
-    return "Got the phone number. What day and time should Clariti use for the follow-up?";
+  if (email && !hasTime) {
+    return "Got the email. What day and time should Clariti use for the check-in?";
   }
 
-  if (phoneNumber && hasTime) {
-    return "Got it. I have the phone number and timing, so I can save the follow-up now.";
+  if (email && hasTime) {
+    return "Got it. I have the email and timing, so I can save the check-in now.";
   }
 
   if (/cancer|tumou?r|malignan|mass|lesion/.test(lower)) {
@@ -202,14 +255,37 @@ function buildGroundedFollowUp(question: string, analysis: z.infer<typeof clarit
   return `From the saved analysis: ${mainPoint} Source: ${matchingPoint.sourceAnchor}.`;
 }
 
+function buildFallbackComparison(analysis: z.infer<typeof claritiAnalysisSchema>, compareEntries: ClaritiHistoryEntry[]) {
+  const earlier = compareEntries[0];
+  const savedOn = new Date(earlier.createdAt).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+  const lines = [`Comparing this to your saved "${earlier.title}" from ${savedOn}:`];
+
+  const matchedMetrics = analysis.metrics
+    .map((metric) => ({ metric, prior: earlier.metrics.find((entry) => entry.label.toLowerCase() === metric.label.toLowerCase()) }))
+    .filter((pair): pair is { metric: typeof pair.metric; prior: NonNullable<typeof pair.prior> } => Boolean(pair.prior));
+
+  if (matchedMetrics.length > 0) {
+    for (const { metric, prior } of matchedMetrics.slice(0, 4)) {
+      lines.push(prior.value === metric.value
+        ? `${metric.label} is unchanged: still ${metric.value}.`
+        : `${metric.label} changed from ${prior.value} to ${metric.value}.`);
+    }
+  } else {
+    lines.push(`Earlier summary: ${earlier.summary}`, `Latest summary: ${analysis.summary}`);
+  }
+
+  lines.push("Ask your clinician or billing office to confirm what this change means before acting on it.");
+  return lines.join(" ");
+}
+
 function formatPoint(point: { label: string; detail: string }) {
   const detail = point.detail.replace(/\s+/g, " ").replace(/\.+$/, ".");
   return `${point.label} - ${detail}`;
 }
 
-function extractPhoneNumber(value: string) {
-  const match = value.match(/(?:\+?\d[\d\s().-]{6,}\d)/);
-  return match?.[0].replace(/\s+/g, " ").trim() ?? null;
+function extractEmailAddress(value: string) {
+  const match = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return match?.[0].trim().toLowerCase() ?? null;
 }
 
 function hasSchedulingTime(value: string) {

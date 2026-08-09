@@ -4,7 +4,13 @@ export const documentKindSchema = z.enum([
   "medical_bill",
   "insurance_eob",
   "radiology_report",
+  "lab_results",
+  "discharge_summary",
   "medication_context",
+  "pathology_report",
+  "referral_letter",
+  "visit_notes",
+  "prior_authorization",
   "unknown",
 ]);
 

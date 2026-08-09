@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { claritiAnalysisSchema } from "@/lib/ai/clariti-analysis";
-import { buildClaritiCallContext } from "@/lib/domain/clariti-call-context";
+import { checkInEmailHtml, checkInEmailText, sendAuthEmail } from "@/lib/integrations/resend";
 import { getOptionalSupabaseServiceClient } from "@/lib/integrations/supabase";
-import { isClaritiElevenLabsAgentConfigured, isElevenLabsCallingConfigured, placeOutboundCall, toE164 } from "@/lib/integrations/elevenlabs";
 
-const STALE_THRESHOLD_MINUTES = 60;
+const STALE_THRESHOLD_MINUTES = 60 * 24 * 3; // email check-ins stay valid for a few days
 
 type DueFollowUp = {
   id: string;
   session_id: string;
   owner_id: string;
+  channel: string | null;
   phone_number: string | null;
   action: string;
   document_title: string;
@@ -45,18 +44,11 @@ async function triggerDueFollowUps(request: NextRequest, mode: "agent" | "cron")
     return NextResponse.json({ ok: false, error: "Supabase service role is not configured." }, { status: 503 });
   }
 
-  if (!isElevenLabsCallingConfigured()) {
-    return NextResponse.json({ ok: false, error: "ElevenLabs outbound calling is not configured." }, { status: 503 });
-  }
-  if (!isClaritiElevenLabsAgentConfigured()) {
-    return NextResponse.json({ ok: false, error: "Clariti needs CLARITI_ELEVENLABS_AGENT_ID before scheduled calls can run." }, { status: 503 });
-  }
-
   const now = new Date();
   const nowIso = now.toISOString();
   const { data, error } = await supabase
     .from("clariti_follow_ups")
-    .select("id, session_id, owner_id, phone_number, action, document_title, document_kind, call_prompt, safety_note, scheduled_for, analysis_payload")
+    .select("id, session_id, owner_id, channel, phone_number, action, document_title, document_kind, call_prompt, safety_note, scheduled_for, analysis_payload")
     .is("triggered_at", null)
     .lte("scheduled_for", nowIso)
     .order("scheduled_for", { ascending: true })
@@ -67,11 +59,30 @@ async function triggerDueFollowUps(request: NextRequest, mode: "agent" | "cron")
   const due = (data ?? []) as DueFollowUp[];
   if (due.length === 0) return NextResponse.json({ ok: true, triggered: [] });
 
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://useclariti.app").replace(/\/$/, "");
   const results: Record<string, unknown>[] = [];
+
   for (const followUp of due) {
-    if (!followUp.phone_number) {
-      await supabase.from("clariti_follow_ups").update({ triggered_at: nowIso, call_status: "skipped_no_phone" }).eq("id", followUp.id);
-      results.push({ followUpId: followUp.id, status: "skipped_no_phone" });
+    const channel = (followUp.channel || "email").toLowerCase();
+    const contact = (followUp.phone_number || "").trim();
+
+    // Phone follow-ups are disabled for now — skip legacy phone rows.
+    if (channel === "phone" || looksLikePhone(contact)) {
+      await supabase
+        .from("clariti_follow_ups")
+        .update({ triggered_at: nowIso, call_status: "skipped_phone_disabled" })
+        .eq("id", followUp.id);
+      results.push({ followUpId: followUp.id, status: "skipped_phone_disabled" });
+      continue;
+    }
+
+    const email = looksLikeEmail(contact) ? contact.toLowerCase() : await resolveOwnerEmail(supabase, followUp.owner_id);
+    if (!email) {
+      await supabase
+        .from("clariti_follow_ups")
+        .update({ triggered_at: nowIso, call_status: "skipped_no_email" })
+        .eq("id", followUp.id);
+      results.push({ followUpId: followUp.id, status: "skipped_no_email" });
       continue;
     }
 
@@ -82,44 +93,46 @@ async function triggerDueFollowUps(request: NextRequest, mode: "agent" | "cron")
       continue;
     }
 
-    const originalDocumentText = await fetchSessionDocumentText(supabase, followUp.session_id, followUp.owner_id);
-    const parsedAnalysis = claritiAnalysisSchema.safeParse(followUp.analysis_payload);
-    const callContext = parsedAnalysis.success
-      ? buildClaritiCallContext({
-          analysis: parsedAnalysis.data,
-          goal: followUp.call_prompt,
-          originalDocumentText,
-          sessionId: followUp.session_id,
-          userId: followUp.owner_id,
-        })
-      : {
-          dynamicVariables: buildFallbackDynamicVariables(followUp, originalDocumentText),
-          conversationConfigOverride: buildFallbackConversationOverride(followUp, originalDocumentText),
-        };
-
+    const workspaceUrl = `${appUrl}/workspace?sessionId=${encodeURIComponent(followUp.session_id)}`;
     try {
-      const call = await placeOutboundCall({
-        toNumber: toE164(followUp.phone_number),
-        dynamicVariables: callContext.dynamicVariables,
-        conversationConfigOverride: callContext.conversationConfigOverride,
+      const sent = await sendAuthEmail({
+        to: email,
+        subject: `Clariti check-in: ${followUp.document_title}`,
+        html: checkInEmailHtml({
+          documentTitle: followUp.document_title,
+          action: followUp.action,
+          workspaceUrl,
+        }),
+        text: checkInEmailText({
+          documentTitle: followUp.document_title,
+          action: followUp.action,
+          workspaceUrl,
+        }),
+        idempotencyKey: `clariti-checkin/${followUp.id}`,
       });
+
+      if (!sent.ok) throw new Error(sent.error);
+
       await supabase
         .from("clariti_follow_ups")
         .update({
           triggered_at: nowIso,
-          call_status: "placed",
-          call_conversation_id: call.conversation_id ?? null,
+          call_status: "email_sent",
           call_error: null,
         })
         .eq("id", followUp.id);
+
       await supabase.from("clariti_messages").insert({
         session_id: followUp.session_id,
         role: "assistant",
-        content: `Placed the scheduled follow-up call for: ${followUp.action}.`,
+        content:
+          `I sent your email check-in about “${followUp.document_title}”. ` +
+          "Open Clariti if anything changed or you want further analysis.",
       });
-      results.push({ followUpId: followUp.id, status: "placed", conversationId: call.conversation_id ?? null });
-    } catch (callError) {
-      const message = callError instanceof Error ? callError.message : "Outbound call failed.";
+
+      results.push({ followUpId: followUp.id, status: "email_sent", emailId: sent.id });
+    } catch (sendError) {
+      const message = sendError instanceof Error ? sendError.message : "Check-in email failed.";
       await supabase
         .from("clariti_follow_ups")
         .update({ triggered_at: nowIso, call_status: "failed", call_error: message })
@@ -131,100 +144,21 @@ async function triggerDueFollowUps(request: NextRequest, mode: "agent" | "cron")
   return NextResponse.json({ ok: true, mode, triggered: results });
 }
 
-async function fetchSessionDocumentText(supabase: NonNullable<ReturnType<typeof getOptionalSupabaseServiceClient>>, sessionId: string, ownerId: string) {
-  const { data: link } = await supabase
-    .from("clariti_session_documents")
-    .select("document_id")
-    .eq("session_id", sessionId)
-    .limit(1)
-    .maybeSingle();
-
-  const documentId = (link?.document_id as string | undefined) ?? null;
-  if (!documentId) return null;
-
-  const { data: document } = await supabase
-    .from("clariti_documents")
-    .select("extracted_text")
-    .eq("id", documentId)
-    .eq("owner_id", ownerId)
-    .maybeSingle();
-
-  return (document?.extracted_text as string | null | undefined) ?? null;
+async function resolveOwnerEmail(
+  supabase: NonNullable<ReturnType<typeof getOptionalSupabaseServiceClient>>,
+  ownerId: string,
+) {
+  const { data, error } = await supabase.auth.admin.getUserById(ownerId);
+  if (error) return null;
+  return data.user?.email?.trim().toLowerCase() || null;
 }
 
-function buildFallbackDynamicVariables(followUp: DueFollowUp, originalDocumentText: string | null) {
-  const documentTypeLabel = fallbackDocumentKindLabel(followUp.document_kind);
-  const context = [
-    `Document type: ${documentTypeLabel}`,
-    `Document title: ${followUp.document_title}`,
-    `Scheduled follow-up goal: ${followUp.call_prompt}`,
-    originalDocumentText ? `Original extracted document excerpt: ${redactExcerpt(originalDocumentText)}` : "",
-    `Safety boundary: ${followUp.safety_note}`,
-  ].filter(Boolean).join("\n\n");
-  const systemPrompt = [
-    "You are Clariti, a careful consumer health document copilot on a scheduled phone follow-up.",
-    "Always introduce yourself as Clariti. Never say Nura or any other product name.",
-    `This call is about a ${documentTypeLabel}. Do not switch document types.`,
-    "Use only the context below. If something is not in the context, say you do not see it and turn it into a safe question.",
-    "Keep responses concise and ask one useful next question at a time.",
-    "Be proactive about follow-through: suggest one focused next follow-up when it fits the document context, such as clinician questions, a billing office query, or insurer/provider reconciliation.",
-    "If the user accepts, collect only missing details: purpose, phone number, and preferred day/time. Do not ask again for details already known in context.",
-    "Do not diagnose, prescribe, decide urgency, decide insurance coverage, or say the user definitely owes money.",
-    "Clariti context:",
-    context,
-  ].join("\n\n");
-  const firstMessage = `Hi, this is Clariti. I’m calling for your scheduled follow-up about your ${documentTypeLabel}, “${followUp.document_title}”.`;
-
-  return {
-    user_name: "there",
-    user_id: followUp.owner_id,
-    session_id: followUp.session_id,
-    plan_id: followUp.session_id,
-    thread_title: followUp.document_title,
-    document_kind: followUp.document_kind,
-    document_type_label: documentTypeLabel,
-    document_title: followUp.document_title,
-    report_context: context,
-    thread_context: context,
-    original_document_excerpt: originalDocumentText ? redactExcerpt(originalDocumentText) : "",
-    call_goal: followUp.call_prompt,
-    checkin_goal: followUp.call_prompt,
-    safety_boundary: followUp.safety_note,
-    agent_name: "Clariti",
-    assistant_name: "Clariti",
-    product_name: "Clariti",
-    brand_name: "Clariti",
-    clariti_agent_instructions: systemPrompt,
-    clariti_first_message: firstMessage,
-    clariti_system_prompt: systemPrompt,
-  };
+function looksLikeEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-function buildFallbackConversationOverride(followUp: DueFollowUp, originalDocumentText: string | null) {
-  const dynamicVariables = buildFallbackDynamicVariables(followUp, originalDocumentText);
-  return {
-    agent: {
-      first_message: dynamicVariables.clariti_first_message,
-      prompt: {
-        prompt: dynamicVariables.clariti_system_prompt,
-      },
-    },
-  };
-}
-
-function fallbackDocumentKindLabel(kind: string) {
-  if (kind === "radiology_report") return "radiology report";
-  if (kind === "insurance_eob") return "insurance EOB";
-  if (kind === "medical_bill") return "medical bill";
-  return "health document";
-}
-
-function redactExcerpt(value: string) {
-  return value
-    .replace(/\b(MRN|Patient ID|PID|DOB|Date of Birth)\s*[:#]?\s*[A-Za-z0-9/_-]+/gi, "$1: [redacted]")
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email redacted]")
-    .replace(/\+?\d[\d\s().-]{8,}\d/g, "[phone redacted]")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 6000);
+function looksLikePhone(value: string) {
+  if (!value || looksLikeEmail(value)) return false;
+  const digits = value.replace(/\D/g, "");
+  return digits.length >= 7;
 }

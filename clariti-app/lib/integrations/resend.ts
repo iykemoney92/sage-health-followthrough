@@ -16,7 +16,8 @@ function claritiAppUrl() {
 
 /** Shown as the From display name in inboxes — "Clariti <address>". */
 export function getAuthEmailFrom() {
-  return process.env.AUTH_EMAIL_FROM || "Clariti <hello@useclariti.app>";
+  // Send via the verified Resend domain (usenura.app) until useclariti.app is verified.
+  return process.env.AUTH_EMAIL_FROM || "Clariti <hello@usenura.app>";
 }
 
 export async function sendAuthEmail({ to, subject, html, text, idempotencyKey }: SendEmailInput) {
@@ -146,4 +147,71 @@ If you didn’t create a Clariti account, you can ignore this email.
 
 ${site.replace(/^https?:\/\//, "")}
 `;
+}
+
+export function checkInEmailHtml({
+  documentTitle,
+  action,
+  workspaceUrl,
+  firstName,
+}: {
+  documentTitle: string;
+  action: string;
+  workspaceUrl: string;
+  firstName?: string;
+}) {
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  return claritiEmailShell({
+    preview: `Quick Clariti check-in about “${documentTitle}”.`,
+    eyebrow: "Email check-in",
+    title: "Anything changed?",
+    bodyHtml:
+      `${greeting}<br/><br/>` +
+      `This is your scheduled Clariti check-in about <strong>${escapeHtml(documentTitle)}</strong>.` +
+      `<br/><br/>Focus for this check-in: ${escapeHtml(action)}.` +
+      `<br/><br/>Has anything changed since Clariti explained this document? Do you need a further analysis, a comparison with a newer report, or help deciding what to ask next?` +
+      `<br/><br/>Open Clariti to reply in your saved chat — Clariti will only use your saved document context.`,
+    ctaLabel: "Open Clariti check-in",
+    ctaUrl: workspaceUrl,
+    footerNote: "Clariti explains paperwork in plain language. It does not diagnose, prescribe, or make final billing or coverage decisions.",
+  });
+}
+
+export function checkInEmailText({
+  documentTitle,
+  action,
+  workspaceUrl,
+  firstName,
+}: {
+  documentTitle: string;
+  action: string;
+  workspaceUrl: string;
+  firstName?: string;
+}) {
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  const site = claritiAppUrl();
+  return `Clariti — Email check-in
+
+${greeting}
+
+This is your scheduled Clariti check-in about “${documentTitle}”.
+
+Focus for this check-in: ${action}
+
+Has anything changed since Clariti explained this document? Do you need a further analysis, a comparison with a newer report, or help deciding what to ask next?
+
+Open Clariti: ${workspaceUrl}
+
+Clariti explains paperwork in plain language. It does not diagnose, prescribe, or make final billing or coverage decisions.
+
+${site.replace(/^https?:\/\//, "")}
+`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }

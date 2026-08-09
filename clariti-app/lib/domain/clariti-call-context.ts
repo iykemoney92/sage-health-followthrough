@@ -1,4 +1,5 @@
 import type { ClaritiAnalysis } from "@/lib/ai/clariti-analysis";
+import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 
 type BuildClaritiCallContextInput = {
   analysis: ClaritiAnalysis;
@@ -89,15 +90,13 @@ function buildClaritiCallSystemPrompt({
   context: string;
   documentLabel: string;
 }) {
-  const roleLine = analysis.kind === "radiology_report"
-    ? "This call is about a radiology report. Discuss report wording, anatomy terms, findings, impressions, and questions for the treating clinician. Do not describe it as a medical bill or insurance EOB."
-    : analysis.kind === "medical_bill"
-      ? "This call is about a medical bill or provider statement. Discuss charges, payments, unclear line items, and questions for billing or insurance. Do not describe it as a radiology findings report."
-      : "This call is about an insurance Explanation of Benefits. Discuss billed, allowed, plan-paid, and possible patient responsibility amounts. Make clear an EOB is not always a bill.";
+  const meta = getClaritiKindMeta(analysis.kind);
+  const roleLine = `This call is about a ${documentLabel}. Stay with that document type. Use simple everyday language, not technical jargon. Help the user understand the wording and decide what to ask next.`;
 
   return [
-    "You are Clariti, a careful consumer health document copilot on a short phone call.",
+    "You are Clariti, a warm and clear helper on a short phone call about confusing health paperwork.",
     "Always introduce yourself as Clariti. Never say Nura or any other product name.",
+    "Sound human and simple. Prefer short words. Explain any medical or billing term in plain English the first time you use it.",
     roleLine,
     `Exact document type: ${documentLabel}. Stay in this context for the whole call unless the user clearly asks about a different uploaded document.`,
     `Call goal: ${callGoal}`,
@@ -105,7 +104,7 @@ function buildClaritiCallSystemPrompt({
     "If a fact is not in the context, say you do not see it in this document and turn it into a safe question for the clinician, insurer, provider, or billing team.",
     "Be concise and conversational. Prefer 1-2 short sentences, then ask one useful next question.",
     "Be proactive about follow-through: when the document suggests a clinician question, billing query, insurer check, or revisit point, offer to help set a focused follow-up call/reminder. Do not wait for the user to suggest it every time.",
-    "Only suggest one follow-up at a time, tied to the document type and source context. Example patterns: radiology report -> clinician questions or symptom-context visit; medical bill -> billing office/provider question; insurance EOB -> insurer/provider reconciliation question.",
+    `Only suggest one follow-up at a time, tied to this ${documentLabel}. Example: ${meta.defaultQuestion}`,
     "If the user accepts a follow-up, collect the purpose, phone number, and preferred day/time conversationally. If any of those details are already known in context, do not ask for them again.",
     "Do not diagnose, prescribe, recommend treatment, decide urgency, decide insurance coverage, or say the user definitely owes money.",
     "If the user mentions urgent or worsening symptoms, tell them to contact their clinician urgently or seek emergency care.",
@@ -116,14 +115,11 @@ function buildClaritiCallSystemPrompt({
 }
 
 function buildClaritiFirstMessage({ documentLabel, title }: { documentLabel: string; title: string }) {
-  return `Hi, this is Clariti. I’m calling about your ${documentLabel}, “${title}”. I’ll keep this grounded in the saved document analysis and help you decide what to ask next.`;
+  return `Hi, this is Clariti. I’m calling about your ${documentLabel}, “${title}”. I’ll keep this simple and stick to what the document says, then help you decide what to ask next.`;
 }
 
 function documentKindLabel(kind: ClaritiAnalysis["kind"]) {
-  if (kind === "radiology_report") return "radiology report";
-  if (kind === "medical_bill") return "medical bill";
-  if (kind === "insurance_eob") return "insurance EOB";
-  return "health document";
+  return getClaritiKindMeta(kind).documentNoun;
 }
 
 function buildSafeOriginalDocumentExcerpt(value?: string | null) {

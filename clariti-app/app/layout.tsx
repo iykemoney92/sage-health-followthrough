@@ -7,6 +7,8 @@ import "./sidebar.css";
 import "./modal.css";
 import "./canvas.css";
 import "./auth.css";
+import { CookieConsent } from "@/components/cookie-consent";
+import { GoogleAnalytics } from "@/components/google-analytics";
 
 export const metadata: Metadata = {
   title: "Clariti",
@@ -20,7 +22,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body data-ui-version="mobile-nav-v2">{children}</body>
+      <body data-ui-version="mobile-nav-v2">
+        {children}
+        <CookieConsent />
+        <GoogleAnalytics />
+      </body>
     </html>
   );
 }

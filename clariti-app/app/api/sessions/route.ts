@@ -10,12 +10,46 @@ export async function GET(request: NextRequest) {
   if (!user) return NextResponse.json({ ok: true, sessions: [] });
 
   const supabase = await getSupabaseSessionClient();
-  const sessionId = request.nextUrl.searchParams.get("sessionId");
+  let sessionId = request.nextUrl.searchParams.get("sessionId");
+  const documentId = request.nextUrl.searchParams.get("documentId");
+
+  if (documentId && !sessionId) {
+    const { data: links, error: linksError } = await supabase
+      .from("clariti_session_documents")
+      .select("session_id")
+      .eq("document_id", documentId);
+
+    if (linksError) {
+      return NextResponse.json({ ok: false, error: linksError.message }, { status: 500 });
+    }
+
+    const linkedSessionIds = (links ?? []).map((link) => link.session_id as string);
+    if (linkedSessionIds.length === 0) {
+      return NextResponse.json({ ok: true, session: null });
+    }
+
+    const { data: sessions, error: sessionsError } = await supabase
+      .from("clariti_sessions")
+      .select("id")
+      .eq("owner_id", user.id)
+      .in("id", linkedSessionIds)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (sessionsError) {
+      return NextResponse.json({ ok: false, error: sessionsError.message }, { status: 500 });
+    }
+
+    sessionId = (sessions?.[0]?.id as string | undefined) ?? null;
+    if (!sessionId) {
+      return NextResponse.json({ ok: true, session: null });
+    }
+  }
 
   if (sessionId) {
     const { data: session, error: sessionError } = await supabase
       .from("clariti_sessions")
-      .select("id, title, status, created_at, updated_at")
+      .select("id, title, status, created_at, updated_at, parent_session_id")
       .eq("owner_id", user.id)
       .eq("id", sessionId)
       .single();
@@ -57,7 +91,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from("clariti_sessions")
-    .select("id, title, status, created_at, updated_at")
+    .select("id, title, status, created_at, updated_at, parent_session_id")
     .eq("owner_id", user.id)
     .order("updated_at", { ascending: false });
 
@@ -107,7 +141,7 @@ export async function POST(request: NextRequest) {
   const { data: session, error } = await supabase
     .from("clariti_sessions")
     .insert({ owner_id: user.id, title: parsed.data.title, status: "active" })
-    .select("id, title, status, created_at, updated_at")
+    .select("id, title, status, created_at, updated_at, parent_session_id")
     .single();
 
   if (error || !session) return NextResponse.json({ ok: false, error: error?.message ?? "Could not create session" }, { status: 500 });

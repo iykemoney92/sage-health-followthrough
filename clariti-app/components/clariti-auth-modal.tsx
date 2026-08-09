@@ -2,6 +2,7 @@
 
 import { ArrowRight, Eye, EyeOff, ShieldCheck, X } from "lucide-react";
 import { FormEvent, useState } from "react";
+import { track } from "@/lib/analytics";
 
 type AuthMode = "signin" | "signup";
 
@@ -59,9 +60,11 @@ export function ClaritiAuthModal({
 
       if (result.requiresEmailConfirmation) {
         setPendingConfirmation(true);
+        track("sign_up_pending_confirmation");
         return;
       }
 
+      track(mode === "signup" ? "sign_up" : "sign_in");
       await onAuthenticated();
     } catch {
       setError("Supabase is not configured yet.");

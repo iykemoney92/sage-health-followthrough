@@ -124,14 +124,19 @@ export async function POST(request: NextRequest) {
   const isDev = process.env.NODE_ENV !== "production";
   if (!sent.ok) {
     console.error("[auth/password] confirmation email failed", sent.error);
-    return NextResponse.json({
-      ok: true,
-      requiresEmailConfirmation: true,
-      user: created.user
-        ? { id: created.user.id, email: created.user.email, name: created.user.user_metadata?.display_name }
-        : null,
-      ...(isDev ? { devConfirmUrl: confirmUrl, emailError: sent.error } : {}),
-    });
+    // Account exists but mail failed — don't pretend an email was sent.
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Account created, but the confirmation email couldn’t be sent. Try “Resend confirmation email” in a minute.",
+        requiresEmailConfirmation: true,
+        user: created.user
+          ? { id: created.user.id, email: created.user.email, name: created.user.user_metadata?.display_name }
+          : null,
+        ...(isDev ? { devConfirmUrl: confirmUrl, emailError: sent.error } : {}),
+      },
+      { status: 502 },
+    );
   }
 
   return NextResponse.json({

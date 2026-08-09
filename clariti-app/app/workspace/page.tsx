@@ -8,18 +8,23 @@ import {
   ArrowLeft,
   Bell,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
   FileDown,
   FileHeart,
   FileText,
   Flag,
+  FlaskConical,
   FolderOpen,
   History,
+  Hospital,
   Image as ImageIcon,
   Menu,
   MessageSquareText,
   MoreHorizontal,
   Paperclip,
-  Phone,
+  Pill,
   Play,
   Plus,
   RefreshCw,
@@ -33,16 +38,29 @@ import {
 } from "lucide-react";
 import { claritiAnalysisSchema, type ClaritiAnalysis, type ClaritiAnalysisKind } from "@/lib/ai/clariti-analysis";
 import { formatHumanVideoError } from "@/lib/ai/clariti-video";
-import { buildFallbackAnalysis } from "@/lib/domain/clariti-fallback-analysis";
+import { getClaritiKindMeta, inferKindFromTitleText, isClaritiAnalysisKind } from "@/lib/domain/clariti-document-kinds";
+import type { ProgressionComparison } from "@/lib/domain/clariti-progression";
+import { trendToSeverityToken } from "@/lib/domain/clariti-severity";
+import { track } from "@/lib/analytics";
+import { FlagCard } from "@/components/clariti/flag-card";
+import { MetricChip } from "@/components/clariti/metric-chip";
+import { KeyPointList } from "@/components/clariti/key-point-list";
+import { AnalysisTeaserCard } from "@/components/clariti/analysis-teaser-card";
+import { buildFallbackAnalysis, inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
 
 type Drawer = "chats" | "documents" | "history";
 type CanvasTab = "summary" | "detail" | "actions";
-type Sheet = "call" | "followup" | "source" | null;
+type Sheet = "followup" | "source" | null;
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt?: number;
+  attachment?: {
+    name: string;
+    previewUrl?: string | null;
+    label?: string;
+  };
 };
 type GeneratedVideo = {
   url: string;
@@ -57,19 +75,26 @@ type GeneratedIllustration = {
 };
 type ChatTimelineItem =
   | { type: "message"; id: string; sortAt: number; message: ChatMessage; messageIndex: number }
-  | { type: "video"; id: string; sortAt: number; video: GeneratedVideo };
+  | { type: "video"; id: string; sortAt: number; video: GeneratedVideo }
+  | { type: "comparison"; id: string; sortAt: number; comparison: ProgressionComparison };
 type FollowUpDraft = {
   action: string;
-  phoneNumber?: string;
+  email?: string;
   timingText?: string;
 };
+function isPlusRequiredPayload(payload: unknown): payload is { error: "plus_required"; message?: string; upgradeUrl?: string } {
+  return Boolean(payload) && typeof payload === "object" && (payload as { error?: unknown }).error === "plus_required";
+}
+
 type ClaritiRequest = {
   kind: ClaritiAnalysisKind;
   question: string;
   documentText: string;
   fileName?: string;
   documentId?: string;
+  requestId?: string;
   createdAt?: number;
+  status?: "pending" | "analyzing" | "done";
   analysis?: ClaritiAnalysis;
   persisted?: unknown;
 };
@@ -92,6 +117,8 @@ type RecentWorkspaceSession = {
   fileName: string;
   pending?: boolean;
   request?: ClaritiRequest;
+  parentId?: string | null;
+  createdAt?: number;
 };
 type DbWorkspaceSession = {
   id: string;
@@ -125,6 +152,8 @@ type DbWorkspaceSession = {
 };
 
 const STORAGE_KEY = "clariti-active-request";
+const BOOT_LOCK_KEY = "clariti-boot-lock";
+const ACTIVE_SESSION_KEY = "clariti-active-session-id";
 let localMessageCounter = 0;
 let localTimestampCounter = 0;
 
@@ -153,8 +182,10 @@ function WorkspaceContent() {
   const [activeRequest, setActiveRequest] = useState<ClaritiRequest | null>(null);
   const [recentSessions, setRecentSessions] = useState<RecentWorkspaceSession[]>([]);
   const [pendingSessions, setPendingSessions] = useState<RecentWorkspaceSession[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [dbSessionId, setDbSessionId] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<Drawer | null>(null);
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [canvasTab, setCanvasTab] = useState<CanvasTab>("summary");
@@ -177,10 +208,24 @@ function WorkspaceContent() {
   const [illustrationError, setIllustrationError] = useState<string | null>(null);
   const [followAction, setFollowAction] = useState("");
   const [followUpDraft, setFollowUpDraft] = useState<FollowUpDraft | null>(null);
-  const [callPhoneNumber, setCallPhoneNumber] = useState("");
-  const [placingCall, setPlacingCall] = useState(false);
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  const [compareAvailable, setCompareAvailable] = useState(false);
+  const [comparisonCards, setComparisonCards] = useState<Array<{ id: string; createdAt: number; comparison: ProgressionComparison }>>([]);
+  const [replacingDocument, setReplacingDocument] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState<{
+    file: File;
+    name: string;
+    previewUrl: string | null;
+  } | null>(null);
+  const chatFileInputRef = useRef<HTMLInputElement>(null);
+  const composerInputRef = useRef<HTMLInputElement>(null);
+  const pendingAttachmentUrlRef = useRef<string | null>(null);
   const activeRequestRef = useRef<ClaritiRequest | null>(null);
   const dbSessionIdRef = useRef<string | null>(null);
+  const analyzeInFlightRef = useRef<string | null>(null);
+  const bootHandledRef = useRef<string | null>(null);
+  const videoGeneratingRef = useRef(false);
+  const handleVideoGeneratedRef = useRef<((url: string, jobId?: string, createdAt?: number) => void) | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -195,6 +240,11 @@ function WorkspaceContent() {
     const alreadyIncluded = combined.some((item) => item.id === activeId);
     return alreadyIncluded ? combined : [{ ...session, id: activeId }, ...combined];
   }, [dbSessionId, pendingSessions, recentSessions, session]);
+  const activeSidebarId = dbSessionId ?? session?.id ?? null;
+  const sidebarGroups = useMemo(
+    () => groupSidebarSessions(sidebarSessions, activeSidebarId),
+    [sidebarSessions, activeSidebarId],
+  );
   const analysis = useMemo(() => {
     if (activeAnalysis) return activeAnalysis;
     if (!activeRequest || loading || booting) return null;
@@ -222,8 +272,21 @@ function WorkspaceContent() {
         video: generatedVideo,
       }]
       : [];
-    return [...messageItems, ...videoItems].sort((a, b) => a.sortAt - b.sortAt);
-  }, [chatMessages, generatedVideo]);
+    const latestMessageAt = messageItems.reduce((max, item) => Math.max(max, item.sortAt), 0);
+    const comparisonItems = comparisonCards.map((card, index) => ({
+      type: "comparison" as const,
+      id: card.id,
+      // Always keep progression cards after the related chat bubbles.
+      sortAt: Math.max(card.createdAt, latestMessageAt + 1 + index),
+      comparison: card.comparison,
+    }));
+    return [...messageItems, ...videoItems, ...comparisonItems].sort((a, b) => {
+      if (a.sortAt !== b.sortAt) return a.sortAt - b.sortAt;
+      // Stable preference: messages → videos → comparison cards
+      const rank = { message: 0, video: 1, comparison: 2 } as const;
+      return rank[a.type] - rank[b.type];
+    });
+  }, [chatMessages, comparisonCards, generatedVideo]);
 
   useEffect(() => {
     activeRequestRef.current = activeRequest;
@@ -233,13 +296,78 @@ function WorkspaceContent() {
     dbSessionIdRef.current = dbSessionId;
   }, [dbSessionId]);
 
+  useEffect(() => {
+    return () => {
+      if (pendingAttachmentUrlRef.current) {
+        URL.revokeObjectURL(pendingAttachmentUrlRef.current);
+        pendingAttachmentUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  const clearPendingAttachment = useCallback(() => {
+    if (pendingAttachmentUrlRef.current) {
+      URL.revokeObjectURL(pendingAttachmentUrlRef.current);
+      pendingAttachmentUrlRef.current = null;
+    }
+    setPendingAttachment(null);
+    if (chatFileInputRef.current) chatFileInputRef.current.value = "";
+  }, []);
+
+  const stageChatAttachment = useCallback((file: File) => {
+    if (pendingAttachmentUrlRef.current) {
+      URL.revokeObjectURL(pendingAttachmentUrlRef.current);
+      pendingAttachmentUrlRef.current = null;
+    }
+    const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(file.name);
+    const previewUrl = isImage ? URL.createObjectURL(file) : null;
+    pendingAttachmentUrlRef.current = previewUrl;
+    setPendingAttachment({ file, name: file.name, previewUrl });
+    if (chatFileInputRef.current) chatFileInputRef.current.value = "";
+  }, []);
+
+  const injectComposerPrompt = useCallback((prompt: string) => {
+    setFollowUpText(prompt);
+    window.requestAnimationFrame(() => {
+      const input = composerInputRef.current;
+      if (!input) return;
+      input.focus();
+      const cursor = prompt.length;
+      input.setSelectionRange(cursor, cursor);
+    });
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void fetch("/api/auth/status", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!alive) return;
+        const email = typeof payload?.user?.email === "string" ? payload.user.email.trim().toLowerCase() : null;
+        setAccountEmail(email);
+      })
+      .catch(() => {
+        if (alive) setAccountEmail(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const showToast = useCallback((message: string) => {
     setToast(message);
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToast(null), 2800);
   }, []);
 
+  const redirectToUpgrade = useCallback((message?: string) => {
+    showToast(message ?? "That is a Clariti Plus feature.");
+    track("plus_upgrade_redirect", { source: "workspace" });
+    window.setTimeout(() => router.push("/billing"), 900);
+  }, [router, showToast]);
+
   const resetVideoState = useCallback(() => {
+    videoGeneratingRef.current = false;
     setGeneratedVideo(null);
     setVideoGenerating(false);
     setVideoStatus(null);
@@ -253,26 +381,68 @@ function WorkspaceContent() {
   }, []);
 
   const hydrateGeneratedVideo = useCallback(async (sessionId: string) => {
-    const job = await fetchLatestVideoJob(sessionId).catch(() => null);
+    const payload = await fetchLatestVideoJob(sessionId).catch(() => null);
     if (dbSessionIdRef.current !== sessionId) return;
-    if (!job) {
+    if (!payload) {
       resetVideoState();
       return;
     }
 
-    setVideoStatus(job.status);
-    setVideoProgress(job.progress ?? 0);
-    setVideoError(job.status === "failed" ? formatHumanVideoError(job.error ?? "The video job failed.") : null);
-    if (job.status === "completed" && job.videoUrl) {
-      setGeneratedVideo((current) => current?.jobId === job.id
+    const job = payload.job;
+    const completedJob = payload.completedJob ?? (job?.status === "completed" && job.videoUrl ? job : null);
+
+    if (completedJob?.videoUrl) {
+      setVideoStatus("completed");
+      setVideoProgress(100);
+      setVideoError(null);
+      setGeneratedVideo((current) => current?.jobId === completedJob.id
         ? current
-        : { url: job.videoUrl!, jobId: job.id, createdAt: videoJobCreatedAt(job) });
+        : { url: completedJob.videoUrl!, jobId: completedJob.id, createdAt: videoJobCreatedAt(completedJob) });
     } else {
       setGeneratedVideo(null);
     }
-  }, [resetVideoState]);
+
+    if (!job) {
+      if (!completedJob) resetVideoState();
+      return;
+    }
+
+    const inFlight = ["queued", "scripting", "generating_scenes", "stitching"].includes(job.status);
+    setVideoStatus(job.status);
+    setVideoProgress(job.progress ?? 0);
+    setVideoError(job.status === "failed" ? formatHumanVideoError(job.error ?? "The video job failed.") : null);
+
+    if (inFlight && !videoGeneratingRef.current) {
+      videoGeneratingRef.current = true;
+      setVideoGenerating(true);
+      void pollSceneVideoJob(job.id, (status, progress) => {
+        if (dbSessionIdRef.current !== sessionId) return;
+        setVideoStatus(status);
+        setVideoProgress(progress);
+      })
+        .then((completed) => {
+          if (dbSessionIdRef.current !== sessionId) return;
+          if (!completed.videoUrl) throw new Error("The video job completed without a video URL.");
+          handleVideoGeneratedRef.current?.(completed.videoUrl, completed.id, videoJobCreatedAt(completed));
+        })
+        .catch((error) => {
+          if (dbSessionIdRef.current !== sessionId) return;
+          const message = formatHumanVideoError(error);
+          setVideoError(message);
+          showToast(message);
+        })
+        .finally(() => {
+          videoGeneratingRef.current = false;
+          if (dbSessionIdRef.current === sessionId) setVideoGenerating(false);
+        });
+    }
+  }, [resetVideoState, showToast]);
 
   const analyzeRequest = useCallback(async (request: ClaritiRequest) => {
+    const fingerprint = requestFingerprint(request);
+    if (analyzeInFlightRef.current === fingerprint) return;
+    analyzeInFlightRef.current = fingerprint;
+
     setLoading(true);
     const pendingKey = pendingSessionKey(request);
     setPendingSessions((current) => {
@@ -286,11 +456,20 @@ function WorkspaceContent() {
       return current.kind === request.kind &&
         (requestDocumentId ? current.documentId === requestDocumentId : current.fileName === requestFileName);
     };
+
+    writeStoredRequest({ ...request, status: "analyzing" });
+    try {
+      window.sessionStorage.setItem(BOOT_LOCK_KEY, fingerprint);
+      window.sessionStorage.removeItem(ACTIVE_SESSION_KEY);
+    } catch {
+      // ignore sessionStorage failures
+    }
+
     try {
       const documentText = request.documentText.trim();
       if (!documentText) throw new Error("Missing document text");
       const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 45000);
+      const timeout = window.setTimeout(() => controller.abort(), 90000);
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -299,9 +478,18 @@ function WorkspaceContent() {
       });
       window.clearTimeout(timeout);
       const payload = await response.json();
+      if (response.status === 402 && isPlusRequiredPayload(payload)) {
+        setPendingSessions((current) => current.filter((item) => item.id !== pendingKey));
+        if (stillCurrentRequest(activeRequestRef.current)) {
+          redirectToUpgrade(payload.message);
+          setLoading(false);
+        }
+        return;
+      }
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Analysis failed");
       const analysis = payload.analysis as ClaritiAnalysis;
       const savedSessionId = payload.persisted?.session?.id as string | undefined;
+      track("analysis_completed", { kind: analysis.kind, reused: Boolean(payload.reused) });
       setPendingSessions((current) => current.filter((item) => item.id !== pendingKey));
       if (savedSessionId) {
         setRecentSessions((current) => {
@@ -314,112 +502,298 @@ function WorkspaceContent() {
         return;
       }
       setActiveAnalysis(analysis);
-      setActiveRequest((current) => current ? { ...current, analysis, persisted: payload.persisted } : current);
+      setActiveRequest((current) => current ? { ...current, analysis, persisted: payload.persisted, status: "done" } : current);
+      clearStoredRequest();
       if (savedSessionId) {
         dbSessionIdRef.current = savedSessionId;
         setDbSessionId(savedSessionId);
-        window.localStorage.removeItem(STORAGE_KEY);
+        try {
+          window.sessionStorage.setItem(ACTIVE_SESSION_KEY, savedSessionId);
+          window.sessionStorage.setItem(BOOT_LOCK_KEY, fingerprint);
+        } catch {
+          // ignore
+        }
+        bootHandledRef.current = `session:${savedSessionId}`;
         window.history.replaceState(null, "", `/workspace?sessionId=${savedSessionId}`);
       }
       setChatMessages((current) => current.some((message) => message.role === "assistant")
         ? current
         : [...current, { id: createLocalId("analysis-assistant"), role: "assistant", content: buildInitialAnalysisReply(analysis), createdAt: createLocalTimestamp() }]);
-      showToast("Clariti generated a source-grounded analysis.");
+      showToast(payload.reused ? "Clariti restored your existing analysis." : "Clariti generated a source-grounded analysis.");
     } catch {
       const fallbackAnalysis = buildFallbackAnalysis({ ...request, documentText: request.documentText });
+      // Persist the fallback so video/illustration can attach to a real session.
+      let persistedSessionId: string | undefined;
+      try {
+        const persistResponse = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...request,
+            documentText: request.documentText,
+            persistOnly: true,
+            analysis: fallbackAnalysis,
+          }),
+        });
+        const persistPayload = await persistResponse.json().catch(() => null);
+        if (persistResponse.ok && persistPayload?.ok) {
+          persistedSessionId = persistPayload.persisted?.session?.id as string | undefined;
+        }
+      } catch {
+        // Ignore persist failures; analysis UI can still show local fallback.
+      }
       setPendingSessions((current) => current.filter((item) => item.id !== pendingKey));
       if (!stillCurrentRequest(activeRequestRef.current)) {
         showToast("Clariti could not finish that background analysis. Please try again from Home.");
         return;
       }
       setActiveAnalysis(fallbackAnalysis);
-      setActiveRequest((current) => current ? { ...current, analysis: fallbackAnalysis } : current);
+      setActiveRequest((current) => current ? { ...current, analysis: fallbackAnalysis, status: "done" } : current);
+      if (persistedSessionId) {
+        clearStoredRequest();
+        dbSessionIdRef.current = persistedSessionId;
+        setDbSessionId(persistedSessionId);
+        try {
+          window.sessionStorage.setItem(ACTIVE_SESSION_KEY, persistedSessionId);
+          window.sessionStorage.setItem(BOOT_LOCK_KEY, fingerprint);
+        } catch {
+          // ignore
+        }
+        bootHandledRef.current = `session:${persistedSessionId}`;
+        window.history.replaceState(null, "", `/workspace?sessionId=${persistedSessionId}`);
+      } else {
+        writeStoredRequest({ ...request, analysis: fallbackAnalysis, status: "done" });
+      }
       setChatMessages((current) => current.some((message) => message.role === "assistant")
         ? current
         : [...current, { id: createLocalId("fallback-assistant"), role: "assistant", content: buildInitialAnalysisReply(fallbackAnalysis), createdAt: createLocalTimestamp() }]);
-      showToast("Using source-grounded fallback analysis until the AI service is configured.");
+      showToast(persistedSessionId
+        ? "Clariti saved a quick local analysis while the full AI pass finishes."
+        : "Using a quick local analysis for now — try again if you need the full AI pass.");
     } finally {
+      if (analyzeInFlightRef.current === fingerprint) analyzeInFlightRef.current = null;
       if (stillCurrentRequest(activeRequestRef.current)) setLoading(false);
     }
-  }, [showToast]);
+  }, [redirectToUpgrade, showToast]);
 
   useEffect(() => {
     let alive = true;
 
-    async function loadWorkspace() {
-      setBooting(true);
+    async function hydrateFromDbSession(sessionPayload: DbWorkspaceSession) {
+      const dbRequest = requestFromDbSession(sessionPayload);
+      if (!dbRequest || !alive) return false;
+      dbSessionIdRef.current = sessionPayload.id;
+      setDbSessionId(sessionPayload.id);
+      activeRequestRef.current = dbRequest;
+      setActiveRequest(dbRequest);
+      setActive(dbRequest.kind);
+      setCanvasTab("summary");
+      setChatMessages(messagesFromDbSession(sessionPayload));
+      void hydrateGeneratedVideo(sessionPayload.id);
+      setActiveAnalysis(dbRequest.analysis ?? null);
       setLoading(false);
-      setActiveAnalysis(null);
-      resetVideoState();
       try {
-        const requestedSessionId = searchParams.get("sessionId");
-        const isNewRequest = searchParams.get("new") === "1";
-        const stored = window.localStorage.getItem(STORAGE_KEY);
-        const pendingRequest = parseStoredRequest(stored);
-        let resolvedSessionId = requestedSessionId;
+        window.sessionStorage.setItem(ACTIVE_SESSION_KEY, sessionPayload.id);
+      } catch {
+        // ignore
+      }
+      bootHandledRef.current = `session:${sessionPayload.id}`;
+      if (typeof window !== "undefined" && !window.location.search.includes(`sessionId=${sessionPayload.id}`)) {
+        window.history.replaceState(null, "", `/workspace?sessionId=${sessionPayload.id}`);
+      }
+      clearStoredRequest();
+      return true;
+    }
+
+    async function loadWorkspace() {
+      const requestedSessionId = searchParams.get("sessionId");
+      const isNewRequest = searchParams.get("new") === "1";
+      const pendingRequest = parseStoredRequest(window.localStorage.getItem(STORAGE_KEY));
+      const fingerprint = pendingRequest ? requestFingerprint(pendingRequest) : null;
+      let bootLock: string | null = null;
+      let lockedSessionId: string | null = null;
+      try {
+        bootLock = window.sessionStorage.getItem(BOOT_LOCK_KEY);
+        lockedSessionId = window.sessionStorage.getItem(ACTIVE_SESSION_KEY);
+      } catch {
+        // ignore
+      }
+
+      const bootKey = requestedSessionId
+        ? `session:${requestedSessionId}`
+        : isNewRequest && fingerprint
+          ? `new:${fingerprint}`
+          : fingerprint && bootLock === fingerprint
+            ? `pending:${fingerprint}`
+            : `default:${requestedSessionId ?? "latest"}`;
+
+      // Skip destructive reboot when the same boot intent is already handled
+      // (e.g. URL cleanup after claiming ?new=1, or analyze finishing with replaceState).
+      if (bootHandledRef.current === bootKey && !isNewRequest) {
+        return;
+      }
+      if (
+        !requestedSessionId &&
+        fingerprint &&
+        bootHandledRef.current === `new:${fingerprint}` &&
+        analyzeInFlightRef.current === fingerprint
+      ) {
+        return;
+      }
+
+      setBooting(true);
+      if (alive) setLoadError(null);
+      resetVideoState();
+
+      try {
         const listResponse = await fetch("/api/sessions", { cache: "no-store" });
         const listPayload = listResponse.ok ? await listResponse.json() : null;
         const accountSessions = listPayload?.ok ? listPayload.sessions?.map(toRecentWorkspaceSession) ?? [] : [];
         if (alive) setRecentSessions(accountSessions);
 
-        if (!requestedSessionId && pendingRequest && (isNewRequest || isFreshPendingRequest(pendingRequest)) && alive) {
-          dbSessionIdRef.current = null;
-          setDbSessionId(null);
+        if (requestedSessionId) {
+          if (bootHandledRef.current === `session:${requestedSessionId}` && dbSessionIdRef.current === requestedSessionId) {
+            return;
+          }
+          // A specific saved session was requested (e.g. a reload of /workspace?sessionId=...).
+          // Retry once before giving up — the very first fetch right after a hard reload can
+          // race the auth cookie and come back unauthorized even for a valid, owned session.
+          let payload: { ok?: boolean; session?: DbWorkspaceSession; error?: string } | null = null;
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            const response = await fetch(`/api/sessions?sessionId=${encodeURIComponent(requestedSessionId)}`, { cache: "no-store" });
+            if (response.ok) {
+              payload = await response.json().catch(() => null);
+              if (payload?.ok) break;
+            } else if (response.status !== 401 && response.status !== 404) {
+              // Non-auth, non-missing failures (5xx, network hiccups) are also worth one retry.
+            } else if (response.status === 404) {
+              payload = { ok: false, error: "not_found" };
+              break;
+            }
+            if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+
+          if (payload?.ok && payload.session && alive) {
+            await hydrateFromDbSession(payload.session as DbWorkspaceSession);
+            return;
+          }
+
+          // Do not fall through to "most recent session" or a blank state — that silently
+          // swaps in the wrong report or hides a saved one. Surface a real error instead.
+          if (alive) {
+            setLoadError(
+              payload?.error === "not_found"
+                ? "This saved report could not be found. It may have been deleted."
+                : "Could not load this saved report. Check your connection and try again.",
+            );
+          }
+          return;
+        }
+
+        // Prefer restoring a session already locked for this pending request.
+        if (!requestedSessionId && fingerprint && bootLock === fingerprint && lockedSessionId) {
+          const response = await fetch(`/api/sessions?sessionId=${encodeURIComponent(lockedSessionId)}`);
+          const payload = response.ok ? await response.json() : null;
+          if (payload?.ok && payload.session && alive) {
+            await hydrateFromDbSession(payload.session as DbWorkspaceSession);
+            return;
+          }
+        }
+
+        // Pending new analysis path (?new=1 or fresh localStorage request).
+        if (!requestedSessionId && pendingRequest && (isNewRequest || isFreshPendingRequest(pendingRequest) || bootLock === fingerprint)) {
+          // Consume ?new=1 immediately so a reload of the same URL can't look like a fresh submit.
+          if (isNewRequest) {
+            window.history.replaceState(null, "", "/workspace");
+          }
+
+          if (alive) {
+            activeRequestRef.current = pendingRequest;
+            setActiveRequest(pendingRequest);
+            setActive(pendingRequest.kind);
+            setCanvasTab("summary");
+            setChatMessages(messagesFromRequest(pendingRequest));
+          }
+
+          if (pendingRequest.analysis) {
+            if (alive) {
+              setActiveAnalysis(pendingRequest.analysis);
+              setLoading(false);
+            }
+            const existingSessionId = getPersistedSessionId(pendingRequest) ?? lockedSessionId;
+            if (existingSessionId) {
+              bootHandledRef.current = `session:${existingSessionId}`;
+              dbSessionIdRef.current = existingSessionId;
+              setDbSessionId(existingSessionId);
+              window.history.replaceState(null, "", `/workspace?sessionId=${existingSessionId}`);
+              clearStoredRequest();
+            } else {
+              bootHandledRef.current = fingerprint ? `new:${fingerprint}` : bootKey;
+            }
+            return;
+          }
+
+          // If this document already has a saved session, restore it instead of regenerating.
+          if (pendingRequest.documentId) {
+            const byDocResponse = await fetch(`/api/sessions?documentId=${encodeURIComponent(pendingRequest.documentId)}`);
+            const byDocPayload = byDocResponse.ok ? await byDocResponse.json() : null;
+            if (byDocPayload?.ok && byDocPayload.session && alive) {
+              await hydrateFromDbSession(byDocPayload.session as DbWorkspaceSession);
+              return;
+            }
+          }
+
+          bootHandledRef.current = fingerprint ? `new:${fingerprint}` : bootKey;
+          if (fingerprint && analyzeInFlightRef.current === fingerprint) {
+            if (alive) setLoading(true);
+            return;
+          }
+
+          // Claim once per request fingerprint for this tab.
+          if (fingerprint) {
+            try {
+              window.sessionStorage.setItem(BOOT_LOCK_KEY, fingerprint);
+            } catch {
+              // ignore
+            }
+          }
+
+          if (alive) {
+            setActiveAnalysis(null);
+            setLoading(true);
+            void analyzeRequest({ ...pendingRequest, status: "analyzing" });
+          }
+          return;
+        }
+
+        // Default: open the most recent account session.
+        let resolvedSessionId = listPayload?.ok ? listPayload.sessions?.[0]?.id ?? null : null;
+        if (resolvedSessionId) {
+          const response = await fetch(`/api/sessions?sessionId=${encodeURIComponent(resolvedSessionId)}`);
+          const payload = response.ok ? await response.json() : null;
+          if (payload?.ok && payload.session && alive) {
+            await hydrateFromDbSession(payload.session as DbWorkspaceSession);
+            return;
+          }
+        }
+
+        // Stale pending request with analysis only — show it, never re-run LLM blindly.
+        if (pendingRequest && alive) {
           activeRequestRef.current = pendingRequest;
           setActiveRequest(pendingRequest);
           setActive(pendingRequest.kind);
           setCanvasTab("summary");
           setChatMessages(messagesFromRequest(pendingRequest));
-          if (pendingRequest.analysis) {
-            setActiveAnalysis(pendingRequest.analysis);
-          } else {
-            void analyzeRequest(pendingRequest);
-          }
-          return;
-        }
-
-        if (!resolvedSessionId && !isNewRequest) {
-          resolvedSessionId = listPayload?.ok ? listPayload.sessions?.[0]?.id ?? null : null;
-        }
-
-        if (resolvedSessionId) {
-          const response = await fetch(`/api/sessions?sessionId=${encodeURIComponent(resolvedSessionId)}`);
-          const payload = response.ok ? await response.json() : null;
-          if (payload?.ok && payload.session) {
-            const dbRequest = requestFromDbSession(payload.session as DbWorkspaceSession);
-            if (dbRequest && alive) {
-              dbSessionIdRef.current = payload.session.id;
-              setDbSessionId(payload.session.id);
-              activeRequestRef.current = dbRequest;
-              setActiveRequest(dbRequest);
-              setActive(dbRequest.kind);
-              setCanvasTab("summary");
-              setChatMessages(messagesFromDbSession(payload.session as DbWorkspaceSession));
-              void hydrateGeneratedVideo(payload.session.id);
-              if (dbRequest.analysis) {
-                setActiveAnalysis(dbRequest.analysis);
-              } else {
-                void analyzeRequest(dbRequest);
-              }
-              return;
-            }
-          }
-        }
-
-        const request = pendingRequest;
-        if (request && alive) {
-          dbSessionIdRef.current = null;
+          setActiveAnalysis(pendingRequest.analysis ?? null);
+          setLoading(false);
+          bootHandledRef.current = fingerprint ? `pending:${fingerprint}` : "empty";
+        } else if (alive) {
+          setActiveRequest(null);
+          setActiveAnalysis(null);
+          setChatMessages([]);
           setDbSessionId(null);
-          activeRequestRef.current = request;
-          setActiveRequest(request);
-          setActive(request.kind);
-          setCanvasTab("summary");
-          setChatMessages(messagesFromRequest(request));
-          if (request.analysis) {
-            setActiveAnalysis(request.analysis);
-          } else {
-            void analyzeRequest(request);
-          }
+          dbSessionIdRef.current = null;
+          bootHandledRef.current = "empty";
         }
       } finally {
         if (alive) setBooting(false);
@@ -446,6 +820,7 @@ function WorkspaceContent() {
   }, [generatedVideo?.url]);
 
   const selectSession = (item: RecentWorkspaceSession | WorkspaceSession) => {
+    setComparisonCards([]);
     if ("pending" in item && item.pending && item.request) {
       dbSessionIdRef.current = null;
       setDbSessionId(null);
@@ -462,12 +837,22 @@ function WorkspaceContent() {
       return;
     }
     if (item.id !== dbSessionId) {
+      bootHandledRef.current = null;
       router.push(`/workspace?sessionId=${encodeURIComponent(item.id)}`);
     }
     setActive(item.kind);
     setCanvasTab("summary");
     setDrawer(null);
     setCanvasOpen(false);
+  };
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
   const openSheet = (nextSheet: Sheet) => {
@@ -480,19 +865,60 @@ function WorkspaceContent() {
       if (current?.url.startsWith("blob:")) URL.revokeObjectURL(current.url);
       return { url, jobId, createdAt };
     });
+    setVideoStatus("completed");
+    setVideoProgress(100);
+    setVideoError(null);
     setCanvasOpen(false);
-    showToast("Video explanation added to the chat.");
+    showToast("Video explanation saved and added to the chat.");
+    track("video_generated", { kind: activeRequestRef.current?.kind });
   };
+
+  useEffect(() => {
+    handleVideoGeneratedRef.current = handleVideoGenerated;
+  });
 
   const generateHumanVideo = async (durationSeconds: number) => {
     if (!analysis) return;
+    let sessionId = dbSessionId;
+    if (!sessionId && activeRequest) {
+      showToast("Saving this chat first so Clariti can attach the video…");
+      try {
+        const persistResponse = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...activeRequest,
+            documentText: activeRequest.documentText,
+            persistOnly: true,
+            analysis,
+          }),
+        });
+        const persistPayload = await persistResponse.json().catch(() => null);
+        sessionId = (persistPayload?.persisted?.session?.id as string | undefined) ?? null;
+        if (sessionId) {
+          dbSessionIdRef.current = sessionId;
+          setDbSessionId(sessionId);
+          window.history.replaceState(null, "", `/workspace?sessionId=${sessionId}`);
+        }
+      } catch {
+        // fall through to explicit error below
+      }
+    }
+    if (!sessionId) {
+      const message = "This chat isn’t saved yet. Wait for Clariti to finish analyzing, then try Generate again.";
+      setVideoError(message);
+      showToast(message);
+      return;
+    }
+    if (videoGeneratingRef.current) return;
+    videoGeneratingRef.current = true;
     setVideoGenerating(true);
     setVideoError(null);
     setVideoStatus("queued");
     setVideoProgress(5);
     setCanvasOpen(false);
     try {
-      const job = await createSceneVideoJob(analysis, durationSeconds, dbSessionId);
+      const job = await createSceneVideoJob(analysis, durationSeconds, sessionId);
       setVideoStatus(job.status);
       setVideoProgress(job.progress ?? 5);
       const completed = await pollSceneVideoJob(job.id, (status, progress) => {
@@ -502,10 +928,16 @@ function WorkspaceContent() {
       if (!completed.videoUrl) throw new Error("The video job completed without a video URL.");
       handleVideoGenerated(completed.videoUrl, completed.id, videoJobCreatedAt(completed));
     } catch (error) {
-      const message = formatHumanVideoError(error);
-      setVideoError(message);
-      showToast(message);
+      if (error instanceof Error && "plusRequired" in error) {
+        setCanvasOpen(false);
+        redirectToUpgrade(error.message);
+      } else {
+        const message = formatHumanVideoError(error);
+        setVideoError(message);
+        showToast(message);
+      }
     } finally {
+      videoGeneratingRef.current = false;
       setVideoGenerating(false);
     }
   };
@@ -525,63 +957,13 @@ function WorkspaceContent() {
         },
       }));
       showToast("Illustration generated for this scene.");
+      track("illustration_generated", { kind: analysis.kind });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Clariti could not generate the illustration.";
       setIllustrationError(message);
       showToast(message);
     } finally {
       setIllustrationGenerating(false);
-    }
-  };
-
-  const startCall = async () => {
-    if (!analysis) {
-      showToast("Start an analysis before preparing a call.");
-      return;
-    }
-    if (!dbSessionId) {
-      showToast("Save the analysis before placing a call.");
-      return;
-    }
-    if (callPhoneNumber.trim().replace(/[^\d]/g, "").length < 7) {
-      showToast("Enter the phone number Clariti should call.");
-      return;
-    }
-    setPlacingCall(true);
-    try {
-      const response = await fetch("/api/calls/outbound", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          sessionId: dbSessionId,
-          phoneNumber: callPhoneNumber,
-          action: `Talk through ${analysis.title} and decide what to ask next.`,
-          analysis,
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Call failed");
-      const savedMessage = payload.message as { id: string; role: string; content: string; created_at?: string } | null;
-      setChatMessages((current) => [
-        ...current,
-        savedMessage ? {
-          id: savedMessage.id,
-          role: "assistant",
-          content: savedMessage.content,
-          createdAt: timestampFromIso(savedMessage.created_at) ?? createLocalTimestamp(),
-        } : {
-          id: createLocalId("call-placed"),
-          role: "assistant",
-          content: "Calling now. Clariti will keep the call grounded in this saved analysis.",
-          createdAt: createLocalTimestamp(),
-        },
-      ]);
-      setSheet(null);
-      showToast("Clariti is placing the call now.");
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Clariti could not place the call.");
-    } finally {
-      setPlacingCall(false);
     }
   };
 
@@ -632,6 +1014,11 @@ function WorkspaceContent() {
         body: JSON.stringify({ sessionId: dbSessionId, content, analysis, followUpDraft: pendingDraft }),
       });
       const payload = await response.json();
+      if (response.status === 402 && isPlusRequiredPayload(payload)) {
+        setChatMessages((current) => current.filter((message) => message.id !== userMessage.id));
+        redirectToUpgrade(payload.message);
+        return;
+      }
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not send message");
 
       const savedMessages = Array.isArray(payload.messages)
@@ -664,7 +1051,325 @@ function WorkspaceContent() {
   };
 
   const sendFollowUp = async () => {
-    await sendMessageToAgent(followUpText.trim());
+    const text = followUpText.trim();
+    const attachment = pendingAttachment;
+    if (attachment) {
+      await processAttachedDocument(attachment, text);
+      return;
+    }
+    if (!text) return;
+    await sendMessageToAgent(text);
+  };
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadCompareAvailability() {
+      if (!analysis || !dbSessionId) {
+        if (alive) setCompareAvailable(false);
+        return;
+      }
+      const params = new URLSearchParams({ kind: analysis.kind, excludeSessionId: dbSessionId, limit: "1" });
+      try {
+        const response = await fetch(`/api/documents/history?${params.toString()}`, { cache: "no-store" });
+        const payload = response.ok ? await response.json() : null;
+        if (alive) setCompareAvailable(Boolean(payload?.ok && payload.history?.length));
+      } catch {
+        if (alive) setCompareAvailable(false);
+      }
+    }
+
+    void loadCompareAvailability();
+    return () => {
+      alive = false;
+    };
+  }, [analysis, dbSessionId]);
+
+  const processAttachedDocument = async (
+    attachment: { file: File; name: string; previewUrl: string | null },
+    userMessage: string,
+  ) => {
+    if (replacingDocument) return;
+    const file = attachment.file;
+    const previousAnalysis = analysis;
+    const previousSessionId = dbSessionId;
+    const question = userMessage.trim()
+      || (previousAnalysis
+        ? `Please explain this newer ${getClaritiKindMeta(previousAnalysis.kind).documentNoun} in plain English and note what changed from my earlier report.`
+        : "Please explain this health document in plain English.");
+
+    const uploadedAt = createLocalTimestamp();
+    const userMessageId = createLocalId("upload-user");
+    const cleanUserText = userMessage.trim();
+    // Keep a filename mention for the agent/API; the chat bubble renders a thumbnail chip instead.
+    const userContentForAgent = cleanUserText
+      ? `${cleanUserText}\n\nAttached: ${file.name}`
+      : `Please read this document: ${file.name}`;
+    const messagePreviewUrl = attachment.previewUrl;
+    if (pendingAttachmentUrlRef.current === messagePreviewUrl) {
+      pendingAttachmentUrlRef.current = null;
+    }
+    clearPendingAttachment();
+    setFollowUpText("");
+    setReplacingDocument(true);
+    setSendingFollowUp(true);
+
+    setChatMessages((current) => [
+      ...current,
+      {
+        id: userMessageId,
+        role: "user",
+        content: cleanUserText || "Please review this attached document.",
+        createdAt: uploadedAt,
+        attachment: {
+          name: file.name,
+          previewUrl: messagePreviewUrl,
+          label: fileTypeLabel(file.name),
+        },
+      },
+    ]);
+
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      const extractResponse = await fetch("/api/documents/extract", { method: "POST", body: formData });
+      const extractPayload = await extractResponse.json().catch(() => null);
+      const extractedText = String(extractPayload?.extractedText ?? extractPayload?.text ?? "");
+      if (!extractResponse.ok || !extractPayload?.ok || !extractedText.trim()) {
+        throw new Error(extractPayload?.error ?? "Could not read that document.");
+      }
+      const documentText = extractedText;
+      const inferredKind = inferClaritiKind({
+        kind: "unknown",
+        question,
+        documentText,
+        fileName: file.name,
+      });
+      const kind = inferredKind !== "unknown"
+        ? inferredKind
+        : previousAnalysis?.kind && previousAnalysis.kind !== "unknown"
+          ? previousAnalysis.kind
+          : inferredKind;
+
+      let documentId: string | undefined;
+      try {
+        const uploadForm = new FormData();
+        uploadForm.set("file", file);
+        uploadForm.set("kind", kind);
+        uploadForm.set("extractedText", documentText);
+        const uploadResponse = await fetch("/api/documents/upload", { method: "POST", body: uploadForm });
+        const uploadPayload = await uploadResponse.json().catch(() => null);
+        if (uploadResponse.ok && uploadPayload?.ok && uploadPayload.document?.id) {
+          documentId = String(uploadPayload.document.id);
+        }
+      } catch {
+        // Upload is best-effort; analysis can still proceed from extracted text.
+      }
+
+      const analyzeResponse = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind,
+          question,
+          documentText,
+          fileName: file.name,
+          documentId,
+          previousSessionId: previousSessionId ?? undefined,
+        }),
+      });
+      const analyzePayload = await analyzeResponse.json().catch(() => null);
+      if (analyzeResponse.status === 402 && isPlusRequiredPayload(analyzePayload)) {
+        redirectToUpgrade(analyzePayload.message);
+        return;
+      }
+      if (!analyzeResponse.ok || !analyzePayload?.ok || !analyzePayload.analysis) {
+        throw new Error(analyzePayload?.error ?? "Could not analyze that document.");
+      }
+
+      const nextAnalysis = analyzePayload.analysis as ClaritiAnalysis;
+      const savedSessionId = analyzePayload.persisted?.session?.id as string | undefined;
+      track("follow_up_report_added", { kind: nextAnalysis.kind });
+      const nextRequest: ClaritiRequest = {
+        kind: nextAnalysis.kind,
+        question,
+        documentText,
+        fileName: file.name,
+        documentId,
+        analysis: nextAnalysis,
+        status: "done",
+        persisted: analyzePayload.persisted,
+      };
+
+      // Newest uploaded report becomes the active right-panel analysis.
+      activeRequestRef.current = nextRequest;
+      setActiveRequest(nextRequest);
+      setActiveAnalysis(nextAnalysis);
+      setActive(nextAnalysis.kind);
+      resetVideoState();
+      setComparisonCards([]);
+      if (savedSessionId) {
+        dbSessionIdRef.current = savedSessionId;
+        setDbSessionId(savedSessionId);
+        window.history.replaceState(null, "", `/workspace?sessionId=${savedSessionId}`);
+        setRecentSessions((current) => {
+          const saved = toRecentWorkspaceSessionFromAnalysis(nextRequest, nextAnalysis, analyzePayload.persisted);
+          return [saved, ...current.filter((item) => item.id !== saved.id)];
+        });
+      }
+
+      const relatedToCurrentTrend = Boolean(
+        previousAnalysis
+        && previousAnalysis.kind !== "unknown"
+        && previousAnalysis.kind === nextAnalysis.kind,
+      );
+
+      let comparison: ProgressionComparison | null = null;
+      if (relatedToCurrentTrend) {
+        const compareResponse = await fetch("/api/compare", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            analysis: nextAnalysis,
+            sessionId: savedSessionId,
+            compareSessionId: previousSessionId ?? undefined,
+          }),
+        });
+        const comparePayload = await compareResponse.json().catch(() => null);
+        if (compareResponse.status === 402 && isPlusRequiredPayload(comparePayload)) {
+          redirectToUpgrade(comparePayload.message);
+        } else if (compareResponse.ok && comparePayload?.ok && comparePayload.comparison) {
+          comparison = comparePayload.comparison as ProgressionComparison;
+          track("compare_documents", { kind: nextAnalysis.kind, trend: comparison.trend });
+        }
+      }
+
+      const replyAt = createLocalTimestamp();
+      const fallbackAssistant = comparison
+        ? `I read ${file.name} and updated the analysis panel.\n\n${comparison.headline}\n\n${comparison.plainEnglish}`
+        : `I read ${file.name} and updated the analysis panel.\n\n${buildInitialAnalysisReply(nextAnalysis)}`;
+
+      const sessionForReply = savedSessionId ?? dbSessionIdRef.current;
+      if (sessionForReply) {
+        try {
+          const response = await fetch("/api/messages", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              sessionId: sessionForReply,
+              content: userContentForAgent,
+              analysis: nextAnalysis,
+            }),
+          });
+          const payload = await response.json().catch(() => null);
+          if (response.ok && payload?.ok) {
+            const savedMessages = Array.isArray(payload.messages)
+              ? payload.messages.map((message: { id: string; role: string; content: string; created_at?: string }, index: number) => {
+                const role = message.role === "assistant" ? "assistant" as const : "user" as const;
+                if (role === "user") {
+                  const parsed = parseMessageAttachment(message.content);
+                  return {
+                    id: message.id,
+                    role,
+                    content: parsed.text || "Please review this attached document.",
+                    createdAt: timestampFromIso(message.created_at) ?? replyAt + index,
+                    attachment: parsed.fileName
+                      ? {
+                        name: parsed.fileName,
+                        previewUrl: messagePreviewUrl,
+                        label: fileTypeLabel(parsed.fileName),
+                      }
+                      : {
+                        name: file.name,
+                        previewUrl: messagePreviewUrl,
+                        label: fileTypeLabel(file.name),
+                      },
+                  };
+                }
+                return {
+                  id: message.id,
+                  role,
+                  content: message.content,
+                  createdAt: timestampFromIso(message.created_at) ?? replyAt + index,
+                };
+              })
+              : [
+                {
+                  id: createLocalId("upload-user-saved"),
+                  role: "user" as const,
+                  content: cleanUserText || "Please review this attached document.",
+                  createdAt: uploadedAt,
+                  attachment: {
+                    name: file.name,
+                    previewUrl: messagePreviewUrl,
+                    label: fileTypeLabel(file.name),
+                  },
+                },
+                {
+                  id: createLocalId("upload-assistant"),
+                  role: "assistant" as const,
+                  content: typeof payload.assistant === "string" ? payload.assistant : fallbackAssistant,
+                  createdAt: replyAt,
+                },
+              ];
+
+            // Keep the progression card AFTER the user + assistant bubbles in the timeline.
+            const comparisonAt = Math.max(
+              replyAt + 1,
+              ...savedMessages.map((message: { createdAt?: number }) => message.createdAt ?? 0),
+            ) + 1;
+            if (comparison) {
+              setComparisonCards([{ id: createLocalId("comparison"), createdAt: comparisonAt, comparison }]);
+              showToast("Newest report is active — comparison card added.");
+            } else {
+              setComparisonCards([]);
+              showToast("Newest report is now the active analysis.");
+            }
+
+            setChatMessages((current) => [
+              ...current.filter((message) => message.id !== userMessageId),
+              ...savedMessages,
+            ]);
+            return;
+          }
+        } catch {
+          // Fall through to local reply.
+        }
+      }
+
+      if (comparison) {
+        setComparisonCards([{ id: createLocalId("comparison"), createdAt: replyAt + 1, comparison }]);
+        showToast("Newest report is active — comparison card added.");
+      } else {
+        setComparisonCards([]);
+        showToast("Newest report is now the active analysis.");
+      }
+
+      setChatMessages((current) => [
+        ...current,
+        {
+          id: createLocalId("upload-assistant"),
+          role: "assistant",
+          content: fallbackAssistant,
+          createdAt: replyAt,
+        },
+      ]);
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : "Could not read that document.");
+      setChatMessages((current) => [
+        ...current,
+        {
+          id: createLocalId("upload-error"),
+          role: "assistant",
+          content: "I couldn’t read or analyze that document. Try again with a clearer PDF, image, or .txt file.",
+          createdAt: createLocalTimestamp(),
+        },
+      ]);
+    } finally {
+      setReplacingDocument(false);
+      setSendingFollowUp(false);
+      if (chatFileInputRef.current) chatFileInputRef.current.value = "";
+    }
   };
 
   const createQuestionList = async () => {
@@ -676,33 +1381,37 @@ function WorkspaceContent() {
     if (!analysis || !session) return;
     setSheet(null);
     const action = followAction || analysis.nextActions[0] || "review the report with my clinician";
-    const draft = { action };
+    const draft = { action, email: accountEmail ?? undefined };
     setFollowUpDraft(draft);
-    const content = `I want to set a phone follow-up about this ${session.tag.toLowerCase()}. Report context: ${analysis.summary}. Suggested action: ${action}. Help me choose the purpose, reason, phone number to call, and a safe time to schedule it.`;
+    const content =
+      `I want to set an email check-in about this ${session.tag.toLowerCase()}. ` +
+      `Clariti should email me to ask if anything changed, if I need further analysis, or if I want to compare a newer report. ` +
+      `Report context: ${analysis.summary}. Suggested focus: ${action}. ` +
+      `Help me choose the purpose and a safe day/time. Use my account email${accountEmail ? ` (${accountEmail})` : ""} unless I give a different one. Do not ask for a phone number.`;
     await sendMessageToAgent(content, {
       clearInput: false,
       followUpDraftOverride: draft,
       skipFollowUpCapture: true,
-      toast: "Follow-up planning added to the chat.",
+      toast: "Email check-in planning added to the chat.",
     });
   };
 
   const maybeCaptureFollowUpDetails = async (content: string, draft: FollowUpDraft): Promise<"scheduled" | "captured" | "none"> => {
     if (!analysis) return "none";
-    const phoneNumber = extractPhoneNumber(content) ?? draft.phoneNumber;
+    const email = extractEmailAddress(content) ?? draft.email ?? accountEmail ?? undefined;
     const hasTime = hasSchedulingTime(content);
     const timingText = hasTime ? content : draft.timingText;
 
-    if (!phoneNumber) {
-      if (hasTime) {
-        setFollowUpDraft({ ...draft, timingText: content });
+    if (!timingText) {
+      if (email && email !== draft.email) {
+        setFollowUpDraft({ ...draft, email });
         return "captured";
       }
       return "none";
     }
 
-    if (!timingText) {
-      setFollowUpDraft({ ...draft, phoneNumber });
+    if (!email) {
+      setFollowUpDraft({ ...draft, timingText });
       return "captured";
     }
 
@@ -714,17 +1423,20 @@ function WorkspaceContent() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           sessionId: dbSessionId ?? `clariti-${active}`,
-          channel: "phone",
+          channel: "email",
           scheduledFor,
-          phoneNumber,
+          email,
           action: draft.action,
           analysis,
         }),
       });
       const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not schedule follow-up");
+      if (response.status === 402 && isPlusRequiredPayload(payload)) {
+        redirectToUpgrade(payload.message);
+        return "none";
+      }
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not schedule check-in");
       setFollowUpDraft(null);
-      setCallPhoneNumber(phoneNumber);
       const savedMessage = payload.message as { id: string; role: string; content: string; created_at?: string } | null;
       setChatMessages((current) => [
         ...current,
@@ -736,19 +1448,20 @@ function WorkspaceContent() {
         } : {
           id: createLocalId("local-followup-scheduled"),
           role: "assistant",
-          content: `Done. I saved ${phoneNumber} for ${new Date(payload.followUp.scheduledFor).toLocaleString()}. Purpose: ${draft.action}.`,
+          content: `Done. I’ll email ${email} around ${new Date(payload.followUp.scheduledFor).toLocaleString()} to check in about: ${draft.action}.`,
           createdAt: createLocalTimestamp(),
         },
       ]);
+      track("email_checkin_scheduled", { kind: analysis.kind });
       return "scheduled";
     } catch {
-      setFollowUpDraft({ ...draft, phoneNumber, timingText });
+      setFollowUpDraft({ ...draft, email, timingText });
       setChatMessages((current) => [
         ...current,
         {
           id: createLocalId("local-followup-save-failed"),
           role: "assistant",
-          content: "I have the follow-up details, but I could not save them yet. Please try again in a moment.",
+          content: "I have the check-in details, but I could not save them yet. Please try again in a moment.",
           createdAt: createLocalTimestamp(),
         },
       ]);
@@ -763,18 +1476,25 @@ function WorkspaceContent() {
           <div className="clariti-empty-inner">
             <div className="clariti-orb"><FileText /></div>
             <p className="clariti-kicker">WORKSPACE</p>
-            <h1>{booting ? "Loading saved analysis" : "No active analysis yet"}</h1>
+            <h1>{booting ? "Loading saved analysis" : loadError ? "Could not load this report" : "No active analysis yet"}</h1>
             <p className="clariti-lead">
               {booting
                 ? "Clariti is loading your saved session, document, messages and analysis from Supabase."
-                : "Ask Clariti about one health document from Home. The workspace will open after there is a saved database session to review."}
+                : loadError
+                  ? loadError
+                  : "Ask Clariti about one health document from Home. The workspace will open after there is a saved database session to review."}
             </p>
-            {!booting && <Link href="/" className="workspace-empty-cta">Start an analysis</Link>}
+            {!booting && loadError && (
+              <button type="button" className="workspace-empty-cta" onClick={() => window.location.reload()}>
+                Try again
+              </button>
+            )}
+            {!booting && !loadError && <Link href="/" className="workspace-empty-cta">Start an analysis</Link>}
           </div>
         </section>
         <style jsx>{`
           .clariti-workspace-empty{display:block;background:#f7f8f7;min-height:100vh;height:auto;overflow:auto}
-          .workspace-empty-cta{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;background:#4d8d83;color:#fff;border-radius:12px;padding:12px 16px;font-size:13px;font-weight:800}
+          .workspace-empty-cta{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;background:#4d8d83;color:#fff;border-radius:12px;padding:12px 16px;font-size:13px;font-weight:800;border:none;cursor:pointer;font-family:inherit}
         `}</style>
       </main>
     );
@@ -797,20 +1517,34 @@ function WorkspaceContent() {
         </div>
         <div className="drawer-section-title">{drawer === "documents" ? "YOUR DOCUMENTS" : drawer === "history" ? "HISTORY" : "RECENT CHATS"}</div>
         <nav className="clariti-conversations">
-          {sidebarSessions.map((item) => (
-            <button
-              key={item.id}
-              className={`${(dbSessionId ?? session.id) === item.id ? "active" : ""} ${"pending" in item && item.pending ? "pending" : ""}`}
-              onClick={() => selectSession(item)}
-            >
-              <span className={`file-icon file-icon-${item.kind}`}>{sidebarIcon(item.kind)}</span>
-              <span>
-                <b>{drawer === "documents" ? item.fileName : item.title}</b>
-                <small>{drawer === "history" ? item.preview : item.meta}</small>
-              </span>
-              <MoreHorizontal />
-            </button>
-          ))}
+          {drawer === "documents" || drawer === "history" ? (
+            sidebarSessions.map((item) => (
+              <button
+                key={item.id}
+                className={`${activeSidebarId === item.id ? "active" : ""} ${"pending" in item && item.pending ? "pending" : ""}`}
+                // eslint-disable-next-line react-hooks/refs -- selectSession reads refs only inside its onClick body (the sanctioned pattern); this call is unchanged from before the sidebar-grouping change, and the rule misattributes an unrelated warning to this line whenever the grouped-view branch below exists in the same component (verified via isolation: removing the ternary's other branch clears it; restructuring that branch does not).
+                onClick={() => selectSession(item)}
+              >
+                <span className={`file-icon file-icon-${item.kind}`}>{sidebarIcon(item.kind)}</span>
+                <span>
+                  <b>{drawer === "documents" ? item.fileName : item.title}</b>
+                  <small>{drawer === "history" ? item.preview : item.meta}</small>
+                </span>
+                <MoreHorizontal />
+              </button>
+            ))
+          ) : (
+            sidebarGroups.map((group) => (
+              <SidebarGroupRow
+                key={group.key}
+                group={group}
+                activeSidebarId={activeSidebarId}
+                expanded={group.items.length > 1 && (expandedGroups.has(group.key) || (group.containsActive && activeSidebarId !== group.head.id))}
+                onToggle={() => toggleGroup(group.key)}
+                onSelect={(item) => selectSession(item)}
+              />
+            ))
+          )}
         </nav>
         <div className="drawer-footer-links"><Link href="/"><Plus />New chat</Link><Link href="/settings"><Settings />Settings</Link></div>
         <div className="left-panel-note"><ShieldCheck /><p>Your documents stay private and under your control.</p></div>
@@ -823,24 +1557,30 @@ function WorkspaceContent() {
             <button type="button" className="mobile-menu-button" onClick={() => setDrawer("chats")} aria-label="Open menu"><Menu /></button>
             <div><h1>{session.title}</h1><p>{session.meta}</p></div>
           </div>
-          <button type="button" className="mobile-call-button" onClick={() => openSheet("call")} aria-label="Discuss with AI"><Phone /></button>
+          <button type="button" className="mobile-call-button" onClick={() => void beginFollowUpConversation()} aria-label="Set email check-in"><Bell /></button>
         </header>
 
         <div className="clariti-chat-scroll" ref={chatScrollRef}>
           <div className="clariti-date-chip">Today</div>
-          {chatTimeline.length > 0 ? chatTimeline.map((item) => item.type === "message" ? (
-            <ChatMessageBubble
-              key={item.id}
-              message={item.message}
-              session={session}
-              showAttachment={item.messageIndex === 0 && item.message.role === "user"}
-              showSafetyNote={item.messageIndex === 1 && item.message.role === "assistant"}
-              safetyNote={analysis?.safetyNote ?? "Clariti explains document wording and does not diagnose or replace a clinician."}
-              active={active}
-            />
-          ) : (
-            analysis ? <GeneratedVideoResponse key={item.id} video={item.video} analysis={analysis} /> : null
-          )) : (
+          {chatTimeline.length > 0 ? chatTimeline.map((item) => {
+            if (item.type === "message") {
+              return (
+                <ChatMessageBubble
+                  key={item.id}
+                  message={item.message}
+                  session={session}
+                  showAttachment={item.messageIndex === 0 && item.message.role === "user"}
+                  showSafetyNote={item.messageIndex === 1 && item.message.role === "assistant"}
+                  safetyNote={analysis?.safetyNote ?? "Clariti explains document wording and does not diagnose or replace a clinician."}
+                  active={active}
+                />
+              );
+            }
+            if (item.type === "comparison") {
+              return <ProgressionComparisonCard key={item.id} comparison={item.comparison} />;
+            }
+            return analysis ? <GeneratedVideoResponse key={item.id} video={item.video} analysis={analysis} /> : null;
+          }) : (
             <div className="clariti-ai-message">
               <span className="clariti-ai-avatar">C</span>
               <div>
@@ -866,30 +1606,16 @@ function WorkspaceContent() {
               <span className="clariti-ai-avatar">C</span>
               <div className="clariti-ai-card clariti-thinking-card clariti-agent-typing-card">
                 <div className="message-meta">Clariti</div>
-                <p>Reading your follow-up and checking it against this saved analysis.</p>
+                <p>{replacingDocument
+                  ? "Reading your attached document and updating the analysis."
+                  : "Reading your follow-up and checking it against this saved analysis."}</p>
                 <span className="clariti-thinking-dots" aria-hidden="true"><i /><i /><i /></span>
               </div>
             </article>
           )}
 
-          {!analysisPending && analysis && !generatedVideo && (
-            <VideoGenerationPrompt
-              analysis={analysis}
-              generating={videoGenerating}
-              status={videoStatus}
-              progress={videoProgress}
-              error={videoError}
-              onGenerate={() => void generateHumanVideo(30)}
-            />
-          )}
-
           {!analysisPending && analysis && artifact && (
-            <button className={`chat-artifact-card artifact-${active}`} onClick={() => setCanvasOpen(true)}>
-              <span className="artifact-card-top"><span><small>{artifact.eyebrow}</small><b>{artifact.title}</b></span><Sparkles /></span>
-              <span className="artifact-card-metric"><strong>{artifact.metric}</strong><small>{artifact.label}</small></span>
-              <span className="artifact-card-note"><CheckCircle2 />{artifact.note}</span>
-              <span className="artifact-card-cta">View full analysis <span>→</span></span>
-            </button>
+            <AnalysisTeaserCard analysis={analysis} onOpen={() => setCanvasOpen(true)} />
           )}
 
         </div>
@@ -898,19 +1624,85 @@ function WorkspaceContent() {
           <section className="clariti-thread-actions" aria-label="Continue with Clariti">
             <div>
               <span>Continue with Clariti</span>
-              <p>Talk it through or schedule one focused next step.</p>
+              <p>Schedule an email check-in or attach a related report.</p>
             </div>
             <div className="clariti-quick-actions">
-              <button onClick={() => openSheet("call")}>Call Clariti</button>
-              <button onClick={() => void beginFollowUpConversation()}>Set phone follow-up</button>
+              <button onClick={() => void beginFollowUpConversation()}>Set email check-in</button>
+              {compareAvailable && (
+                <button
+                  type="button"
+                  onClick={() => injectComposerPrompt(
+                    analysis
+                      ? `Compare this ${getClaritiKindMeta(analysis.kind).documentNoun} with my earlier saved reports and tell me what changed.`
+                      : "Compare this report with my earlier saved documents and tell me what changed.",
+                  )}
+                >
+                  Compare with earlier docs
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={replacingDocument}
+                onClick={() => {
+                  injectComposerPrompt(
+                    analysis
+                      ? `Please review the follow-up ${getClaritiKindMeta(analysis.kind).documentNoun} I attach and compare it with this analysis.`
+                      : "Please review the follow-up report I attach and compare it with this analysis.",
+                  );
+                  chatFileInputRef.current?.click();
+                }}
+              >
+                Add follow-up report
+              </button>
             </div>
           </section>
         )}
 
-        <div className="clariti-workspace-composer">
-          <Link href="/" aria-label="Attach a new document"><Paperclip /></Link>
+        <div className={`clariti-workspace-composer${pendingAttachment ? " has-pending-attachment" : ""}`}>
+          {pendingAttachment && (
+            <div className="composer-pending-attachment" aria-label="Attached document ready to send">
+              {pendingAttachment.previewUrl ? (
+                <img src={pendingAttachment.previewUrl} alt="" className="composer-pending-thumb" />
+              ) : (
+                <span className="composer-pending-icon" aria-hidden="true"><FileText /></span>
+              )}
+              <div className="composer-pending-meta">
+                <b>{pendingAttachment.name}</b>
+                <small>Ready to send — Clariti will read this with your message</small>
+              </div>
+              <button
+                type="button"
+                className="composer-pending-clear"
+                aria-label="Remove attached document"
+                onClick={clearPendingAttachment}
+              >
+                <X />
+              </button>
+            </div>
+          )}
           <input
-            placeholder="Ask a follow-up question..."
+            ref={chatFileInputRef}
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.doc,.docx,application/pdf,image/*,text/plain"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) stageChatAttachment(file);
+            }}
+          />
+          <button
+            type="button"
+            className="composer-attach"
+            aria-label="Attach one document"
+            disabled={replacingDocument}
+            onClick={() => chatFileInputRef.current?.click()}
+            title="Attach one document, then send with your message"
+          >
+            <Paperclip />
+          </button>
+          <input
+            ref={composerInputRef}
+            placeholder={pendingAttachment ? "Add a note about this document..." : "Ask a follow-up question..."}
             value={followUpText}
             onChange={(event) => setFollowUpText(event.target.value)}
             onKeyDown={(event) => {
@@ -920,7 +1712,13 @@ function WorkspaceContent() {
               }
             }}
           />
-          <button type="button" className="send" aria-label="Send message" disabled={!followUpText.trim() || sendingFollowUp} onClick={() => void sendFollowUp()}>
+          <button
+            type="button"
+            className="send"
+            aria-label="Send message"
+            disabled={(!followUpText.trim() && !pendingAttachment) || sendingFollowUp}
+            onClick={() => void sendFollowUp()}
+          >
             {sendingFollowUp ? <RefreshCw className="spin" /> : <Send />}
           </button>
         </div>
@@ -935,16 +1733,16 @@ function WorkspaceContent() {
           </>
         ) : (
           <>
-            <header><div><p className="canvas-kicker">{artifact.eyebrow}</p><h2>{analysis.title}</h2></div>{active === "radiology_report" ? <ImageIcon /> : <Sparkles />}</header>
+            <header><div><p className="canvas-kicker">{artifact.eyebrow}</p><h2>{analysis.title}</h2></div>{active === "radiology_report" || active === "pathology_report" ? <ImageIcon /> : <Sparkles />}</header>
             <div className="canvas-tabs">
               <button className={canvasTab === "summary" ? "active" : ""} onClick={() => setCanvasTab("summary")}>Summary</button>
-              <button className={canvasTab === "detail" ? "active" : ""} onClick={() => setCanvasTab("detail")}>{active === "medical_bill" ? "Charges" : active === "radiology_report" ? "Findings" : "Claim"}</button>
+              <button className={canvasTab === "detail" ? "active" : ""} onClick={() => setCanvasTab("detail")}>{getClaritiKindMeta(active).detailTab}</button>
               <button className={canvasTab === "actions" ? "active" : ""} onClick={() => setCanvasTab("actions")}>Next steps</button>
             </div>
             <AnalysisCanvas analysis={analysis} tab={canvasTab} videoScene={videoScene} generatedVideoUrl={generatedVideo?.url ?? null} generatedIllustration={generatedIllustrations[videoScene] ?? null} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} videoGenerating={videoGenerating} videoStatus={videoStatus} videoProgress={videoProgress} videoError={videoError} onSceneChange={setVideoScene} onGenerateVideo={generateHumanVideo} onGenerateIllustration={generateIllustration} onOpenIllustration={setExpandedIllustration} onCreateQuestionList={createQuestionList} onOpenSource={() => openSheet("source")} />
             <section className="canvas-continuity">
-              <div><p className="canvas-kicker">CONTINUE WITH CLARITI</p><h3>Don’t stop at understanding.</h3><p>Talk this through or let Clariti call back when it matters.</p></div>
-              <div className="continuity-actions"><button onClick={() => openSheet("call")}><Phone />Call Clariti</button><button onClick={() => void beginFollowUpConversation()}><Bell />Set follow-up</button></div>
+              <div><p className="canvas-kicker">CONTINUE WITH CLARITI</p><h3>Don’t stop at understanding.</h3><p>Schedule an email check-in so Clariti can ask if anything changed.</p></div>
+              <div className="continuity-actions"><button onClick={() => void beginFollowUpConversation()}><Bell />Set email check-in</button></div>
             </section>
             <footer className="canvas-footer">{analysis.safetyNote}</footer>
           </>
@@ -976,35 +1774,12 @@ function WorkspaceContent() {
                 <h2>{session.fileName}</h2>
                 <pre className="source-document-preview">{activeRequest?.documentText ?? "Original document text is not available for this saved session."}</pre>
               </>
-            ) : sheet === "call" ? (
-              <>
-                <span className="modal-icon"><Phone /></span>
-                <p className="canvas-kicker">CALL CLARITI</p>
-                <h2>Talk through this {session.tag.toLowerCase()}</h2>
-                <p>Clariti will use only this document analysis and its source anchors during the call.</p>
-                <label className="sheet-field">
-                  <span>Phone number</span>
-                  <input
-                    type="tel"
-                    placeholder="+44 7000 000000"
-                    value={callPhoneNumber}
-                    onChange={(event) => setCallPhoneNumber(event.target.value)}
-                  />
-                </label>
-                <div className="prototype-option-list">
-                  <button type="button" onClick={startCall} disabled={placingCall || callPhoneNumber.trim().replace(/[^\d]/g, "").length < 7}>
-                    {placingCall ? <RefreshCw className="spin" /> : <Phone />}
-                    <span><b>{placingCall ? "Placing call..." : "Call me now"}</b><small>Starts an ElevenLabs/Twilio call with this Clariti analysis as context.</small></span>
-                  </button>
-                  <button type="button" disabled><ShieldCheck /><span><b>Safety boundary</b><small>No diagnosis, treatment instruction, or final coverage decision.</small></span></button>
-                </div>
-              </>
             ) : (
               <>
                 <span className="modal-icon"><Bell /></span>
-                <p className="canvas-kicker">PHONE FOLLOW-UP</p>
+                <p className="canvas-kicker">EMAIL CHECK-IN</p>
                 <h2>Schedule around one action</h2>
-                <p>Choose what this follow-up should focus on.</p>
+                <p>Clariti will email you to ask if anything changed or if you need further analysis. No phone number needed.</p>
                 <div className="followup-builder">
                   {(analysis?.nextActions ?? []).map((action) => (
                     <button key={action} type="button" className={`follow-choice ${followAction === action ? "selected" : ""}`} onClick={() => setFollowAction(action)}>
@@ -1014,7 +1789,7 @@ function WorkspaceContent() {
                   ))}
                 </div>
                 <div className="prototype-option-list">
-                  <button type="button" onClick={() => void beginFollowUpConversation()}><Bell /><span><b>Discuss and schedule in chat</b><small>Clariti will use the report context, purpose and timing before scheduling.</small></span></button>
+                  <button type="button" onClick={() => void beginFollowUpConversation()}><Bell /><span><b>Discuss and schedule in chat</b><small>Clariti will use your account email and ask only for day/time.</small></span></button>
                 </div>
               </>
             )}
@@ -1068,100 +1843,122 @@ function AnalysisCanvas({
   if (tab === "detail") return <Detail analysis={analysis} onOpenSource={onOpenSource} />;
 
   const concernMetric = analysis.metrics[1] ?? analysis.metrics[0];
+  const meta = getClaritiKindMeta(analysis.kind);
+  const family = meta.uiFamily;
 
   return (
-    <div className="canvas-content">
-      {analysis.kind === "radiology_report" ? (
+    <div className={`canvas-content canvas-family-${family}`}>
+      {family === "clinical_report" ? (
         <>
-          <section className="radiology-hero">
-            <div><span className="result-label">OVERALL IMPRESSION</span><h3>{analysis.summary}</h3><p>{analysis.plainEnglish}</p></div>
-            <span className="risk-pill">{concernMetric?.value ?? "Review"}</span>
+          <section className={`report-hero ${analysis.kind === "pathology_report" ? "pathology-hero" : "radiology-hero"}`}>
+            <div>
+              <span className="result-label">{analysis.kind === "pathology_report" ? "MAIN FINDING" : "OVERALL TAKEAWAY"}</span>
+              <h3>{analysis.summary}</h3>
+              <p>{analysis.plainEnglish}</p>
+            </div>
+            <span className="risk-pill sev-positive">{concernMetric?.value ?? "Review"}</span>
           </section>
           <section className="impression-stats">
-            <div><strong>{analysis.keyPoints.length}</strong><span>Key findings</span></div>
+            <div><strong>{analysis.keyPoints.length}</strong><span>Key points</span></div>
             <div><strong>{analysis.metrics[0]?.value ?? "Report"}</strong><span>{analysis.metrics[0]?.label ?? "Document"}</span></div>
-            <div><strong>{concernMetric?.value ?? "Ask"}</strong><span>{concernMetric?.label ?? "Clinician context"}</span></div>
+            <div><strong>{concernMetric?.value ?? "Ask"}</strong><span>{concernMetric?.label ?? "Ask your clinician"}</span></div>
           </section>
-          <KeyPoints analysis={analysis} />
+          <KeyPointList points={analysis.keyPoints} variant="list" />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+        </>
+      ) : family === "lab" ? (
+        <>
+          <section className="lab-hero">
+            <div>
+              <span className="result-label">IN PLAIN ENGLISH</span>
+              <h3>{analysis.summary}</h3>
+              <p>{analysis.plainEnglish}</p>
+            </div>
+          </section>
+          <section className="lab-metrics">
+            {analysis.metrics.slice(0, 3).map((metric) => <MetricChip {...metric} key={metric.label} />)}
+          </section>
+          <KeyPointList points={analysis.keyPoints} variant="list" heading="Markers to understand" />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+        </>
+      ) : family === "care_plan" ? (
+        <>
+          <section className="care-hero">
+            <div>
+              <span className="result-label">WHAT THIS MEANS</span>
+              <h3>{analysis.summary}</h3>
+              <p>{analysis.plainEnglish}</p>
+            </div>
+          </section>
+          <KeyPointList points={analysis.keyPoints} variant="timeline" limit={3} />
+          <section className="canvas-card"><h3>In plain English</h3><p>{analysis.plainEnglish}</p></section>
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+        </>
+      ) : family === "medication" ? (
+        <>
+          <section className="med-hero">
+            <div>
+              <span className="result-label">YOUR MEDICINES</span>
+              <h3>{analysis.summary}</h3>
+              <p>{analysis.plainEnglish}</p>
+            </div>
+          </section>
+          <KeyPointList points={analysis.keyPoints} variant="pills" />
           <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : (
         <>
-          <section className={analysis.kind === "insurance_eob" ? "eob-flow" : "clariti-hero-total"}>
-            {analysis.metrics.slice(0, 3).map((metric) => (
-              <div key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong>{metric.caveat && <small>{metric.caveat}</small>}</div>
-            ))}
+          <section className={analysis.kind === "insurance_eob" || analysis.kind === "prior_authorization" ? "eob-flow" : "clariti-hero-total"}>
+            {analysis.metrics.slice(0, 3).map((metric) => <MetricChip {...metric} key={metric.label} />)}
           </section>
           <section className="canvas-card"><h3>In plain English</h3><p>{analysis.plainEnglish}</p></section>
-          <KeyPoints analysis={analysis} />
+          <KeyPointList points={analysis.keyPoints} variant="list" />
           <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       )}
-      {analysis.flags.map((flag) => (
-        <section className="canvas-card flag-card" key={flag.label}>
-          <div className="card-title"><Flag /><h3>{flag.label}</h3></div>
-          <p>{flag.detail}</p>
-        </section>
-      ))}
+      {analysis.flags.map((flag) => <FlagCard flag={flag} key={flag.label} />)}
     </div>
   );
 }
 
 function PendingAnalysisCanvas({ session, active }: { session: WorkspaceSession; active: ClaritiAnalysisKind }) {
-  const detailLabel = active === "radiology_report" ? "report wording" : active === "insurance_eob" ? "claim wording" : "document wording";
+  const detailLabel = getClaritiKindMeta(active).pendingLabel;
   return (
     <div className="canvas-content">
       <section className="canvas-card pending-analysis-card">
         <div className="pending-analysis-icon"><RefreshCw className="spin" /></div>
         <h3>Reading {session.fileName}</h3>
-        <p>Clariti is extracting the {detailLabel}, checking source phrases, and preparing a grounded explanation.</p>
+        <p>Clariti is reading the {detailLabel} and turning it into simple language you can actually use.</p>
         <div className="pending-analysis-steps" aria-label="Analysis progress">
           <span>Read document</span>
-          <span>Find anchors</span>
-          <span>Build explanation</span>
+          <span>Find key lines</span>
+          <span>Explain simply</span>
         </div>
       </section>
       <section className="canvas-card pending-source-card">
-        <h3>Safety boundary</h3>
-        <p>Clariti will explain the document text and suggest questions. It will not diagnose, prescribe, or make final coverage/payment decisions.</p>
+        <h3>What Clariti will and will not do</h3>
+        <p>It will explain the document text and suggest questions. It will not diagnose, prescribe, or decide coverage or payment for you.</p>
       </section>
     </div>
   );
 }
 
 function Detail({ analysis, onOpenSource }: { analysis: ClaritiAnalysis; onOpenSource: () => void }) {
+  const meta = getClaritiKindMeta(analysis.kind);
   return (
     <div className="canvas-content">
       <section className="canvas-card">
-        <h3>{analysis.kind === "medical_bill" ? "Charge breakdown" : analysis.kind === "insurance_eob" ? "Claim breakdown" : "Report findings"}</h3>
-        {analysis.keyPoints.map((point) => (
-          <div className="finding-row" key={point.label}>
-            <span>{point.label}</span>
-            <b>{point.detail}</b>
-          </div>
-        ))}
+        <h3>{meta.detailHeading}</h3>
+        <KeyPointList points={analysis.keyPoints} variant="row" />
       </section>
       <section className="canvas-card meta-card">
-        <h3>Source Anchors</h3>
+        <h3>Where this came from</h3>
         {analysis.sourceAnchors.map((anchor) => (
           <div className="meta-row" key={anchor}><span>Source</span><b>{anchor}</b></div>
         ))}
         <button type="button" className="meta-link-btn" onClick={onOpenSource}><FileDown />View original document</button>
       </section>
     </div>
-  );
-}
-
-function KeyPoints({ analysis }: { analysis: ClaritiAnalysis }) {
-  return (
-    <section className="canvas-card">
-      <h3>Key Points</h3>
-      <ul className="key-findings-list">
-        {analysis.keyPoints.map((point) => (
-          <li key={point.label}><CheckCircle2 /><span><b>{point.label}</b><small>{point.detail} Source: {point.sourceAnchor}</small></span></li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
@@ -1181,12 +1978,37 @@ function ChatMessageBubble({
   active: ClaritiAnalysisKind;
 }) {
   if (message.role === "user") {
+    const parsed = message.attachment
+      ? { text: message.content, fileName: message.attachment.name }
+      : parseMessageAttachment(message.content);
+    const attachment = message.attachment
+      ?? (parsed.fileName
+        ? { name: parsed.fileName, previewUrl: null as string | null, label: fileTypeLabel(parsed.fileName) }
+        : showAttachment
+          ? { name: session.fileName, previewUrl: null as string | null, label: session.tag }
+          : null);
+    const displayText = parsed.text.trim();
+
     return (
       <article className="clariti-chat-turn user-turn">
         <div className="message-meta">You</div>
-        <div className="clariti-user-message">
-          {showAttachment && <span className="attached-file"><FileText /><span><b>{session.fileName}</b><small>{session.tag} document</small></span></span>}
-          <p>{message.content}</p>
+        <div className={`clariti-user-message${attachment ? " has-file-chip" : ""}`}>
+          {attachment && (
+            <div className="chat-file-chip" aria-label={`Attached file ${attachment.name}`}>
+              {attachment.previewUrl ? (
+                <img src={attachment.previewUrl} alt="" className="chat-file-thumb" />
+              ) : (
+                <span className="chat-file-icon" aria-hidden="true">
+                  {isPdfFileName(attachment.name) ? <FileHeart /> : <FileText />}
+                </span>
+              )}
+              <span className="chat-file-meta">
+                <b>{attachment.name}</b>
+                <small>{attachment.label ?? fileTypeLabel(attachment.name)}</small>
+              </span>
+            </div>
+          )}
+          {displayText ? <p>{displayText}</p> : null}
         </div>
       </article>
     );
@@ -1203,8 +2025,8 @@ function ChatMessageBubble({
           <p className={/source:/i.test(paragraph) ? "source-grounded-line" : undefined} key={`${paragraph}-${index}`}>{paragraph}</p>
         ))}
         {showSafetyNote && (
-          <div className={`clariti-inline-note ${active === "radiology_report" ? "radiology-note" : ""}`}>
-            {active === "radiology_report" ? <Stethoscope /> : <Flag />} {safetyNote}
+          <div className={`clariti-inline-note ${getClaritiKindMeta(active).uiFamily === "clinical_report" ? "radiology-note" : ""}`}>
+            {getClaritiKindMeta(active).uiFamily === "clinical_report" ? <Stethoscope /> : <Flag />} {safetyNote}
           </div>
         )}
       </div>
@@ -1214,51 +2036,75 @@ function ChatMessageBubble({
 
 function GeneratedVideoResponse({ video, analysis }: { video: GeneratedVideo; analysis: ClaritiAnalysis }) {
   const source = (analysis.sourceAnchors[0] ?? "saved report analysis").replace(/\.+$/, ".");
-  const label = analysis.kind === "insurance_eob" ? "claim" : analysis.kind === "medical_bill" ? "bill" : "report";
-  const disclaimer = analysis.kind === "radiology_report"
-    ? "Educational explanation only; not a medical diagnosis or a replacement for a clinician."
-    : "Educational explanation only; confirm details with the provider or insurer before acting.";
+  const meta = getClaritiKindMeta(analysis.kind);
   return (
     <article className="clariti-chat-turn assistant-turn generated-video-turn">
       <span className="clariti-ai-avatar">C</span>
       <div className="clariti-ai-card">
         <div className="message-meta">Clariti</div>
-        <p>I generated a video explainer grounded in the saved {label} analysis.</p>
+        <p>Here is a short video that walks through this {meta.shortTitle.toLowerCase()} in plain language.</p>
         <video className="chat-generated-video" src={video.url} controls playsInline />
-        <p className="source-grounded-line">Source: {source} {disclaimer}</p>
+        <p className="source-grounded-line">Source: {source} {meta.educationDisclaimer}</p>
       </div>
     </article>
   );
 }
 
-function VideoGenerationPrompt({
-  analysis,
-  generating,
-  status,
-  progress,
-  error,
-  onGenerate,
-}: {
-  analysis: ClaritiAnalysis;
-  generating: boolean;
-  status: string | null;
-  progress: number;
-  error: string | null;
-  onGenerate: () => void;
-}) {
-  const meta = getVideoExplainerMeta(analysis);
+function ProgressionComparisonCard({ comparison }: { comparison: ProgressionComparison }) {
+  const trendLabel = {
+    improving: "Improving",
+    worsening: "Getting worse",
+    stable: "Mostly stable",
+    mixed: "Mixed changes",
+    insufficient: "Unclear trend",
+  }[comparison.trend];
+
+  const trendToken = trendToSeverityToken(comparison.trend);
+
   return (
-    <article className="clariti-chat-turn assistant-turn video-prompt-turn">
+    <article className={`clariti-chat-turn assistant-turn progression-card-turn trend-${comparison.trend}`}>
       <span className="clariti-ai-avatar">C</span>
-      <div className="clariti-ai-card video-prompt-card">
-        <div className="message-meta">Clariti</div>
-        <p>{meta.chatPrompt}</p>
-        <button type="button" className="chat-video-generate" disabled={generating} onClick={onGenerate}>
-          {generating ? <RefreshCw className="spin" /> : <Play />}
-          {generating ? `Generating video ${progress}%` : "Generate video explainer"}
-        </button>
-        {generating && <p className="source-grounded-line">Status: {status ?? "queued"}. This can take a minute or more.</p>}
-        {error && <p className="video-error">{error}</p>}
+      <div className={`clariti-ai-card chat-progression-card trend-${comparison.trend} sev-${trendToken}`}>
+        <div className="message-meta">Clariti · Progression</div>
+        <div className="progression-card-head">
+          <span className={`progression-trend-pill trend-${comparison.trend} sev-${trendToken}`}>{trendLabel}</span>
+          <b>{comparison.headline}</b>
+        </div>
+        <p>{comparison.plainEnglish}</p>
+        <div className="progression-compare-meta">
+          <span><small>Earlier</small><strong>{comparison.earlier.title}</strong></span>
+          <span aria-hidden="true">→</span>
+          <span><small>Newest</small><strong>{comparison.current.title}</strong></span>
+        </div>
+        {comparison.worseningSignals.length > 0 && (
+          <div className="progression-signal-block is-worse">
+            <small>More concerning wording</small>
+            <ul>{comparison.worseningSignals.map((line) => <li key={line}>{line}</li>)}</ul>
+          </div>
+        )}
+        {comparison.improvingSignals.length > 0 && (
+          <div className="progression-signal-block is-better">
+            <small>Improved / resolved wording</small>
+            <ul>{comparison.improvingSignals.map((line) => <li key={line}>{line}</li>)}</ul>
+          </div>
+        )}
+        {comparison.stableSignals.length > 0 && comparison.trend === "stable" && (
+          <div className="progression-signal-block is-stable">
+            <small>Unchanged wording</small>
+            <ul>{comparison.stableSignals.map((line) => <li key={line}>{line}</li>)}</ul>
+          </div>
+        )}
+        {comparison.metrics.filter((metric) => metric.changed).slice(0, 4).length > 0 && (
+          <div className="progression-metrics">
+            {comparison.metrics.filter((metric) => metric.changed).slice(0, 4).map((metric) => (
+              <div key={metric.label} className="progression-metric-row">
+                <span>{metric.label}</span>
+                <b>{metric.previousValue ?? "—"} → {metric.currentValue ?? "—"}</b>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="source-grounded-line">{comparison.safetyNote}</p>
       </div>
     </article>
   );
@@ -1324,13 +2170,16 @@ function VideoStoryboard({
       {generatedVideoUrl ? (
         <video ref={videoRef} className="clariti-generated-video" src={generatedVideoUrl} controls playsInline />
       ) : (
-        <div className="video-explainer-media human-video-preview">
+        <div className="video-explainer-media video-empty-state" aria-hidden={generating ? undefined : true}>
           <div className="video-preview-copy">
-            <span>{generating ? `Generating video · ${jobStatus ?? "queued"} · ${jobProgress}%` : meta.eyebrow}</span>
-            <b>{meta.title}</b>
-            <small>{generating ? "Clariti is creating the scene clips, stitching them, and saving the MP4." : scene.script}</small>
+            <span>{generating ? `${formatVideoJobStatus(jobStatus)} · ${jobProgress}%` : "No video yet"}</span>
+            <b>{generating ? "Creating your explainer…" : meta.title}</b>
+            <small>
+              {generating
+                ? "Clariti is generating five short scenes in parallel, then stitching them into one explainer."
+                : "This box is a preview card, not a video player. Use the button below to generate a short explainer."}
+            </small>
           </div>
-          <button type="button" className="video-play-btn" aria-label="Generate video explanation" disabled={generating} onClick={() => void generateVideo()}>{generating ? <RefreshCw className="spin" /> : <Play />}</button>
         </div>
       )}
       <div className="generated-illustration-panel">
@@ -1396,7 +2245,7 @@ function VideoStoryboard({
       </button>
       {illustrationError && <p className="video-error">{illustrationError}</p>}
       {videoError && <p className="video-error">{videoError}</p>}
-      <p className="video-caption">{generatedVideoUrl ? `The generated video explainer was also added to the chat thread. ${getEducationDisclaimer(analysis)}` : `Clariti creates a stitched, AI-generated explainer for education only. ${getEducationDisclaimer(analysis)}`}</p>
+      <p className="video-caption">{generatedVideoUrl ? `The generated video explainer was also added to the chat thread. ${getEducationDisclaimer(analysis)}` : `Clariti creates a short AI explainer for education only. ${getEducationDisclaimer(analysis)}`}</p>
     </section>
   );
 }
@@ -1413,63 +2262,39 @@ function getVideoStoryboardScenes(analysis: ClaritiAnalysis): StoryboardScene[] 
   const main = analysis.keyPoints[0];
   const second = analysis.keyPoints[1];
   const metrics = analysis.metrics.slice(0, 3).map((metric) => `${metric.label}: ${metric.value}`).join(", ");
-  const question = analysis.questions[0] ?? "What should I ask next?";
+  const question = analysis.questions[0] ?? getClaritiKindMeta(analysis.kind).defaultQuestion;
+  const meta = getClaritiKindMeta(analysis.kind);
 
-  if (analysis.kind === "insurance_eob") {
+  if (meta.uiFamily === "money") {
     return [
-      { title: "What this is", script: `This EOB explains how the claim was processed.`, sourceAnchor: analysis.sourceAnchors[0] ?? "Document header" },
-      { title: "Claim flow", script: metrics || "Clariti maps billed, allowed, paid, and possible patient responsibility amounts.", sourceAnchor: analysis.metrics[0]?.label ?? "Claim amounts" },
+      { title: "What this is", script: `This ${meta.documentNoun} explains the important money or coverage details.`, sourceAnchor: analysis.sourceAnchors[0] ?? "Document header" },
+      { title: "Key amounts", script: metrics || "Clariti maps the main amounts and statuses from the document.", sourceAnchor: analysis.metrics[0]?.label ?? "Amounts" },
       { title: "What to check", script: main?.detail ?? analysis.summary, sourceAnchor: main?.sourceAnchor ?? "Key point" },
-      { title: "Before paying", script: second?.detail ?? "Compare this EOB with the provider bill before paying.", sourceAnchor: second?.sourceAnchor ?? "Payment note" },
-      { title: "Next question", script: `Ask: ${question}`, sourceAnchor: analysis.sourceAnchors[0] ?? "Next step" },
-    ];
-  }
-
-  if (analysis.kind === "medical_bill") {
-    return [
-      { title: "What this is", script: `This bill lists provider charges and possible amount due.`, sourceAnchor: analysis.sourceAnchors[0] ?? "Document header" },
-      { title: "Charges map", script: metrics || "Clariti separates total charges, payments or adjustments, and the amount to verify.", sourceAnchor: analysis.metrics[0]?.label ?? "Charges" },
-      { title: "Main issue", script: main?.detail ?? analysis.summary, sourceAnchor: main?.sourceAnchor ?? "Key point" },
-      { title: "What to verify", script: second?.detail ?? "Check unclear fees and compare against your insurer's EOB.", sourceAnchor: second?.sourceAnchor ?? "Billing note" },
+      { title: "Before you act", script: second?.detail ?? meta.safetyShort, sourceAnchor: second?.sourceAnchor ?? "Careful note" },
       { title: "Next question", script: `Ask: ${question}`, sourceAnchor: analysis.sourceAnchors[0] ?? "Next step" },
     ];
   }
 
   return [
-    { title: "Report wording", script: analysis.summary, sourceAnchor: analysis.sourceAnchors[0] ?? "Report" },
-    { title: "Anatomy", script: main?.detail ?? analysis.plainEnglish, sourceAnchor: main?.sourceAnchor ?? "Finding" },
-    { title: "Other findings", script: second?.detail ?? analysis.plainEnglish, sourceAnchor: second?.sourceAnchor ?? "Finding" },
-    { title: "What it does not decide", script: "This explains the report wording only; it is not a diagnosis.", sourceAnchor: analysis.safetyNote },
-    { title: "Clinician question", script: `Ask: ${question}`, sourceAnchor: analysis.sourceAnchors[0] ?? "Next step" },
+    { title: "What this is", script: analysis.summary, sourceAnchor: analysis.sourceAnchors[0] ?? "Document" },
+    { title: "Main takeaway", script: main?.detail ?? analysis.plainEnglish, sourceAnchor: main?.sourceAnchor ?? "Key point" },
+    { title: "Important detail", script: second?.detail ?? analysis.plainEnglish, sourceAnchor: second?.sourceAnchor ?? "Detail" },
+    { title: "What Clariti cannot decide", script: meta.safetyShort, sourceAnchor: analysis.safetyNote },
+    { title: "Next question", script: `Ask: ${question}`, sourceAnchor: analysis.sourceAnchors[0] ?? "Next step" },
   ];
 }
 
 function getVideoExplainerMeta(analysis: ClaritiAnalysis) {
-  if (analysis.kind === "insurance_eob") {
-    return {
-      eyebrow: "Claim explainer",
-      title: "Claim flow, responsibilities, and what to verify",
-      chatPrompt: "I can also generate a short human explainer video for this EOB, grounded in the same source wording.",
-    };
-  }
-  if (analysis.kind === "medical_bill") {
-    return {
-      eyebrow: "Bill explainer",
-      title: "Charges, payments, and what to check before paying",
-      chatPrompt: "I can also generate a short human explainer video for this bill, grounded in the same source wording.",
-    };
-  }
+  const meta = getClaritiKindMeta(analysis.kind);
   return {
-    eyebrow: "Anatomy explainer",
-    title: "Anatomy, findings, and questions to ask",
-    chatPrompt: "I can also generate a short human explainer video for this radiology report, grounded in the same source wording.",
+    eyebrow: meta.videoEyebrow,
+    title: meta.videoTitle,
+    chatPrompt: meta.videoChatPrompt,
   };
 }
 
 function getEducationDisclaimer(analysis: ClaritiAnalysis) {
-  if (analysis.kind === "insurance_eob") return "Confirm coverage and payment with the insurer or provider.";
-  if (analysis.kind === "medical_bill") return "Confirm charges and what you owe with the provider or insurer.";
-  return "It does not replace a clinician or medical diagnosis.";
+  return getClaritiKindMeta(analysis.kind).educationDisclaimer;
 }
 
 type VideoJobPayload = {
@@ -1481,27 +2306,39 @@ type VideoJobPayload = {
   createdAt?: string | null;
   created_at?: string | null;
   updatedAt?: string | null;
+  updated_at?: string | null;
   completedAt?: string | null;
 };
 
-async function createSceneVideoJob(analysis: ClaritiAnalysis, durationSeconds: number, sessionId: string | null) {
+type LatestVideoJobResponse = {
+  job: VideoJobPayload | null;
+  completedJob?: VideoJobPayload | null;
+};
+
+async function createSceneVideoJob(analysis: ClaritiAnalysis, durationSeconds: number, sessionId: string) {
   const response = await fetch("/api/videos/report-explainer", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ analysis, durationSeconds, sessionId }),
   });
   const payload = await response.json();
+  if (response.status === 402 && isPlusRequiredPayload(payload)) {
+    throw Object.assign(new Error(payload.message ?? "Explainer videos are a Clariti Plus feature."), { plusRequired: true });
+  }
   if (!response.ok || !payload.ok || !payload.job?.id) {
     throw new Error(formatHumanVideoError(payload.error ?? "Clariti could not create the video job."));
   }
   return payload.job as VideoJobPayload;
 }
 
-async function fetchLatestVideoJob(sessionId: string) {
+async function fetchLatestVideoJob(sessionId: string): Promise<LatestVideoJobResponse | null> {
   const response = await fetch(`/api/videos/report-explainer?sessionId=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
   const payload = await response.json();
   if (!response.ok || !payload.ok) return null;
-  return payload.job as VideoJobPayload | null;
+  return {
+    job: (payload.job as VideoJobPayload | null) ?? null,
+    completedJob: (payload.completedJob as VideoJobPayload | null) ?? null,
+  };
 }
 
 async function createIllustration(analysis: ClaritiAnalysis, sceneIndex: number, sessionId: string | null) {
@@ -1521,7 +2358,25 @@ async function pollSceneVideoJob(
   jobId: string,
   onProgress: (status: string, progress: number) => void,
 ) {
-  void fetch(`/api/videos/report-explainer/${jobId}?process=1`, { cache: "no-store" }).catch(() => undefined);
+  let processPromise: Promise<VideoJobPayload | null> | null = null;
+
+  const kickProcess = () => {
+    if (processPromise) return;
+    processPromise = fetch(`/api/videos/report-explainer/${jobId}?process=1`, { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.ok || !payload.job) return null;
+        const job = payload.job as VideoJobPayload;
+        onProgress(job.status, job.progress ?? 0);
+        return job;
+      })
+      .catch(() => null)
+      .finally(() => {
+        processPromise = null;
+      });
+  };
+
+  kickProcess();
 
   for (let attempt = 0; attempt < 90; attempt += 1) {
     const response = await fetch(`/api/videos/report-explainer/${jobId}`, { cache: "no-store" });
@@ -1533,9 +2388,22 @@ async function pollSceneVideoJob(
     onProgress(job.status, job.progress ?? 0);
     if (job.status === "completed") return job;
     if (job.status === "failed") throw new Error(formatHumanVideoError(job.error ?? "The video job failed."));
+
+    if (job.status === "queued" || isVideoJobStale(job)) {
+      kickProcess();
+    }
+
     await new Promise((resolve) => setTimeout(resolve, 4000));
   }
   throw new Error("The video job is still running. Leave this chat open or try checking again in a moment.");
+}
+
+function isVideoJobStale(job: VideoJobPayload) {
+  const updatedAt = job.updatedAt ?? job.updated_at;
+  if (!updatedAt) return job.status === "queued";
+  const timestamp = new Date(updatedAt).getTime();
+  if (!Number.isFinite(timestamp)) return job.status === "queued";
+  return Date.now() - timestamp > 8 * 60 * 1000;
 }
 
 function Actions({ items, onCreateQuestionList }: { items: string[]; onCreateQuestionList: () => Promise<void> }) {
@@ -1554,7 +2422,7 @@ function Actions({ items, onCreateQuestionList }: { items: string[]; onCreateQue
       <section className="canvas-card">
         <h3>Suggested next steps</h3>
         <ol className="action-list">
-          {items.map((item, index) => <li key={item}><span>{index + 1}</span><p><b>{item}</b><small>Clariti can turn this into a phone follow-up or a concise question list.</small></p></li>)}
+          {items.map((item, index) => <li key={item}><span>{index + 1}</span><p><b>{item}</b><small>Clariti can turn this into an email check-in or a concise question list.</small></p></li>)}
         </ol>
         <button type="button" className="canvas-primary" disabled={creating} onClick={() => void handleCreate()}>
           {creating ? "Creating question list..." : "Create question list"}
@@ -1565,25 +2433,33 @@ function Actions({ items, onCreateQuestionList }: { items: string[]; onCreateQue
 }
 
 function toArtifactMeta(analysis: ClaritiAnalysis) {
-  const metric = analysis.metrics[0];
-  return {
-    eyebrow: analysis.kind === "radiology_report" ? "RADIOLOGY INTELLIGENCE" : analysis.kind === "insurance_eob" ? "CLAIM INTELLIGENCE" : "BILL INTELLIGENCE",
-    title: analysis.kind === "radiology_report" ? "Your report, in plain English" : analysis.kind === "insurance_eob" ? "Your claim, made clearer" : "Your bill, made clearer",
-    metric: metric?.value ?? String(analysis.keyPoints.length),
-    label: metric?.label ?? "key points",
-    note: analysis.flags[0]?.label ?? analysis.questions[0] ?? "Ready for review",
-  };
+  return { eyebrow: getClaritiKindMeta(analysis.kind).eyebrow };
 }
 
 function messagesFromDbSession(session: DbWorkspaceSession): ChatMessage[] {
   const messages = session.messages
     .filter((message) => message.role === "user" || message.role === "assistant")
-    .map((message) => ({
-      id: message.id,
-      role: message.role === "assistant" ? "assistant" as const : "user" as const,
-      content: message.content,
-      createdAt: timestampFromIso(message.created_at),
-    }));
+    .map((message) => {
+      const role = message.role === "assistant" ? "assistant" as const : "user" as const;
+      if (role === "user") {
+        const parsed = parseMessageAttachment(message.content);
+        return {
+          id: message.id,
+          role,
+          content: parsed.fileName ? (parsed.text || "Please review this attached document.") : message.content,
+          createdAt: timestampFromIso(message.created_at),
+          attachment: parsed.fileName
+            ? { name: parsed.fileName, previewUrl: null, label: fileTypeLabel(parsed.fileName) }
+            : undefined,
+        };
+      }
+      return {
+        id: message.id,
+        role,
+        content: message.content,
+        createdAt: timestampFromIso(message.created_at),
+      };
+    });
   return messages.length > 0 ? messages : [];
 }
 
@@ -1597,9 +2473,9 @@ function messagesFromRequest(request: ClaritiRequest): ChatMessage[] {
 }
 
 function buildInitialAnalysisReply(analysis: ClaritiAnalysis) {
-  const source = analysis.keyPoints[0]?.sourceAnchor ?? analysis.sourceAnchors[0] ?? "saved document";
-  const nextAction = analysis.nextActions[0] ?? "review this with the right professional";
-  return `${analysis.summary}\n\nI pulled out the key points in the analysis panel. Next: ${nextAction}. Source: ${source}.`;
+  const source = analysis.keyPoints[0]?.sourceAnchor ?? analysis.sourceAnchors[0] ?? "your document";
+  const nextAction = analysis.nextActions[0] ?? "talk this through with the right person";
+  return `${analysis.summary}\n\nI put the main points in the panel on the right — written in plain language. A good next step: ${nextAction}. Source: ${source}.`;
 }
 
 function timestampFromIso(value?: string | null) {
@@ -1617,32 +2493,32 @@ function buildLocalFollowUp(question: string, analysis: ClaritiAnalysis) {
   const point = analysis.keyPoints[0];
   const pointText = `${point.label} - ${point.detail.replace(/\s+/g, " ").replace(/\.+$/, ".")}`;
 
-  if (extractPhoneNumber(question) && !hasSchedulingTime(question)) {
-    return "Got the phone number. What day and time should Clariti use for the follow-up?";
+  if (extractEmailAddress(question) && !hasSchedulingTime(question)) {
+    return "Got the email. What day and time should Clariti use for the check-in?";
   }
 
-  if (/schedule|follow-up|follow up|call back|phone follow|reminder|set.*time/.test(lower)) {
+  if (/schedule|follow-up|follow up|check[- ]?in|email me|reminder|set.*time/.test(lower)) {
     return buildFollowUpPlanningReply(analysis, analysis.nextActions[0] ?? "review this document with the relevant clinician or provider");
   }
 
   if (/cancer|tumou?r|malignan|mass|lesion/.test(lower)) {
-    return `Clariti cannot tell from this report whether you have cancer. The saved analysis does not include a cancer, tumour, malignancy, mass, or lesion finding; it highlights: ${pointText} Source: ${point.sourceAnchor}. Ask your clinician to confirm what the report rules in and rules out.`;
+    return `I cannot tell from this paperwork whether you have cancer. The saved explanation does not include a cancer, tumour, malignancy, mass, or lesion finding; it highlights: ${pointText} Source: ${point.sourceAnchor}. Ask your clinician to confirm what the report rules in and rules out.`;
   }
 
   if (/ignore|safe to ignore|nothing to do|leave it|wait and see/.test(lower)) {
-    return `I would not ignore it. The saved analysis flags: ${pointText} Source: ${point.sourceAnchor}. A safer next step is to ${(analysis.nextActions[0] ?? "review this with your clinician").toLowerCase()}.`;
+    return `I would not ignore it. The saved explanation flags: ${pointText} Source: ${point.sourceAnchor}. A safer next step is to ${(analysis.nextActions[0] ?? "review this with your clinician").toLowerCase()}.`;
   }
 
   const metric = analysis.metrics.find((item) => /\$|£|amount|paid|due|responsibility|billed/i.test(`${item.label} ${item.value}`));
   if (metric) {
-    return `Based on the saved analysis, ${metric.label.toLowerCase()} is ${metric.value}. ${metric.caveat ?? ""} Source: ${analysis.sourceAnchors[0] ?? "saved analysis"}.`;
+    return `From the saved explanation, ${metric.label.toLowerCase()} is ${metric.value}. ${metric.caveat ?? ""} Source: ${analysis.sourceAnchors[0] ?? "saved analysis"}.`;
   }
-  return `From the saved analysis: ${pointText} Source: ${point.sourceAnchor}.`;
+  return `From the saved explanation: ${pointText} Source: ${point.sourceAnchor}.`;
 }
 
 function buildFollowUpPlanningReply(analysis: ClaritiAnalysis, action: string) {
   const point = analysis.keyPoints[0];
-  return `Yes. I can set up a focused phone follow-up for ${action}. Send the best phone number and preferred day/time. Source: ${point.sourceAnchor}.`;
+  return `Yes. I can set an email check-in for ${action}. Clariti will ask if anything changed or if you need further analysis. What day and time should I email you? Source: ${point.sourceAnchor}.`;
 }
 
 function inferFollowUpDraftFromThread({
@@ -1661,10 +2537,10 @@ function inferFollowUpDraftFromThread({
   const recentMessages = messages.slice(-12);
   const threadText = [...recentMessages.map((message) => message.content), latestContent].join("\n");
   const lower = threadText.toLowerCase();
-  const schedulingIntent = /follow-up|follow up|call me|call back|phone call|schedule|appointment|reminder|preferred day|preferred time|what day and time|what time works/i.test(lower);
+  const schedulingIntent = /follow-up|follow up|check[- ]?in|email me|schedule|appointment|reminder|preferred day|preferred time|what day and time|what time works/i.test(lower);
   if (!currentDraft && !schedulingIntent) return null;
 
-  const phoneNumber = currentDraft?.phoneNumber ?? extractPhoneNumber(threadText) ?? undefined;
+  const email = currentDraft?.email ?? extractEmailAddress(threadText) ?? undefined;
   const timingSource = hasSchedulingTime(latestContent)
     ? latestContent
     : currentDraft?.timingText
@@ -1675,14 +2551,42 @@ function inferFollowUpDraftFromThread({
 
   return {
     action: currentDraft?.action ?? analysis.nextActions[0] ?? "review this document with the right professional",
-    phoneNumber,
+    email,
     timingText: timingSource,
   };
 }
 
-function extractPhoneNumber(value: string) {
-  const match = value.match(/(?:\+?\d[\d\s().-]{6,}\d)/);
-  return match?.[0].replace(/\s+/g, " ").trim() ?? null;
+function extractEmailAddress(value: string) {
+  const match = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return match?.[0].trim().toLowerCase() ?? null;
+}
+
+function parseMessageAttachment(content: string) {
+  const attached = content.match(/\n\nAttached:\s*(.+)\s*$/i);
+  if (attached?.index != null) {
+    return {
+      text: content.slice(0, attached.index).trim(),
+      fileName: attached[1].trim(),
+    };
+  }
+  const readOnly = content.match(/^Please read this document:\s*(.+)\s*$/i);
+  if (readOnly) {
+    return { text: "", fileName: readOnly[1].trim() };
+  }
+  return { text: content, fileName: null as string | null };
+}
+
+function fileTypeLabel(fileName: string) {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".pdf")) return "PDF document";
+  if (/\.(png|jpe?g|webp|gif|heic|heif)$/i.test(lower)) return "Image";
+  if (lower.endsWith(".txt")) return "Text document";
+  if (/\.(docx?|rtf)$/i.test(lower)) return "Document";
+  return "Attached file";
+}
+
+function isPdfFileName(fileName: string) {
+  return fileName.toLowerCase().endsWith(".pdf");
 }
 
 function hasSchedulingTime(value: string) {
@@ -1741,6 +2645,25 @@ function inferScheduledFor(value: string) {
   return date.toISOString();
 }
 
+function formatVideoJobStatus(status: string | null | undefined) {
+  switch (status) {
+    case "queued":
+      return "Queued — preparing your 5-scene explainer";
+    case "scripting":
+      return "Writing the 5-scene explainer script";
+    case "generating_scenes":
+      return "Creating the five scene clips";
+    case "stitching":
+      return "Stitching the five scenes together";
+    case "completed":
+      return "Video ready";
+    case "failed":
+      return "Video generation failed";
+    default:
+      return "Preparing your 5-scene explainer";
+  }
+}
+
 function parseStoredRequest(value: string | null): ClaritiRequest | null {
   if (!value) return null;
   try {
@@ -1752,13 +2675,41 @@ function parseStoredRequest(value: string | null): ClaritiRequest | null {
       documentText: parsed.documentText,
       fileName: parsed.fileName,
       documentId: parsed.documentId,
+      requestId: typeof parsed.requestId === "string" ? parsed.requestId : undefined,
       createdAt: typeof parsed.createdAt === "number" ? parsed.createdAt : undefined,
+      status: parsed.status === "analyzing" || parsed.status === "done" || parsed.status === "pending"
+        ? parsed.status
+        : undefined,
       analysis: parsed.analysis,
       persisted: parsed.persisted,
     };
   } catch {
     return null;
   }
+}
+
+function requestFingerprint(request: ClaritiRequest) {
+  if (request.requestId) return request.requestId;
+  if (request.documentId) return `doc:${request.documentId}`;
+  return [
+    request.kind,
+    request.createdAt ?? 0,
+    request.fileName ?? "",
+    request.documentText.slice(0, 120),
+  ].join(":");
+}
+
+function writeStoredRequest(request: ClaritiRequest) {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(request));
+}
+
+function clearStoredRequest() {
+  window.localStorage.removeItem(STORAGE_KEY);
+}
+
+function getPersistedSessionId(request: ClaritiRequest) {
+  const persisted = request.persisted as { session?: { id?: string } } | undefined;
+  return persisted?.session?.id;
 }
 
 function requestFromDbSession(session: DbWorkspaceSession): ClaritiRequest | null {
@@ -1791,16 +2742,11 @@ function isFreshPendingRequest(request: ClaritiRequest) {
 }
 
 function isAnalysisKind(value: unknown): value is ClaritiAnalysisKind {
-  return value === "medical_bill" || value === "radiology_report" || value === "insurance_eob";
+  return isClaritiAnalysisKind(value);
 }
 
 function toWorkspaceSession(request: ClaritiRequest): WorkspaceSession {
-  const labels: Record<ClaritiAnalysisKind, { title: string; tag: string }> = {
-    medical_bill: { title: "Medical bill", tag: "Bill" },
-    radiology_report: { title: "Radiology report", tag: "Report" },
-    insurance_eob: { title: "Insurance EOB", tag: "EOB" },
-  };
-  const label = labels[request.kind];
+  const label = getClaritiKindMeta(request.kind);
   const persisted = request.persisted as { session?: { id?: string; title?: string } } | undefined;
   const sessionTitle = persisted?.session?.title;
   const displayTitle = sessionTitle ? cleanSessionTitle(sessionTitle, request.kind) : label.title;
@@ -1816,19 +2762,22 @@ function toWorkspaceSession(request: ClaritiRequest): WorkspaceSession {
   };
 }
 
-function toRecentWorkspaceSession(session: { id: string; title: string; status: string; updated_at: string; question?: string | null }): RecentWorkspaceSession {
-  const source = `${session.title} ${session.question ?? ""}`.toLowerCase();
-  const kind: ClaritiAnalysisKind = source.includes("radiology") || source.includes("mri")
-    ? "radiology_report"
-    : source.includes("eob") || source.includes("claim") || source.includes("insurance")
-      ? "insurance_eob"
-      : "medical_bill";
-
-  const category = kind === "radiology_report" ? "Radiology report" : kind === "insurance_eob" ? "Insurance EOB" : "Medical bill";
+function toRecentWorkspaceSession(session: {
+  id: string;
+  title: string;
+  status: string;
+  created_at?: string;
+  updated_at: string;
+  question?: string | null;
+  parent_session_id?: string | null;
+}): RecentWorkspaceSession {
+  const kind = inferKindFromTitleText(`${session.title} ${session.question ?? ""}`);
+  const category = getClaritiKindMeta(kind).title;
   const title = cleanSessionTitle(session.title, kind);
   const updatedAt = new Date(session.updated_at);
   const date = Number.isFinite(updatedAt.getTime()) ? updatedAt.toLocaleDateString() : "";
   const meta = [category, date].filter(Boolean).join(" · ");
+  const createdAt = session.created_at ? new Date(session.created_at).getTime() : updatedAt.getTime();
 
   return {
     id: session.id,
@@ -1837,11 +2786,122 @@ function toRecentWorkspaceSession(session: { id: string; title: string; status: 
     meta,
     preview: buildSessionPreview(session.question, category, session.title),
     fileName: session.title,
+    parentId: session.parent_session_id ?? null,
+    createdAt: Number.isFinite(createdAt) ? createdAt : undefined,
   };
 }
 
+type SidebarSessionItem = RecentWorkspaceSession | WorkspaceSession;
+
+type SidebarGroup = {
+  key: string;
+  title: string;
+  meta: string;
+  kind: ClaritiAnalysisKind;
+  pending: boolean;
+  containsActive: boolean;
+  head: SidebarSessionItem;
+  items: SidebarSessionItem[];
+};
+
+function sidebarItemParentId(item: SidebarSessionItem): string | null {
+  return "parentId" in item ? item.parentId ?? null : null;
+}
+
+function sidebarItemCreatedAt(item: SidebarSessionItem): number {
+  return "createdAt" in item && typeof item.createdAt === "number" ? item.createdAt : Number.MAX_SAFE_INTEGER;
+}
+
+const FOLLOW_UP_TITLE_PREFIX = /^follow[\s-]?up\s+/i;
+
+function groupSidebarSessions(sessions: SidebarSessionItem[], activeId?: string | null): SidebarGroup[] {
+  const order: string[] = [];
+  const buckets = new Map<string, SidebarSessionItem[]>();
+
+  for (const item of sessions) {
+    const key = sidebarItemParentId(item) ?? item.id;
+    if (!buckets.has(key)) {
+      buckets.set(key, []);
+      order.push(key);
+    }
+    buckets.get(key)!.push(item);
+  }
+
+  return order.map((key) => {
+    const items = buckets.get(key)!;
+    const head = items[0];
+    const sortedByDate = [...items].sort((a, b) => sidebarItemCreatedAt(a) - sidebarItemCreatedAt(b));
+    const root = items.find((item) => item.id === key) ?? sortedByDate[0];
+    const category = getClaritiKindMeta(root.kind).title;
+    const title = root.title.replace(FOLLOW_UP_TITLE_PREFIX, "");
+
+    return {
+      key,
+      title,
+      meta: items.length > 1 ? `${category} · ${items.length} reports` : root.meta,
+      kind: head.kind,
+      pending: "pending" in head ? Boolean(head.pending) : false,
+      containsActive: activeId != null && items.some((item) => item.id === activeId),
+      head,
+      items: sortedByDate,
+    };
+  });
+}
+
+function SidebarGroupRow({
+  group,
+  activeSidebarId,
+  expanded,
+  onToggle,
+  onSelect,
+}: {
+  group: SidebarGroup;
+  activeSidebarId: string | null;
+  expanded: boolean;
+  onToggle: () => void;
+  onSelect: (item: SidebarSessionItem) => void;
+}) {
+  return (
+    <div className={`conversation-group ${activeSidebarId === group.head.id ? "active" : group.containsActive ? "has-active" : ""} ${group.pending ? "pending" : ""}`}>
+      <button className="conversation-group-main" onClick={() => onSelect(group.head)}>
+        <span className={`file-icon file-icon-${group.kind}`}>{sidebarIcon(group.kind)}</span>
+        <span>
+          <b>{group.title}</b>
+          <small>{group.meta}</small>
+        </span>
+      </button>
+      {group.items.length > 1 ? (
+        <button
+          type="button"
+          className="conversation-group-toggle"
+          aria-label={expanded ? "Collapse history" : "Expand history"}
+          onClick={onToggle}
+        >
+          {expanded ? <ChevronDown /> : <ChevronRight />}
+        </button>
+      ) : (
+        <MoreHorizontal />
+      )}
+      {expanded && (
+        <div className="conversation-subgroup">
+          {group.items.map((item, index) => (
+            <button
+              key={item.id}
+              className={`conversation-subrow ${activeSidebarId === item.id ? "active" : ""}`}
+              onClick={() => onSelect(item)}
+            >
+              <span>{sidebarItemCreatedAt(item) !== Number.MAX_SAFE_INTEGER ? new Date(sidebarItemCreatedAt(item)).toLocaleDateString() : item.meta}</span>
+              <small>{index === 0 ? "Original" : "Follow-up"}</small>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function toPendingWorkspaceSession(request: ClaritiRequest): RecentWorkspaceSession {
-  const category = request.kind === "radiology_report" ? "Radiology report" : request.kind === "insurance_eob" ? "Insurance EOB" : "Medical bill";
+  const category = getClaritiKindMeta(request.kind).title;
   const sourceTitle = request.fileName ?? request.question;
   return {
     id: pendingSessionKey(request),
@@ -1858,7 +2918,7 @@ function toPendingWorkspaceSession(request: ClaritiRequest): RecentWorkspaceSess
 function toRecentWorkspaceSessionFromAnalysis(request: ClaritiRequest, analysis: ClaritiAnalysis, persisted: unknown): RecentWorkspaceSession {
   const saved = persisted as { session?: { id?: string; title?: string; status?: string; updated_at?: string } } | null;
   const sessionId = saved?.session?.id ?? pendingSessionKey(request);
-  const category = analysis.kind === "radiology_report" ? "Radiology report" : analysis.kind === "insurance_eob" ? "Insurance EOB" : "Medical bill";
+  const category = getClaritiKindMeta(analysis.kind).title;
 
   return {
     id: sessionId,
@@ -1875,7 +2935,7 @@ function pendingSessionKey(request: ClaritiRequest) {
 }
 
 function cleanSessionTitle(title: string, kind: ClaritiAnalysisKind) {
-  const fallback = kind === "radiology_report" ? "Radiology report" : kind === "insurance_eob" ? "Insurance EOB" : "Medical bill";
+  const fallback = getClaritiKindMeta(kind).title;
   const cleaned = title
     .replace(/\.(pdf|txt|png|jpe?g|webp)$/i, "")
     .replace(/[_-]+/g, " ")
@@ -1883,7 +2943,7 @@ function cleanSessionTitle(title: string, kind: ClaritiAnalysisKind) {
     .trim();
 
   if (!cleaned) return fallback;
-  const generic = /^(medical bill|insurance eob|radiology report)$/i.test(cleaned);
+  const generic = /^(medical bill|insurance eob|radiology report|lab results|discharge summary|medication list|pathology report|referral letter|visit notes|prior authorization|health document)$/i.test(cleaned);
   return generic ? fallback : truncateMiddle(cleaned, 42);
 }
 
@@ -1901,7 +2961,12 @@ function truncateMiddle(value: string, maxLength: number) {
 }
 
 function sidebarIcon(kind: ClaritiAnalysisKind) {
-  if (kind === "radiology_report") return <FileHeart />;
-  if (kind === "insurance_eob") return <ShieldCheck />;
+  if (kind === "radiology_report" || kind === "pathology_report") return <FileHeart />;
+  if (kind === "insurance_eob" || kind === "prior_authorization") return <ShieldCheck />;
+  if (kind === "lab_results") return <FlaskConical />;
+  if (kind === "discharge_summary") return <Hospital />;
+  if (kind === "medication_context") return <Pill />;
+  if (kind === "visit_notes" || kind === "referral_letter") return <ClipboardList />;
+  if (kind === "unknown") return <FileText />;
   return <ReceiptText />;
 }

@@ -5,7 +5,7 @@ import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } fr
 
 const bodySchema = z.object({
   analysis: claritiIllustrationAnalysisSchema,
-  sessionId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().nullish(),
   sceneIndex: z.coerce.number().int().min(0).max(4).default(0),
 });
 

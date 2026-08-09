@@ -1,3 +1,123 @@
+/* Every rule below is deliberately over-qualified with `.clariti-conversations
+   .conversation-group` so it reliably outranks the legacy, more generic
+   `.clariti-conversations button[...]` rules elsewhere in this stylesheet —
+   those rules also match these elements (they're <button>s nested inside
+   .clariti-conversations) and would otherwise win ties on element-selector
+   count despite this block being more specific in intent. */
+
+.clariti-conversations .conversation-group {
+  position: relative;
+  border-radius: 11px;
+}
+
+.clariti-conversations .conversation-group .conversation-group-main {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  border-radius: 11px;
+  padding: 10px;
+  padding-right: 34px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.clariti-conversations .conversation-group:hover:not(.active) .conversation-group-main {
+  background: #f1f5f3;
+}
+
+.clariti-conversations .conversation-group.active .conversation-group-main {
+  background: #edf4f1;
+}
+
+.clariti-conversations .conversation-group.has-active:not(.active) .conversation-group-main {
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.clariti-conversations .conversation-group.pending .conversation-group-main {
+  animation: claritiPendingRow 1.8s ease-in-out infinite;
+  background: linear-gradient(90deg, #f7fbf9, #eef7f4, #f7fbf9);
+  background-size: 220% 100%;
+}
+
+.clariti-conversations .conversation-group .conversation-group-toggle {
+  position: absolute;
+  top: 12px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: #8a9692;
+  cursor: pointer;
+}
+
+.clariti-conversations .conversation-group .conversation-group-toggle:hover {
+  background: #e7efec;
+  color: #48645d;
+}
+
+.clariti-conversations .conversation-group .conversation-group-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+.clariti-conversations .conversation-group > svg {
+  position: absolute;
+  top: 15px;
+  right: 10px;
+  width: 14px;
+  height: 14px;
+  color: #6f7e79;
+  pointer-events: none;
+}
+
+.clariti-conversations .conversation-group .conversation-subgroup {
+  display: grid;
+  gap: 1px;
+  padding: 2px 4px 6px 39px;
+}
+
+.clariti-conversations .conversation-group .conversation-subrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  padding: 6px 8px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 10.5px;
+  color: #5c6a66;
+  min-height: 0;
+}
+
+.clariti-conversations .conversation-group .conversation-subrow:hover {
+  background: #f1f5f3;
+}
+
+.clariti-conversations .conversation-group .conversation-subrow.active {
+  background: #edf4f1;
+  color: var(--accent-dark);
+  font-weight: 700;
+}
+
+.clariti-conversations .conversation-group .conversation-subrow small {
+  color: #8a9692;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 @media (min-width: 761px) {
   .clariti-left-panel {
     background: linear-gradient(180deg, #fbfcfb 0%, #f6f9f7 100%);
