@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Bell, CalendarDays, ChevronDown, Home, MessageCircle, Search, Settings, UserRound } from "lucide-react";
+import { Bell, CalendarDays, ChevronDown, ClipboardList, Home, MessageCircle, Search, Settings, UserRound } from "lucide-react";
 import { NuraLogo } from "@/components/nura-logo";
 import { SignOutButton } from "@/components/sign-out-button";
 import { CalendarNavBadge } from "@/components/calendar-nav-badge";
@@ -11,7 +11,7 @@ import { TimezoneSync } from "@/components/timezone-sync";
 
 const nav = [
   ["Today", "/today", Home],
-  ["Care plans", "/plans", MessageCircle],
+  ["Care plans", "/plans", ClipboardList],
   ["Calendar", "/calendar", CalendarDays],
   ["Me", "/me", Settings],
 ] as const;
@@ -126,7 +126,7 @@ export function NuraShell({
           <span>Today</span>
         </Link>
         <Link href="/plans" className={pathname.startsWith("/plans") ? "active" : ""}>
-          <span className="nav-icon-wrap"><MessageCircle/></span>
+          <span className="nav-icon-wrap"><ClipboardList/></span>
           <span>Plans</span>
         </Link>
         <Link href="/workspace" className={`mobile-nav-chat${pathname.startsWith("/workspace") ? " active" : ""}`} aria-label="Message Nura">
