@@ -3,9 +3,10 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { getSubscriptionAccess, isSubscriptionLockedOut } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
-import { sendWhatsappText } from "@/lib/integrations/whatsapp";
+import { sendWhatsappText, downloadWhatsappMedia } from "@/lib/integrations/whatsapp";
 import { extractWhatsappLinkCode } from "@/lib/whatsapp-link";
 import { logger } from "@/lib/logger";
+import { processAttachments } from "@/lib/ai/attachments";
 import {
   resolveDecision,
   applyPlanDecision,
@@ -62,8 +63,16 @@ const inboundSchema = z.object({
     name: z.string().default("WhatsApp attachment"),
     type: z.string().default("application/octet-stream"),
     summary: z.string().default("Shared through WhatsApp."),
+    // WhatsApp only ever hands over a media id, not the bytes - this is resolved to a
+    // downloadable URL (and then base64) later, right before the message is classified.
+    mediaId: z.string().optional(),
   })).optional().default([]),
 });
+
+function formatPhoneList(phones: Array<{ phone?: string; type?: string }> | undefined): string {
+  if (!phones || phones.length === 0) return "";
+  return phones.map((p) => (p.type ? `${p.phone} (${p.type})` : p.phone)).filter(Boolean).join(", ");
+}
 
 function extractInboundMessage(raw: unknown): unknown {
   if (!raw || typeof raw !== "object") return raw;
@@ -74,7 +83,7 @@ function extractInboundMessage(raw: unknown): unknown {
 
   const id = typeof message.id === "string" ? message.id : undefined;
   const from = typeof message.from === "string" ? message.from : "";
-  const media: Array<{ kind: string; name: string; type: string; summary: string }> = [];
+  const media: Array<{ kind: string; name: string; type: string; summary: string; mediaId?: string }> = [];
   let text = "";
   const type = typeof message.type === "string" ? message.type : "";
 
@@ -83,35 +92,96 @@ function extractInboundMessage(raw: unknown): unknown {
       text = (message.text as { body?: string } | undefined)?.body ?? "";
       break;
     case "image": {
-      const image = message.image as { mime_type?: string; caption?: string } | undefined;
+      const image = message.image as { id?: string; mime_type?: string; caption?: string } | undefined;
       media.push({
         kind: "image",
         name: "Photo",
         type: image?.mime_type ?? "image/jpeg",
         summary: "Shared through WhatsApp.",
+        mediaId: image?.id,
       });
       text = image?.caption ?? "";
       break;
     }
-    case "audio": {
-      const audio = message.audio as { mime_type?: string } | undefined;
+    case "sticker": {
+      const sticker = message.sticker as { id?: string; mime_type?: string } | undefined;
       media.push({
-        kind: "audio",
-        name: "Voice note",
-        type: audio?.mime_type ?? "audio/ogg",
+        kind: "image",
+        name: "Sticker",
+        type: sticker?.mime_type ?? "image/webp",
         summary: "Shared through WhatsApp.",
+        mediaId: sticker?.id,
       });
       break;
     }
+    case "audio": {
+      const audio = message.audio as { id?: string; mime_type?: string; voice?: boolean } | undefined;
+      media.push({
+        kind: "audio",
+        name: audio?.voice ? "Voice note" : "Audio",
+        type: audio?.mime_type ?? "audio/ogg",
+        summary: "Shared through WhatsApp.",
+        mediaId: audio?.id,
+      });
+      break;
+    }
+    case "video": {
+      const video = message.video as { id?: string; mime_type?: string; caption?: string } | undefined;
+      media.push({
+        kind: "document",
+        name: "Video",
+        type: video?.mime_type ?? "video/mp4",
+        summary: "Shared through WhatsApp.",
+        mediaId: video?.id,
+      });
+      text = video?.caption ?? "";
+      break;
+    }
     case "document": {
-      const document = message.document as { filename?: string; mime_type?: string; caption?: string } | undefined;
+      const document = message.document as { id?: string; filename?: string; mime_type?: string; caption?: string } | undefined;
       media.push({
         kind: "document",
         name: document?.filename ?? "Document",
         type: document?.mime_type ?? "application/octet-stream",
         summary: "Shared through WhatsApp.",
+        mediaId: document?.id,
       });
       text = document?.caption ?? "";
+      break;
+    }
+    case "location": {
+      const location = message.location as { latitude?: number; longitude?: number; name?: string; address?: string } | undefined;
+      const label = [location?.name, location?.address].filter(Boolean).join(", ");
+      text = `Shared a location${label ? `: ${label}` : ""}${
+        location?.latitude != null && location?.longitude != null ? ` (${location.latitude}, ${location.longitude})` : ""
+      }.`;
+      break;
+    }
+    case "contacts": {
+      const contacts = message.contacts as Array<{ name?: { formatted_name?: string }; phones?: Array<{ phone?: string; type?: string }> }> | undefined;
+      const summaries = (contacts ?? []).map((c) => {
+        const name = c.name?.formatted_name ?? "Unnamed contact";
+        const phones = formatPhoneList(c.phones);
+        return phones ? `${name} (${phones})` : name;
+      });
+      text = summaries.length > 0 ? `Shared contact${summaries.length === 1 ? "" : "s"}: ${summaries.join("; ")}.` : "Shared a contact.";
+      break;
+    }
+    case "interactive": {
+      const interactive = message.interactive as
+        | { type?: string; button_reply?: { title?: string }; list_reply?: { title?: string; description?: string } }
+        | undefined;
+      text = interactive?.button_reply?.title ?? interactive?.list_reply?.title ?? "";
+      break;
+    }
+    case "button": {
+      const button = message.button as { text?: string } | undefined;
+      text = button?.text ?? "";
+      break;
+    }
+    case "reaction": {
+      const reaction = message.reaction as { emoji?: string } | undefined;
+      text = reaction?.emoji ? `Reacted ${reaction.emoji} to an earlier message.` : "";
       break;
     }
     default:
@@ -406,11 +476,31 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
     | "in_app"
   )[];
 
-  const messageAttachments: MessageAttachment[] = media.map((item) => ({
-    name: item.name,
-    type: item.type,
-    kind: item.kind as MessageAttachment["kind"],
-  }));
+  // Resolve each media id to actual bytes before classification - without this, Nura only ever
+  // sees "a photo/document was shared", never what's actually in it.
+  const downloadedAttachments: MessageAttachment[] = await Promise.all(
+    media.map(async (item) => {
+      if (!item.mediaId) {
+        return { name: item.name, type: item.type, kind: item.kind as MessageAttachment["kind"] };
+      }
+      const downloaded = await downloadWhatsappMedia(item.mediaId);
+      if (!downloaded) {
+        return {
+          name: item.name,
+          type: item.type,
+          kind: item.kind as MessageAttachment["kind"],
+          text: "(couldn't download this attachment from WhatsApp - it may have expired or been too large)",
+        };
+      }
+      return {
+        name: item.name,
+        type: downloaded.mimeType || item.type,
+        kind: item.kind as MessageAttachment["kind"],
+        base64: downloaded.base64,
+      };
+    }),
+  );
+  const { attachments: messageAttachments, blocks: attachmentBlocks } = await processAttachments(downloadedAttachments);
 
   const timeZone = await resolveUserTimeZone(supabase, ownerId, {
     phoneDigits: phoneOnFile,
@@ -425,7 +515,7 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
     history,
     phoneOnFile,
     [],
-    [],
+    attachmentBlocks,
     "whatsapp",
     allowedChannels,
     timeZone,

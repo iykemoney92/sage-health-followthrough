@@ -135,6 +135,13 @@ export async function processAttachments(attachments: MessageAttachment[]): Prom
       continue;
     }
 
+    if (attachment.type.startsWith("video/")) {
+      // Claude's Messages API has no video content block - be honest about the gap rather
+      // than silently discarding the attachment with no explanation.
+      processed.push({ ...attachment, base64: undefined, text: "(video shared - Nura can't watch video yet, so ask the user to describe what's in it)" });
+      continue;
+    }
+
     processed.push({ ...attachment, base64: undefined });
   }
 
