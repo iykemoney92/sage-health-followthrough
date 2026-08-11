@@ -58,6 +58,11 @@ export async function downloadWhatsappMedia(mediaId: string): Promise<{ base64: 
       return null;
     }
 
+    logger.info("whatsapp.media.download_succeeded", {
+      mediaId,
+      bytes: buffer.byteLength,
+      mimeType: meta.mime_type ?? "application/octet-stream",
+    });
     return { base64: buffer.toString("base64"), mimeType: meta.mime_type ?? "application/octet-stream" };
   } catch (error) {
     const timedOut = error instanceof Error && error.name === "TimeoutError";

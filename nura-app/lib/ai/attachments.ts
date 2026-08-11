@@ -60,7 +60,10 @@ async function transcribeAudioBase64(base64: string, mediaType: string, filename
   form.append("file", blob, filename || "audio");
   form.append("model_id", "scribe_v1");
 
+  console.log("[attachments] transcribing audio:", { filename, mediaType, bytes: buffer.byteLength });
+
   let response: Response;
+  const start = Date.now();
   try {
     response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
       method: "POST",
@@ -78,13 +81,26 @@ async function transcribeAudioBase64(base64: string, mediaType: string, filename
     );
     return "";
   }
+  const elapsedMs = Date.now() - start;
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    console.error("[attachments] ElevenLabs error:", response.status, detail);
+    console.error("[attachments] ElevenLabs error:", response.status, detail, `(${elapsedMs}ms)`);
     return "";
   }
   const data = await response.json();
-  return ((data.text as string | undefined) ?? "").trim();
+  const text = ((data.text as string | undefined) ?? "").trim();
+  if (!text) {
+    console.error("[attachments] ElevenLabs returned 200 OK but an empty/unusable transcript:", {
+      elapsedMs,
+      languageCode: data.language_code,
+      languageProbability: data.language_probability,
+      audioDurationSecs: data.audio_duration_secs,
+      responseKeys: Object.keys(data ?? {}),
+    });
+  } else {
+    console.log("[attachments] transcription succeeded:", { elapsedMs, chars: text.length });
+  }
+  return text;
 }
 
 type ProcessedAttachments = {
