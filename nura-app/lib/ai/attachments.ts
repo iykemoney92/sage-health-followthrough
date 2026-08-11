@@ -44,7 +44,10 @@ async function extractDocxText(base64: string): Promise<string> {
 
 async function transcribeAudioBase64(base64: string, mediaType: string, filename: string): Promise<string> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) return "";
+  if (!apiKey) {
+    console.error("[attachments] ELEVENLABS_API_KEY is not configured - skipping audio transcription");
+    return "";
+  }
 
   const buffer = Buffer.from(base64, "base64");
   const blob = new Blob([buffer], { type: mediaType || "audio/webm" });
@@ -57,7 +60,11 @@ async function transcribeAudioBase64(base64: string, mediaType: string, filename
     headers: { "xi-api-key": apiKey },
     body: form,
   });
-  if (!response.ok) return "";
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error("[attachments] ElevenLabs error:", response.status, detail);
+    return "";
+  }
   const data = await response.json();
   return ((data.text as string | undefined) ?? "").trim();
 }
@@ -129,7 +136,8 @@ export async function processAttachments(attachments: MessageAttachment[]): Prom
       try {
         const transcript = await transcribeAudioBase64(base64, attachment.type, attachment.name);
         processed.push({ ...attachment, base64: undefined, text: transcript.slice(0, 4000) });
-      } catch {
+      } catch (error) {
+        console.error("[attachments] audio transcription threw:", error);
         processed.push({ ...attachment, base64: undefined, text: "" });
       }
       continue;
