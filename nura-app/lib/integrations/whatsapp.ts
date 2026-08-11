@@ -4,6 +4,11 @@ import { logger } from "@/lib/logger";
 // size treatment instead of silently blowing up the Claude request payload.
 const MAX_MEDIA_BYTES = 4_500_000;
 
+// Per-call cap, not cumulative - a stalled connection on either fetch used to hang until the
+// route's 60s maxDuration killed the whole function before any catch block could log anything.
+// Sized to leave most of the budget for resolveDecision's own 45s ceiling plus the reply send.
+const MEDIA_FETCH_TIMEOUT_MS = 9_000;
+
 /**
  * WhatsApp inbound messages only carry a media id, not the bytes - this resolves that id to
  * a short-lived CDN URL via the Graph API, then downloads and base64-encodes the file so it
@@ -16,9 +21,11 @@ export async function downloadWhatsappMedia(mediaId: string): Promise<{ base64: 
     return null;
   }
 
+  let stage: "metadata" | "download" = "metadata";
   try {
     const metaResponse = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS),
     });
     if (!metaResponse.ok) {
       logger.error("whatsapp.media.metadata_failed", { status: metaResponse.status, mediaId });
@@ -35,8 +42,10 @@ export async function downloadWhatsappMedia(mediaId: string): Promise<{ base64: 
       return null;
     }
 
+    stage = "download";
     const fileResponse = await fetch(meta.url, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS),
     });
     if (!fileResponse.ok) {
       logger.error("whatsapp.media.download_failed", { status: fileResponse.status, mediaId });
@@ -51,8 +60,11 @@ export async function downloadWhatsappMedia(mediaId: string): Promise<{ base64: 
 
     return { base64: buffer.toString("base64"), mimeType: meta.mime_type ?? "application/octet-stream" };
   } catch (error) {
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
     logger.error("whatsapp.media.download_error", {
       mediaId,
+      stage,
+      timedOut,
       message: error instanceof Error ? error.message : String(error),
     });
     return null;

@@ -7,6 +7,11 @@ const DOCX_TYPES = new Set([
   "application/msword",
 ]);
 
+// Uncapped, this used to hang until the WhatsApp webhook's 60s maxDuration killed the whole
+// function before any catch block could log the failure. Sized to leave room for the WhatsApp
+// media download (lib/integrations/whatsapp.ts) plus resolveDecision's 45s ceiling and the reply.
+const ELEVENLABS_TIMEOUT_MS = 22_000;
+
 function isDocx(attachment: MessageAttachment) {
   return DOCX_TYPES.has(attachment.type) || /\.docx?$/i.test(attachment.name);
 }
@@ -55,11 +60,24 @@ async function transcribeAudioBase64(base64: string, mediaType: string, filename
   form.append("file", blob, filename || "audio");
   form.append("model_id", "scribe_v1");
 
-  const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
-    method: "POST",
-    headers: { "xi-api-key": apiKey },
-    body: form,
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+      method: "POST",
+      headers: { "xi-api-key": apiKey },
+      body: form,
+      signal: AbortSignal.timeout(ELEVENLABS_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
+    console.error(
+      timedOut
+        ? `[attachments] ElevenLabs request timed out after ${ELEVENLABS_TIMEOUT_MS}ms`
+        : "[attachments] ElevenLabs request failed:",
+      timedOut ? "" : error,
+    );
+    return "";
+  }
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     console.error("[attachments] ElevenLabs error:", response.status, detail);
