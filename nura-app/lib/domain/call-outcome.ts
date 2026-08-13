@@ -2,8 +2,21 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { placeOutboundCall, type ConversationOutcome } from "@/lib/integrations/elevenlabs";
 import { sendWhatsappText } from "@/lib/integrations/whatsapp";
 import { sendPushToOwner } from "@/lib/integrations/push";
+import {
+  missedCheckInEmailHtml,
+  missedCheckInEmailText,
+  nuraEmailLogoAttachment,
+  sendAuthEmail,
+} from "@/lib/integrations/resend";
 import { composeMissedCallFollowup } from "@/lib/domain/message-intake";
 import { buildVoiceCheckinContext } from "@/lib/domain/voice-checkin-context";
+
+function appBaseUrl() {
+  return (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://usenura.app").replace(
+    /\/$/,
+    "",
+  );
+}
 
 /** A placed call needs at least this long to ring out / go to voicemail / connect before its
  *  outcome is worth checking - checking too early would just see "initiated" every time. */
@@ -78,7 +91,7 @@ async function insertOpenerMessage(supabase: SupabaseClient, ownerId: string, pl
 }
 
 async function loadOwnerContext(supabase: SupabaseClient, ownerId: string) {
-  const [{ data: link }, { data: profile }] = await Promise.all([
+  const [{ data: link }, { data: profile }, { data: authData }] = await Promise.all([
     supabase
       .from("nura_channel_links")
       .select("channel_identifier")
@@ -87,49 +100,77 @@ async function loadOwnerContext(supabase: SupabaseClient, ownerId: string) {
       .eq("status", "active")
       .maybeSingle(),
     supabase.from("nura_profiles").select("display_name, phone, preferred_checkin_channels").eq("id", ownerId).maybeSingle(),
+    supabase.auth.admin.getUserById(ownerId).catch(() => ({ data: null })),
   ]);
 
   const allowed = (profile?.preferred_checkin_channels as string[] | null) ?? ["voice", "whatsapp", "in_app"];
   const displayName = ((profile?.display_name as string | null) ?? "").trim();
   const firstName = displayName.split(" ").filter(Boolean)[0] || "there";
   const phone = (link?.channel_identifier as string | null) || (profile?.phone as string | null) || null;
-  return { allowed, firstName, phone };
+  const email = authData?.user?.email ?? null;
+  return { allowed, firstName, phone, email };
 }
 
-/** One-shot WhatsApp -> push escalation, reached once voice attempts are exhausted. */
+/**
+ * Missed-call escalation, reached once voice attempts are exhausted. Fires every channel that's
+ * reachable (WhatsApp, email, push) rather than stopping at the first success - a missed
+ * check-in is worth over-notifying about rather than silently depending on a single channel.
+ */
 async function escalateCheckIn(supabase: SupabaseClient, checkIn: ResolvableCheckIn, note: string) {
-  const { allowed, firstName, phone: fallbackPhone } = await loadOwnerContext(supabase, checkIn.owner_id);
+  const { allowed, firstName, phone: fallbackPhone, email } = await loadOwnerContext(supabase, checkIn.owner_id);
   const phone = checkIn.contact_phone || fallbackPhone;
   const planTitle = checkIn.nura_plans?.title ?? "your Care plan";
   const message = await composeMissedCallFollowup(firstName, planTitle, checkIn.prompt);
+  const workspaceUrl = `${appBaseUrl()}/workspace?planId=${checkIn.plan_id}`;
 
+  let whatsappOk = false;
+  let whatsappError: string | null = null;
   if (phone && allowed.includes("whatsapp")) {
     try {
       const outcome = await sendWhatsappText(phone.replace(/[^\d]/g, ""), message);
       if (outcome.skipped || outcome.error) throw new Error(outcome.error ?? "WhatsApp is not configured.");
-      await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, message);
-      await supabase.from("nura_check_ins").update({ call_status: "escalated_whatsapp" }).eq("id", checkIn.id);
-      return;
-    } catch {
-      // Fall through to a push notification below.
+      whatsappOk = true;
+    } catch (error) {
+      whatsappError = error instanceof Error ? error.message : "WhatsApp send failed.";
     }
+  }
+
+  let emailOk = false;
+  let emailError: string | null = null;
+  if (email) {
+    const sent = await sendAuthEmail({
+      to: email,
+      subject: `Nura tried to call about ${planTitle}`,
+      html: missedCheckInEmailHtml({ workspaceUrl, planTitle, firstName, message }),
+      text: missedCheckInEmailText({ workspaceUrl, planTitle, firstName, message }),
+      idempotencyKey: `checkin-missed:${checkIn.id}`,
+      attachments: nuraEmailLogoAttachment(),
+    });
+    emailOk = sent.ok;
+    if (!sent.ok) emailError = sent.error;
   }
 
   await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, message);
   const pushResult = await sendPushToOwner(checkIn.owner_id, {
     title: "Nura tried to call",
     body: message,
-    url: `/workspace?planId=${checkIn.plan_id}`,
+    url: workspaceUrl,
   }).catch(() => null);
+  const pushOk = Boolean(pushResult && pushResult.sent > 0);
 
-  const pushDelivered = Boolean(pushResult && pushResult.sent > 0);
+  const delivered = whatsappOk || emailOk || pushOk;
+  const status = whatsappOk ? "escalated_whatsapp" : emailOk ? "escalated_email" : pushOk ? "escalated_push" : "failed";
+  const failureDetails = [
+    !whatsappOk && phone ? `whatsapp: ${whatsappError ?? "not attempted"}` : null,
+    !emailOk && email ? `email: ${emailError ?? "not attempted"}` : null,
+    !pushOk ? `push: ${pushResult?.skipped ?? pushResult?.error ?? "no push subscription"}` : null,
+  ].filter(Boolean);
+
   await supabase
     .from("nura_check_ins")
     .update({
-      call_status: pushDelivered ? "escalated_push" : "failed",
-      call_error: pushDelivered
-        ? note
-        : `${note}${pushResult?.skipped ? ` (push: ${pushResult.skipped})` : pushResult?.error ? ` (push: ${pushResult.error})` : " (no push subscription)"}`,
+      call_status: status,
+      call_error: delivered ? note : `${note} (${failureDetails.join("; ")})`,
     })
     .eq("id", checkIn.id);
 }

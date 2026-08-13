@@ -429,6 +429,58 @@ usenura.app
 `;
 }
 
+export function missedCheckInEmailHtml({
+  workspaceUrl,
+  planTitle,
+  firstName,
+  message,
+}: {
+  workspaceUrl: string;
+  planTitle: string;
+  firstName?: string;
+  message: string;
+}) {
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  return nuraEmailShell({
+    preview: `Nura tried to call about ${planTitle} but couldn't reach you.`,
+    eyebrow: "Missed check-in call",
+    title: "Nura tried to call.",
+    bodyHtml: `${greeting}<br/><br/>Nura called about <strong>${planTitle}</strong> but the call didn't go through.<br/><br/>${message}`,
+    ctaLabel: "Open Care plan",
+    ctaUrl: workspaceUrl,
+    footerNote: "You can reply anytime from your Care plan — no need to wait for the next call.",
+  });
+}
+
+export function missedCheckInEmailText({
+  workspaceUrl,
+  planTitle,
+  firstName,
+  message,
+}: {
+  workspaceUrl: string;
+  planTitle: string;
+  firstName?: string;
+  message: string;
+}) {
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  return `Nura — Health follow-through
+
+${greeting}
+
+Nura called about ${planTitle} but the call didn't go through.
+
+${message}
+
+Open your Care plan:
+${workspaceUrl}
+
+You can reply anytime from your Care plan — no need to wait for the next call.
+
+usenura.app
+`;
+}
+
 /** Attach the Nura mark as an inline CID image for branded auth emails. */
 export function nuraEmailLogoAttachment() {
   const content = getEmailLogoBase64();
