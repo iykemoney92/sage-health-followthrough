@@ -87,6 +87,18 @@ export async function POST(request: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(16);
 
+  const { data: profile } = await supabase
+    .from("nura_profiles")
+    .select("preferred_checkin_channels, preferred_checkin_channel")
+    .eq("id", ownerId)
+    .maybeSingle();
+  const allowedChannels = ((profile?.preferred_checkin_channels as string[] | null) ?? ["voice", "whatsapp", "in_app"]) as (
+    | "voice"
+    | "whatsapp"
+    | "in_app"
+  )[];
+  const preferredChannel = (profile?.preferred_checkin_channel as string | null) ?? null;
+
   const planTitleById = new Map((plans ?? []).map((p) => [p.id, p.title as string]));
   const history: HistoryTurn[] = (recentMessages ?? [])
     .slice()
@@ -101,7 +113,7 @@ export async function POST(request: NextRequest) {
 
   // WhatsApp always carries a caller phone, so a voice check-in is always reachable here.
   const timeZone = await resolveUserTimeZone(supabase, ownerId, { phoneDigits: phone });
-  const decision = await resolveDecision(content, plans ?? [], [], (contexts ?? []) as PlanContext[], null, history, phone, [], [], "whatsapp", ["voice", "whatsapp", "in_app"], timeZone);
+  const decision = await resolveDecision(content, plans ?? [], [], (contexts ?? []) as PlanContext[], null, history, phone, [], [], "whatsapp", allowedChannels, timeZone, preferredChannel);
   const threadLimit = await enforceThreadLimit(supabase, ownerId, plans?.length ?? 0, decision.action === "new_plan");
   if (threadLimit) return threadLimit;
 
