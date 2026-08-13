@@ -448,7 +448,7 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
       .limit(16),
     supabase
       .from("nura_profiles")
-      .select("phone, preferred_checkin_channels")
+      .select("phone, preferred_checkin_channels, preferred_checkin_channel")
       .eq("id", ownerId)
       .maybeSingle(),
   ]);
@@ -475,6 +475,7 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
     | "whatsapp"
     | "in_app"
   )[];
+  const preferredChannel = (profile?.preferred_checkin_channel as string | null) ?? null;
 
   // Resolve each media id to actual bytes before classification - without this, Nura only ever
   // sees "a photo/document was shared", never what's actually in it.
@@ -519,6 +520,7 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
     "whatsapp",
     allowedChannels,
     timeZone,
+    preferredChannel,
   );
 
   const { planId, createdPlan, error: planError } = await applyPlanDecision(supabase, ownerId, decision, (plans ?? []) as PlanSummary[]);

@@ -30,3 +30,20 @@ export function orderCheckinChannels(
   const primary = primaryCheckinChannel(unique, preferred);
   return [primary, ...unique.filter((c) => c !== primary)];
 }
+
+/**
+ * Reroutes a requested check-in channel to one the user currently allows. Used both when a
+ * check-in is first scheduled (so the stored channel reflects reality) and again at delivery
+ * time (in case the user's preferences changed since scheduling).
+ */
+export function rerouteChannel(
+  requested: string | null | undefined,
+  allowed: CheckinChannel[],
+): CheckinChannel {
+  const normalized = (requested as CheckinChannel | null) || "whatsapp";
+  if (allowed.includes(normalized)) return normalized;
+  if (allowed.includes("whatsapp")) return "whatsapp";
+  if (allowed.includes("in_app")) return "in_app";
+  if (allowed.includes("voice")) return "voice";
+  return "in_app";
+}

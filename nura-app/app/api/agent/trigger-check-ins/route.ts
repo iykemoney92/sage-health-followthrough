@@ -10,6 +10,7 @@ import { composeCheckinOpener, composeMissedCallFollowup } from "@/lib/domain/me
 import { scheduleIdleWellnessCheckIns, isWithinQuietHours, nextTimeOutsideQuietHours } from "@/lib/domain/idle-wellness";
 import { readProfileSettings } from "@/lib/profile-settings";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
+import { rerouteChannel, type CheckinChannel } from "@/lib/domain/checkin-channel";
 import {
   resolveCallForCheckIn,
   placeDueRedials,
@@ -92,7 +93,7 @@ async function resolveOutstandingCalls(supabase: ReturnType<typeof getSupabaseSe
 }
 
 const STALE_GRACE_HOURS = 24;
-const TERMINAL_UNREACHED_STATUSES = ["failed", "escalated_whatsapp", "escalated_push"];
+const TERMINAL_UNREACHED_STATUSES = ["failed", "escalated_whatsapp", "escalated_email", "escalated_push"];
 
 type StaleCheckIn = {
   id: string;
@@ -157,18 +158,6 @@ async function sweepStaleCheckIns(supabase: ReturnType<typeof getSupabaseServerC
   return { marked: rows.length, requeued };
 }
 
-// A check-in's channel was decided by the AI (or a prior default) at the moment it was
-// scheduled, but the user's allowed set can change afterward in Settings - reroute at
-// dispatch time instead of trusting a possibly-stale stored channel.
-function rerouteChannel(original: string | null, allowed: string[]): "voice" | "whatsapp" | "in_app" {
-  const requested = (original as "voice" | "whatsapp" | "in_app" | null) || "whatsapp";
-  if (allowed.includes(requested)) return requested;
-  if (allowed.includes("whatsapp")) return "whatsapp";
-  if (allowed.includes("in_app")) return "in_app";
-  if (allowed.includes("voice")) return "voice";
-  return "in_app";
-}
-
 /**
  * Defers due voice/WhatsApp check-ins whose owner is currently in quiet hours to the end of that
  * window, instead of letting a call ring or a WhatsApp text buzz overnight. in_app-only check-ins
@@ -186,8 +175,8 @@ async function deferQuietHoursCheckIns(
     .select("id, phone, preferred_checkin_channels")
     .in("id", ownerIds);
 
-  const allowedByOwner = new Map(
-    (profiles ?? []).map((p) => [p.id, (p.preferred_checkin_channels as string[] | null) ?? ["voice", "whatsapp", "in_app"]]),
+  const allowedByOwner = new Map<string, CheckinChannel[]>(
+    (profiles ?? []).map((p) => [p.id, (p.preferred_checkin_channels as CheckinChannel[] | null) ?? ["voice", "whatsapp", "in_app"]]),
   );
   const phoneByOwner = new Map((profiles ?? []).map((p) => [p.id, (p.phone as string | null) ?? null]));
 
@@ -196,7 +185,7 @@ async function deferQuietHoursCheckIns(
 
   await Promise.all(
     dueCheckIns.map(async (checkIn) => {
-      const allowed = allowedByOwner.get(checkIn.owner_id) ?? ["voice", "whatsapp", "in_app"];
+      const allowed = allowedByOwner.get(checkIn.owner_id) ?? (["voice", "whatsapp", "in_app"] as CheckinChannel[]);
       const effectiveChannel = rerouteChannel(checkIn.channel, allowed);
       if (effectiveChannel === "in_app") {
         ready.push(checkIn);
@@ -396,8 +385,8 @@ async function runTriggerCheckIns(request: NextRequest) {
   const linkedPhoneByOwner = new Map((links ?? []).map((l) => [l.owner_id, l.channel_identifier as string]));
   const nameByOwner = new Map((profiles ?? []).map((p) => [p.id, (p.display_name as string | null) ?? ""]));
   const profilePhoneByOwner = new Map((profiles ?? []).map((p) => [p.id, (p.phone as string | null) ?? ""]));
-  const allowedChannelsByOwner = new Map(
-    (profiles ?? []).map((p) => [p.id, ((p.preferred_checkin_channels as string[] | null) ?? ["voice", "whatsapp", "in_app"])]),
+  const allowedChannelsByOwner = new Map<string, CheckinChannel[]>(
+    (profiles ?? []).map((p) => [p.id, ((p.preferred_checkin_channels as CheckinChannel[] | null) ?? ["voice", "whatsapp", "in_app"])]),
   );
 
   const plusByOwner = new Map<string, boolean>();
@@ -420,7 +409,7 @@ async function runTriggerCheckIns(request: NextRequest) {
     // The AI decides a channel per check-in when it schedules the follow-up (voice call,
     // WhatsApp text, or in-app only) - honour that, rerouted through the owner's currently
     // allowed channels in case their preference changed since this was scheduled.
-    const allowed = allowedChannelsByOwner.get(checkIn.owner_id) ?? ["voice", "whatsapp", "in_app"];
+    const allowed = allowedChannelsByOwner.get(checkIn.owner_id) ?? (["voice", "whatsapp", "in_app"] as CheckinChannel[]);
     const effectiveChannel = rerouteChannel(checkIn.channel, allowed);
 
     if (effectiveChannel === "in_app") {

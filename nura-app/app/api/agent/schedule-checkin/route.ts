@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { extractAgentPhoneHeaders, resolveAgentOwnerId } from "@/lib/agent/resolve-owner";
 import { enforceThreadLimit, requirePlusAccess } from "@/lib/billing/subscription";
+import { rerouteChannel, type CheckinChannel } from "@/lib/domain/checkin-channel";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { wallTimeInTimeZoneToUtcIso } from "@/lib/timezone";
@@ -156,12 +157,27 @@ export async function POST(request: NextRequest) {
     resolvedTitle = created.title;
   }
 
+  // Honour the user's current channel preferences at write time rather than trusting whatever
+  // the calling agent asked for - trigger-check-ins reroutes again at dispatch in case
+  // preferences change later, but the stored channel should reflect reality from the start.
+  const { data: ownerProfile } = await supabase
+    .from("nura_profiles")
+    .select("preferred_checkin_channels")
+    .eq("id", resolvedOwnerId)
+    .maybeSingle();
+  const allowedChannels = (ownerProfile?.preferred_checkin_channels as CheckinChannel[] | null) ?? [
+    "voice",
+    "whatsapp",
+    "in_app",
+  ];
+  const effectiveChannel = rerouteChannel(channel, allowedChannels);
+
   const { data: checkIn, error: checkInError } = await supabase
     .from("nura_check_ins")
     .insert({
       owner_id: resolvedOwnerId,
       plan_id: planId,
-      channel,
+      channel: effectiveChannel,
       prompt,
       scheduled_for: scheduledForUtc,
       contact_phone: contactPhone,
@@ -175,7 +191,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    message: `Check-in scheduled for the ${resolvedTitle} Care plan on ${scheduledForUtc} via ${channel}.`,
+    message: `Check-in scheduled for the ${resolvedTitle} Care plan on ${scheduledForUtc} via ${effectiveChannel}.`,
     checkIn: { ...checkIn, planTitle: resolvedTitle },
     resolvedVia: resolved.via ?? "planId",
     timeZone,

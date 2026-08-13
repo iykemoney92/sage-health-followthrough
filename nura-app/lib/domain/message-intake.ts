@@ -130,8 +130,8 @@ function missedCheckInContext(missed: MissedCheckIn[]) {
 // Picks the best channel for a proactive check-in given what the user currently allows.
 // Voice/call is preferred when allowed; WhatsApp and in-app are fallbacks. Do not default to
 // WhatsApp just because the current conversation is on WhatsApp.
-function pickDefaultChannel(allowed: NextCheckIn["channel"][]): NextCheckIn["channel"] {
-  return primaryCheckinChannel(allowed);
+function pickDefaultChannel(allowed: NextCheckIn["channel"][], preferred?: string | null): NextCheckIn["channel"] {
+  return primaryCheckinChannel(allowed, preferred);
 }
 
 function isValidNextCheckIn(value: unknown): value is NextCheckIn {
@@ -157,13 +157,14 @@ async function classifyWithClaude(
   allowedChannels: NextCheckIn["channel"][] = ["voice", "whatsapp", "in_app"],
   requestedPlan: PlanSummary | null = null,
   timeZone: string = DEFAULT_TIME_ZONE,
+  preferredChannel: string | null = null,
 ): Promise<NuraDecision> {
   const hasPhoneOnFile = Boolean(phoneOnFile);
   // A channel can be allowed by preference but still unusable right now (voice with no phone
   // on file) - in_app always works, so it's kept as the one guaranteed fallback.
   const safeAllowedChannels = (hasPhoneOnFile ? allowedChannels : allowedChannels.filter((c) => c !== "voice"));
   const effectiveAllowedChannels = safeAllowedChannels.length > 0 ? safeAllowedChannels : (["in_app"] as NextCheckIn["channel"][]);
-  const defaultCheckInChannel = pickDefaultChannel(effectiveAllowedChannels);
+  const defaultCheckInChannel = pickDefaultChannel(effectiveAllowedChannels, preferredChannel);
   const apiKey = process.env.ANTHROPIC_API_KEY;
   const fallback: NuraDecision = plans.length > 0
     ? { reply: conversationalFallbackReply(content), action: "existing_plan", plan_id: plans[0].id, new_plan: null, next_check_in: null }
@@ -354,7 +355,7 @@ async function classifyWithClaude(
     // Defense in depth: the model is told the allowed set, but clamp server-side too in case
     // it ignores that (or the phone-availability check narrowed things after the call started).
     if (nextCheckIn && !effectiveAllowedChannels.includes(nextCheckIn.channel)) {
-      nextCheckIn = { ...nextCheckIn, channel: pickDefaultChannel(effectiveAllowedChannels) };
+      nextCheckIn = { ...nextCheckIn, channel: defaultCheckInChannel };
     }
 
     let newPlan: NewPlanDraft | null = null;
@@ -403,6 +404,7 @@ export async function resolveDecision(
   sourceChannel: "whatsapp" | "in_app" = "in_app",
   allowedChannels: NextCheckIn["channel"][] = ["voice", "whatsapp", "in_app"],
   timeZone: string = DEFAULT_TIME_ZONE,
+  preferredChannel: string | null = null,
 ): Promise<NuraDecision> {
   const fallback: NuraDecision = requestedPlan
     ? { reply: conversationalFallbackReply(content), action: "existing_plan", plan_id: requestedPlan.id, new_plan: null, next_check_in: null }
@@ -424,6 +426,7 @@ export async function resolveDecision(
       allowedChannels,
       requestedPlan ?? null,
       timeZone,
+      preferredChannel,
     ),
     fallback,
   );

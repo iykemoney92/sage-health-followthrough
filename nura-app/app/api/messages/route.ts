@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from("nura_profiles")
-    .select("phone, preferred_checkin_channels")
+    .select("phone, preferred_checkin_channels, preferred_checkin_channel")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -154,6 +154,7 @@ export async function POST(request: NextRequest) {
   }
   const phoneOnFile = existingPhone || mentionedPhone || null;
   const allowedChannels = ((profile?.preferred_checkin_channels as string[] | null) ?? ["in_app"]) as ("voice" | "whatsapp" | "in_app")[];
+  const preferredChannel = (profile?.preferred_checkin_channel as string | null) ?? null;
 
   const { data: missedRows } = await supabase
     .from("nura_check_ins")
@@ -177,7 +178,7 @@ export async function POST(request: NextRequest) {
     phoneDigits: phoneOnFile,
     authMetadata: (user.user_metadata ?? null) as Record<string, unknown> | null,
   });
-  const decision = await resolveDecision(content, plans ?? [], sanitizedAttachments, (contexts ?? []) as PlanContext[], requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels, timeZone);
+  const decision = await resolveDecision(content, plans ?? [], sanitizedAttachments, (contexts ?? []) as PlanContext[], requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels, timeZone, preferredChannel);
   const threadLimit = await enforceThreadLimit(supabase, user.id, plans?.length ?? 0, decision.action === "new_plan");
   if (threadLimit) return threadLimit;
 
