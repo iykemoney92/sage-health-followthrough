@@ -25,6 +25,7 @@ function CheckEmailContent() {
   const [error, setError] = useState<{ title: string; message: string } | null>(null);
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
   const [devConfirmUrl, setDevConfirmUrl] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
 
   useEffect(() => {
     // Pending email + cooldown live in sessionStorage — browser-only after mount.
@@ -58,6 +59,47 @@ function CheckEmailContent() {
       window.sessionStorage.removeItem("nura-dev-confirm-url");
     }
   }, [queryEmail, router]);
+
+  // The confirmation link may be opened somewhere this page can't observe — in
+  // the native app it opens Safari, whose cookie jar the WebView can't see, so
+  // nothing here would ever change. Poll until the account reports confirmed;
+  // the endpoint establishes the session on this browser and tells us where to
+  // go. Universal Links make this redundant on iOS, but it still covers mail
+  // clients that open links in their own in-app browser.
+  useEffect(() => {
+    if (!ready || !email) return;
+    let cancelled = false;
+
+    async function poll() {
+      if (cancelled || document.visibilityState === "hidden") return;
+      try {
+        const res = await fetch("/api/auth/confirmation-status", { method: "POST" });
+        const data = (await res.json().catch(() => null)) as { confirmed?: boolean; next?: string } | null;
+        if (!cancelled && data?.confirmed) {
+          setConfirmed(true);
+          router.replace(data.next || "/onboarding");
+        }
+      } catch {
+        // Offline or a transient failure — the next tick retries.
+      }
+    }
+
+    const timer = window.setInterval(() => void poll(), 4000);
+    void poll();
+
+    // A backgrounded tab skips ticks; check once on return so coming back from
+    // the mail app feels instant rather than waiting out the interval.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void poll();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [ready, email, router]);
 
   useEffect(() => {
     if (secondsLeft <= 0) return;
@@ -144,6 +186,13 @@ function CheckEmailContent() {
             <span>Didn’t get it? Check spam, then resend below.</span>
           </div>
 
+          {confirmed && (
+            <AuthAlert
+              tone="success"
+              title="Email confirmed"
+              message="Signing you in…"
+            />
+          )}
           {error && (
             <AuthAlert
               tone="error"
@@ -174,14 +223,16 @@ function CheckEmailContent() {
           <button
             type="button"
             className="primary-cta auth-submit"
-            disabled={!ready || loading || secondsLeft > 0 || !email}
+            disabled={!ready || loading || secondsLeft > 0 || !email || confirmed}
             onClick={() => void handleResend()}
           >
-            {loading
-              ? "Sending…"
-              : secondsLeft > 0
-                ? `Resend in ${secondsLeft}s`
-                : "Resend confirmation email"}
+            {confirmed
+              ? "Signing you in…"
+              : loading
+                ? "Sending…"
+                : secondsLeft > 0
+                  ? `Resend in ${secondsLeft}s`
+                  : "Resend confirmation email"}
           </button>
 
           <p className="auth-switch">

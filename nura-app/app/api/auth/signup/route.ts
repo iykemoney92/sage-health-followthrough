@@ -3,6 +3,15 @@ import { z } from "zod";
 import { appOriginFromRequest, normalizeEmail } from "@/lib/auth/helpers";
 import { confirmUrlFromGenerateLink } from "@/lib/auth/links";
 import { authRateLimitedResponse, checkKeyedRateLimit, clientIpFromRequest } from "@/lib/auth/rate-limit";
+import {
+  CONFIRM_POLL_EXP_KEY,
+  CONFIRM_POLL_HASH_KEY,
+  PENDING_CONFIRM_COOKIE,
+  PENDING_CONFIRM_TTL_SECONDS,
+  createPendingConfirmToken,
+  encodePendingConfirmCookie,
+  pendingConfirmCookieOptions,
+} from "@/lib/auth/pending-confirm";
 import { getSupabaseAdminClient, hasSupabaseServiceRole } from "@/lib/auth/supabase-admin";
 import { getAvatarUrl } from "@/lib/avatar";
 import {
@@ -44,6 +53,11 @@ export async function POST(request: Request) {
   const supabase = getSupabaseAdminClient();
   const avatarUrl = getAvatarUrl(name || email);
 
+  // Lets /auth/check-email poll itself into a session once the link is opened
+  // elsewhere — in the native app the link opens Safari, whose cookie jar the
+  // WebView can't see, so without this the app waits on that screen forever.
+  const pendingConfirm = createPendingConfirmToken();
+
   const { data: created, error: createError } = await supabase.auth.admin.createUser({
     email,
     password,
@@ -52,6 +66,8 @@ export async function POST(request: Request) {
       display_name: name,
       avatar_url: avatarUrl,
       onboarding_complete: false,
+      [CONFIRM_POLL_HASH_KEY]: pendingConfirm.hash,
+      [CONFIRM_POLL_EXP_KEY]: Date.now() + PENDING_CONFIRM_TTL_SECONDS * 1000,
     },
   });
 
@@ -71,6 +87,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: createError.message || "Couldn’t create your account." }, { status: 400 });
   }
 
+  // Every path below this point has a created, unconfirmed account, so they all
+  // need the polling cookie — otherwise check-email silently can't recover.
+  function pendingConfirmResponse(body: Record<string, unknown>) {
+    const response = NextResponse.json(body);
+    response.cookies.set(
+      PENDING_CONFIRM_COOKIE,
+      encodePendingConfirmCookie(email, pendingConfirm.token),
+      pendingConfirmCookieOptions(),
+    );
+    return response;
+  }
+
   const origin = appOriginFromRequest(request);
   const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
     type: "signup",
@@ -82,7 +110,7 @@ export async function POST(request: Request) {
   if (linkError || !linkData?.properties) {
     console.error("[signup] generateLink failed", linkError?.message);
     // Account exists — still ask them to use check-email / resend.
-    return NextResponse.json({
+    return pendingConfirmResponse({
       ok: true,
       needsConfirmation: true,
       email,
@@ -92,7 +120,7 @@ export async function POST(request: Request) {
 
   const confirmUrl = confirmUrlFromGenerateLink(origin, linkData.properties);
   if (!confirmUrl) {
-    return NextResponse.json({
+    return pendingConfirmResponse({
       ok: true,
       needsConfirmation: true,
       email,
@@ -114,7 +142,7 @@ export async function POST(request: Request) {
 
   if (!sent.ok) {
     console.error("[signup] confirmation email failed", sent.error);
-    return NextResponse.json({
+    return pendingConfirmResponse({
       ok: true,
       needsConfirmation: true,
       email,
@@ -125,7 +153,7 @@ export async function POST(request: Request) {
     });
   }
 
-  return NextResponse.json({
+  return pendingConfirmResponse({
     ok: true,
     needsConfirmation: true,
     email,

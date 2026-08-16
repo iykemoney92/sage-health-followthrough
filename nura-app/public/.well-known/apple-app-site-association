@@ -1,0 +1,19 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["7DXS32H632.app.usenura.mobile"],
+        "components": [
+          {
+            "/": "/auth/confirm*",
+            "comment": "Email confirmation — opens in the app so the session lands in the app's cookie jar, not Safari's."
+          },
+          {
+            "/": "/update-password*",
+            "comment": "Password reset link."
+          }
+        ]
+      }
+    ]
+  }
+}
