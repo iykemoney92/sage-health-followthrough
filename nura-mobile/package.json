@@ -1,0 +1,23 @@
+{
+  "name": "nura-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Capacitor shell that wraps the live Nura web app (usenura.app) for iOS and Android.",
+  "scripts": {
+    "sync": "cap sync",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android",
+    "build:android:debug": "cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/ios": "^8.4.2",
+    "@capacitor/push-notifications": "^8.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.4.2",
+    "typescript": "^5.9.3"
+  }
+}
