@@ -7387,3 +7387,16 @@ body:has(.chat-page) {
   width: 17px;
   height: 17px;
 }
+
+/* WebKit zooms into any focused field whose font-size is below 16px, and the
+   zoomed page is then wider than the screen — which is why tapping the chat
+   composer produced horizontal scrolling and shifted the layout sideways. 16px
+   is WebKit's threshold, not a design choice; the viewport deliberately omits
+   maximum-scale so pinch-zoom still works for accessibility, which means the
+   font size is the only lever. */
+@media (max-width: 760px) {
+  .chat-composer textarea,
+  .chat-composer textarea::placeholder {
+    font-size: 16px !important;
+  }
+}
