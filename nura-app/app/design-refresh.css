@@ -7400,3 +7400,26 @@ body:has(.chat-page) {
     font-size: 16px !important;
   }
 }
+
+/* Opaque backing for the status bar, on body so it holds on every surface.
+   Scoping it to page shells meant chasing each root in turn — .app-shell,
+   .chat-page, .onboarding, .auth-v2, .mobile-welcome-screen — and onboarding
+   was still letting cards scroll up under the clock. body is the one element
+   they all share.
+
+   Takes its colour from --bg, the same variable body is painted with, so the
+   strip stays matched if that ever changes. Height collapses to zero wherever
+   the inset is 0 (web, Android), making it inert off iOS. Sits under the
+   pull-to-refresh badge at 71, which is anchored below the inset so it slides
+   out from behind this. */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: var(--bg, #fbfaf6);
+  z-index: 70;
+  pointer-events: none;
+}
