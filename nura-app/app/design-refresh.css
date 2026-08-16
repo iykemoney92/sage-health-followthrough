@@ -7423,3 +7423,31 @@ body::before {
   z-index: 70;
   pointer-events: none;
 }
+
+/* Onboarding starts its header at y=0, so the status-bar strip painted straight
+   over it and took the back button with it — the step became a dead end. The
+   other roots already reserve this inset (.auth-panel, .mobile-welcome-screen,
+   .app-shell, and the chat header), onboarding was the one that didn't. The
+   strip masks content that scrolls up under the clock; reserving the space is
+   what keeps fixed chrome out from under it in the first place. Both are
+   needed, and env() is 0 off iOS so this costs nothing elsewhere. */
+@media (max-width: 760px) {
+  /* Both start their header at y=0. .focused-flow covers check-in,
+     upload-review, thread-proposal and the calendar event detail — each with a
+     back arrow in the same position onboarding lost. */
+  .mobile-onboarding,
+  .focused-flow {
+    padding-top: env(safe-area-inset-top) !important;
+  }
+
+  /* These centre their content rather than heading it, so nothing was hidden,
+     but their fixed top padding is smaller than the inset. Keep the original
+     spacing and add the inset to it. */
+  .billing-lock-page {
+    padding-top: calc(28px + env(safe-area-inset-top)) !important;
+  }
+
+  .billing-return-page {
+    padding-top: calc(32px + env(safe-area-inset-top)) !important;
+  }
+}
