@@ -23,6 +23,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
         Messaging.messaging().apnsToken = deviceToken
     }
 
+    // Without this the failure is swallowed: the plugin listens for this
+    // notification to emit `registrationError`, so the JS promise would hang
+    // until its own timeout rather than reporting why. iOS fails here whenever
+    // the aps-environment entitlement is missing — every simulator run, and any
+    // build made before the Push Notifications capability is enabled.
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationCenter.default.post(
+            name: .capacitorDidFailToRegisterForRemoteNotifications,
+            object: error
+        )
+    }
+
     // Fires whenever Firebase (re)issues an FCM token — including the first exchange
     // after apnsToken is set above. Forward it into Capacitor's JS bridge as if it were
     // a normal push-notifications "registration" event, so push-notifications-toggle.tsx
