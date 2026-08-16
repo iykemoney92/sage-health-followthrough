@@ -1,4 +1,6 @@
 import webpush from "web-push";
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getMessaging } from "firebase-admin/messaging";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 
 export function isPushConfigured() {
@@ -11,6 +13,22 @@ function configureVapid() {
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
     process.env.VAPID_PRIVATE_KEY!,
   );
+}
+
+/** Native (iOS/Android) push, sent through Firebase — including iOS, since an
+ * uploaded APNs key lets Firebase proxy those sends too, so this is the only
+ * provider the backend needs to talk to for the Capacitor apps. */
+export function isNativePushConfigured() {
+  return Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+}
+
+function getFirebaseMessaging() {
+  if (getApps().length === 0) {
+    initializeApp({
+      credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON!)),
+    });
+  }
+  return getMessaging();
 }
 
 export type PushPayload = {
@@ -75,7 +93,9 @@ export async function sendPushToOwner(
   payload: PushPayload,
   options?: { bypassRateLimit?: boolean },
 ): Promise<SendPushResult> {
-  if (!isPushConfigured()) {
+  const webConfigured = isPushConfigured();
+  const nativeConfigured = isNativePushConfigured();
+  if (!webConfigured && !nativeConfigured) {
     return { sent: 0, pruned: 0, attempted: 0, skipped: "not_configured" };
   }
 
@@ -94,7 +114,7 @@ export async function sendPushToOwner(
     return { sent: 0, pruned: 0, attempted: 0, skipped: "invalid_payload", error: "Title and body are required." };
   }
 
-  configureVapid();
+  if (webConfigured) configureVapid();
 
   let supabase: ReturnType<typeof getSupabaseServerClient>;
   try {
@@ -109,25 +129,34 @@ export async function sendPushToOwner(
     };
   }
 
-  const { data: subs, error: loadError } = await supabase
-    .from("nura_push_subscriptions")
-    .select("id, endpoint, p256dh, auth_key")
-    .eq("owner_id", ownerId);
+  const [{ data: subs, error: loadError }, { data: nativeTokens, error: nativeLoadError }] = await Promise.all([
+    webConfigured
+      ? supabase.from("nura_push_subscriptions").select("id, endpoint, p256dh, auth_key").eq("owner_id", ownerId)
+      : Promise.resolve({ data: [], error: null }),
+    nativeConfigured
+      ? supabase.from("nura_native_push_tokens").select("id, token").eq("owner_id", ownerId)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
 
   if (loadError) {
     return { sent: 0, pruned: 0, attempted: 0, error: loadError.message };
   }
+  if (nativeLoadError) {
+    return { sent: 0, pruned: 0, attempted: 0, error: nativeLoadError.message };
+  }
 
-  if (!subs || subs.length === 0) {
+  const attempted = (subs?.length ?? 0) + (nativeTokens?.length ?? 0);
+  if (attempted === 0) {
     return { sent: 0, pruned: 0, attempted: 0, skipped: "no_subscriptions" };
   }
 
   const staleIds: string[] = [];
+  const staleNativeIds: string[] = [];
   let sent = 0;
   let lastError: string | undefined;
 
-  await Promise.all(
-    subs.map(async (sub) => {
+  await Promise.all([
+    ...(subs ?? []).map(async (sub) => {
       try {
         await webpush.sendNotification(
           {
@@ -150,16 +179,38 @@ export async function sendPushToOwner(
           || `Push failed (${status ?? "unknown"})`;
       }
     }),
-  );
+    ...(nativeTokens ?? []).map(async (nativeToken) => {
+      try {
+        const messaging = getFirebaseMessaging();
+        await messaging.send({
+          token: nativeToken.token,
+          notification: { title: normalized.title, body: normalized.body },
+          data: { url: normalized.url ?? "/today" },
+          apns: { payload: { aps: { sound: "default" } } },
+        });
+        sent += 1;
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        if (code === "messaging/registration-token-not-registered" || code === "messaging/invalid-registration-token") {
+          staleNativeIds.push(nativeToken.id);
+          return;
+        }
+        lastError = (error as { message?: string }).message || `Native push failed (${code ?? "unknown"})`;
+      }
+    }),
+  ]);
 
   if (staleIds.length > 0) {
     await supabase.from("nura_push_subscriptions").delete().in("id", staleIds);
   }
+  if (staleNativeIds.length > 0) {
+    await supabase.from("nura_native_push_tokens").delete().in("id", staleNativeIds);
+  }
 
   return {
     sent,
-    pruned: staleIds.length,
-    attempted: subs.length,
+    pruned: staleIds.length + staleNativeIds.length,
+    attempted,
     error: sent === 0 ? lastError : undefined,
   };
 }

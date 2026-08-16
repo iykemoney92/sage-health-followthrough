@@ -15,10 +15,13 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.113.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/push-notifications": "^8.1.2",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.8",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "firebase-admin": "^14.2.0",
     "lottie-react": "^2.4.1",
     "lucide-react": "^1.25.0",
     "mammoth": "^1.12.0",
