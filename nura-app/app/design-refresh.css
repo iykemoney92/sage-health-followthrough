@@ -7340,3 +7340,16 @@ body:has(.chat-page) {
     max-width: 48ch;
   }
 }
+
+/* The Capacitor iOS shell sets contentInset "never", so the WebView spans the
+   whole screen and CSS owns the safe areas — consistent with viewport-fit=cover
+   and the env() insets used throughout. The chat header is sticky at y=0, so it
+   needs the top inset itself or it renders beneath the status bar. Scoped to
+   mobile so the desktop header keeps its own height; env() is 0 on web and
+   Android, making this a no-op there. */
+@media (max-width: 760px) {
+  .chat-page > header {
+    height: calc(72px + env(safe-area-inset-top)) !important;
+    padding-top: env(safe-area-inset-top) !important;
+  }
+}

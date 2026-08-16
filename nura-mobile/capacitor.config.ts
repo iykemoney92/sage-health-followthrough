@@ -26,7 +26,13 @@ const config: CapacitorConfig = {
     allowNavigation: [new URL(serverUrl).hostname],
   },
   ios: {
-    contentInset: "always",
+    // "never", not "always": with "always" iOS insets the WebView's scroll view
+    // for the safe areas while CSS still measures the full WebView height, so
+    // `height: 100dvh` overflows the visible area by the top inset and pushes
+    // the bottom of the page — the chat composer — off screen. The web app
+    // already sets viewport-fit=cover and pads with env(safe-area-inset-*)
+    // throughout, so letting CSS own the insets is the consistent half to keep.
+    contentInset: "never",
   },
 };
 
