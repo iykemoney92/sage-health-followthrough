@@ -7353,3 +7353,37 @@ body:has(.chat-page) {
     padding-top: env(safe-area-inset-top) !important;
   }
 }
+
+/* Pull-to-refresh indicator. Fixed just above the top inset so it slides in
+   from under the status bar as the page is pulled, and sits above the strip
+   that paints that area (z-index 70). pointer-events:none so it never
+   intercepts the drag it's reporting on. */
+.pull-refresh {
+  position: fixed;
+  top: env(safe-area-inset-top);
+  left: 0;
+  right: 0;
+  z-index: 71;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.pull-refresh-badge {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-top: -34px;
+  border: 1px solid #e4e7de;
+  border-radius: 50%;
+  background: #fffdfa;
+  color: #3f7b57;
+  box-shadow: 0 6px 18px rgba(36, 52, 44, 0.12);
+  transition: opacity 0.15s ease;
+}
+
+.pull-refresh-badge svg {
+  width: 17px;
+  height: 17px;
+}

@@ -7,6 +7,7 @@ import { Bell, CalendarDays, ChevronDown, ClipboardList, Home, MessageCircle, Se
 import { NuraLogo } from "@/components/nura-logo";
 import { SignOutButton } from "@/components/sign-out-button";
 import { CalendarNavBadge } from "@/components/calendar-nav-badge";
+import { PullToRefresh } from "@/components/pull-to-refresh";
 import { TimezoneSync } from "@/components/timezone-sync";
 
 const nav = [
@@ -68,6 +69,7 @@ export function NuraShell({
   return (
     <main className="app-shell product-shell">
       <TimezoneSync />
+      <PullToRefresh />
       <aside className="app-sidebar product-sidebar">
         <NuraLogo href="/today" compact />
         <nav>
