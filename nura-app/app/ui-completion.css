@@ -81,7 +81,7 @@
   .mobile-welcome-art{min-height:330px;margin:36px -8px 10px}
   .mobile-welcome-actions{gap:15px}
   .mobile-welcome-actions .onboarding-primary{min-height:48px;border-radius:9px;font-size:9px}
-  .welcome-login{font-size:8px;color:#386849}
+  .welcome-login{font-size:13px;color:#2f5d40;min-height:44px;display:grid;place-items:center}
 }
 
 nextjs-portal{display:none!important}
