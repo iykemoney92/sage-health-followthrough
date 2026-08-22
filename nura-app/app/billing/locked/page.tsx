@@ -3,6 +3,7 @@ import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { NuraLogo } from "@/components/nura-logo";
 import { SignOutButton } from "@/components/sign-out-button";
 import { TrackedCheckoutLink } from "@/components/tracked-billing-links";
+import { UpgradeCta } from "@/components/upgrade-cta";
 import { getSubscriptionAccess, markExpiredSubscriptionIfNeeded } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
@@ -56,14 +57,16 @@ export default async function BillingLockedPage() {
               <CreditCard size={16} strokeWidth={2.2} /> Renew anytime — cancel when you need to
             </li>
           </ul>
-          <TrackedCheckoutLink
-            href="/api/billing/checkout?return=locked"
-            className="primary-cta billing-lock-cta"
-            source="billing_locked"
-            cta="upgrade_to_plus"
-          >
-            <CreditCard size={18} /> Upgrade to Plus
-          </TrackedCheckoutLink>
+          <UpgradeCta userId={user?.id ?? null} renewing>
+            <TrackedCheckoutLink
+              href="/api/billing/checkout?return=locked"
+              className="primary-cta billing-lock-cta"
+              source="billing_locked"
+              cta="upgrade_to_plus"
+            >
+              <CreditCard size={18} /> Upgrade to Plus
+            </TrackedCheckoutLink>
+          </UpgradeCta>
           <a href="/billing" className="secondary-cta billing-lock-secondary">
             View billing details
           </a>

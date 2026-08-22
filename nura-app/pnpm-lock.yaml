@@ -23,6 +23,9 @@ importers:
       '@capacitor/push-notifications':
         specifier: ^8.1.2
         version: 8.1.2(@capacitor/core@8.5.0)
+      '@revenuecat/purchases-capacitor':
+        specifier: ^13.4.1
+        version: 13.4.1(@capacitor/core@8.5.0)
       '@supabase/ssr':
         specifier: ^0.12.3
         version: 0.12.3(@supabase/supabase-js@2.110.8)
@@ -648,6 +651,14 @@ packages:
 
   '@protobufjs/utf8@1.1.2':
     resolution: {integrity: sha512-b1UQwcEZ4yCnMCD8DAL1VlbvBJE9/IX4FTIp7BG1xYpf29SLazLSrqUkj4w7Y5y7cCVP6E5tcqqcI0xemPkHug==}
+
+  '@revenuecat/purchases-capacitor@13.4.1':
+    resolution: {integrity: sha512-S8I0T1P3jr7ONxhn3V0UP4yoVLQAApu/+4abHDzBFHg127ipn4OKqSqJqdtXxN8QLfuAUQW3SAEzO9bLRNj/Iw==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
+
+  '@revenuecat/purchases-typescript-internal-esm@18.31.0':
+    resolution: {integrity: sha512-EveTVQoT0oVa7Ex5fjBJ6UMLh00FT5s2Ta8lsm7DZ+NB+YXGRVtkkX76VQ1qh/F/qFpTDvLr2mpYWOhUYQi/ew==}
 
   '@rolldown/binding-android-arm64@1.1.5':
     resolution: {integrity: sha512-lZg8fqIv2v7FF237bwMgzGZEJvGL79/s5knJ/i6FmsGF4XXlzccZ4jb+TrFIxtSSxFtIpdsgrPZeMk1I9AFcyQ==}
@@ -3712,6 +3723,13 @@ snapshots:
 
   '@protobufjs/utf8@1.1.2':
     optional: true
+
+  '@revenuecat/purchases-capacitor@13.4.1(@capacitor/core@8.5.0)':
+    dependencies:
+      '@capacitor/core': 8.5.0
+      '@revenuecat/purchases-typescript-internal-esm': 18.31.0
+
+  '@revenuecat/purchases-typescript-internal-esm@18.31.0': {}
 
   '@rolldown/binding-android-arm64@1.1.5':
     optional: true

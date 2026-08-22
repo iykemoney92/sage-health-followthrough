@@ -22,6 +22,7 @@ import { NuraLogo } from "@/components/nura-logo";
 import { PhoneNumberInput } from "@/components/phone-number-input";
 import { PushNotificationsToggle } from "@/components/push-notifications-toggle";
 import { TrackedCheckoutLink } from "@/components/tracked-billing-links";
+import { UpgradeCta } from "@/components/upgrade-cta";
 import { useToast } from "@/components/toast";
 import { WhatsAppOpenButton } from "@/components/whatsapp-open-button";
 import { track } from "@/lib/analytics";
@@ -996,14 +997,16 @@ function OnboardingFlow() {
                     <li><Check size={14} strokeWidth={3} /> Voice, WhatsApp, and document uploads</li>
                     <li><Check size={14} strokeWidth={3} /> Cancel anytime before the trial ends</li>
                   </ul>
-                  <TrackedCheckoutLink
-                    href={trialExpired ? "/api/billing/checkout?return=locked" : "/api/billing/checkout"}
-                    className="primary-cta onboarding-primary paywall-cta"
-                    source="onboarding_paywall"
-                    cta={trialExpired ? "upgrade_to_plus" : "start_trial"}
-                  >
-                    <CreditCard size={18} /> {trialExpired ? "Upgrade to Plus" : `Start ${CARD_TRIAL_DAYS}-day free trial`}
-                  </TrackedCheckoutLink>
+                  <UpgradeCta renewing={trialExpired}>
+                    <TrackedCheckoutLink
+                      href={trialExpired ? "/api/billing/checkout?return=locked" : "/api/billing/checkout"}
+                      className="primary-cta onboarding-primary paywall-cta"
+                      source="onboarding_paywall"
+                      cta={trialExpired ? "upgrade_to_plus" : "start_trial"}
+                    >
+                      <CreditCard size={18} /> {trialExpired ? "Upgrade to Plus" : `Start ${CARD_TRIAL_DAYS}-day free trial`}
+                    </TrackedCheckoutLink>
+                  </UpgradeCta>
                   <p className="control-note">
                     {trialExpired
                       ? "Your Care plans stay saved — upgrade to unlock them again."

@@ -14,6 +14,7 @@ import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { CheckoutFailTracker } from "@/components/checkout-fail-tracker";
 import { NuraShell } from "@/components/nura-shell";
 import { TrackedCheckoutLink, TrackedPortalLink } from "@/components/tracked-billing-links";
+import { UpgradeCta } from "@/components/upgrade-cta";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { reconcileShortCardTrial } from "@/lib/billing/reconcile-trial";
 import { getSubscriptionAccess, markExpiredSubscriptionIfNeeded } from "@/lib/billing/subscription";
@@ -152,17 +153,19 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
               </TrackedPortalLink>
             ) : (
               <>
-                <TrackedCheckoutLink
-                  href={access?.status === "expired" ? "/api/billing/checkout?return=locked" : "/api/billing/checkout"}
-                  className="primary-cta"
-                  source="billing"
-                  cta={access?.status === "expired" ? "renew_plus" : "upgrade_to_plus"}
-                >
-                  <CreditCard /> {access?.status === "expired" ? "Renew Plus" : "Upgrade to Plus"}
-                </TrackedCheckoutLink>
-                <TrackedPortalLink href="/api/billing/portal" className="secondary-cta" hasPlus={false}>
-                  <Settings /> Manage or cancel
-                </TrackedPortalLink>
+                <UpgradeCta userId={user?.id ?? null} renewing={access?.status === "expired"}>
+                  <TrackedCheckoutLink
+                    href={access?.status === "expired" ? "/api/billing/checkout?return=locked" : "/api/billing/checkout"}
+                    className="primary-cta"
+                    source="billing"
+                    cta={access?.status === "expired" ? "renew_plus" : "upgrade_to_plus"}
+                  >
+                    <CreditCard /> {access?.status === "expired" ? "Renew Plus" : "Upgrade to Plus"}
+                  </TrackedCheckoutLink>
+                  <TrackedPortalLink href="/api/billing/portal" className="secondary-cta" hasPlus={false}>
+                    <Settings /> Manage or cancel
+                  </TrackedPortalLink>
+                </UpgradeCta>
               </>
             )}
           </div>
