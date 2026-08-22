@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { AuthAlert, friendlyAuthError } from "@/components/auth-alert";
+import { AuthProviders } from "@/components/auth-providers";
 import { NuraLogo } from "@/components/nura-logo";
 import { track } from "@/lib/analytics";
 import { AUTH_COPY, normalizeEmail } from "@/lib/auth/helpers";
@@ -115,6 +116,7 @@ export default function SignupPage() {
           <span className="auth-kicker">Get started</span>
           <h1>Create your Nura.</h1>
           <p>Start with what’s happening today. You can organise the rest as you go.</p>
+          <AuthProviders label="or sign up with email" />
           <label>
             Your name
             <input

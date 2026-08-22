@@ -16,6 +16,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.113.0",
     "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
     "@capacitor/core": "^8.5.0",
     "@capacitor/push-notifications": "^8.1.2",
     "@supabase/ssr": "^0.12.3",

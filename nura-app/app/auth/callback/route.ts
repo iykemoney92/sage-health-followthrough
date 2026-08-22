@@ -13,6 +13,12 @@ export async function GET(request: NextRequest) {
   const tokenHash = url.searchParams.get("token_hash");
   const type = url.searchParams.get("type");
 
+  // Email confirmation arrives without `next` and expects the confirm screen.
+  // Provider sign-in passes one, and just wants to land in the app — middleware
+  // takes it from /login to /today or /onboarding.
+  const requestedNext = safeNextPath(url.searchParams.get("next"), "");
+  const success = new URL(requestedNext || "/auth/confirm?confirmed=1", url.origin);
+
   const forward = new URL(nextPath, url.origin);
   // Preserve token_hash flow by bouncing to the confirm page.
   if (tokenHash) {
@@ -28,7 +34,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(failed);
   }
 
-  let response = NextResponse.redirect(new URL("/auth/confirm?confirmed=1", url.origin));
+  let response = NextResponse.redirect(success);
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -40,7 +46,7 @@ export async function GET(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.redirect(new URL("/auth/confirm?confirmed=1", url.origin));
+          response = NextResponse.redirect(success);
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options);
           });

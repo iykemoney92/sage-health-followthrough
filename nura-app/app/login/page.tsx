@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { AuthAlert, friendlyAuthError } from "@/components/auth-alert";
+import { AuthProviders } from "@/components/auth-providers";
 import { NuraLogo } from "@/components/nura-logo";
 import { track } from "@/lib/analytics";
 import { AUTH_COPY, normalizeEmail } from "@/lib/auth/helpers";
@@ -48,12 +49,16 @@ export default function LoginPage() {
   const [error, setError] = useState<{ title: string; message: string } | null>(null);
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [nextParam, setNextParam] = useState<string>("");
 
   useEffect(() => {
     // Saved email only exists in localStorage — hydrate after mount.
     const saved = window.localStorage.getItem(EMAIL_KEY);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (saved) setEmail(saved);
+    // Read from location rather than useSearchParams: this page is otherwise
+    // fully static, and useSearchParams would force a Suspense boundary on it.
+    setNextParam(safeNextPath(new URLSearchParams(window.location.search).get("next"), ""));
   }, []);
 
   useEffect(() => {
@@ -211,6 +216,7 @@ export default function LoginPage() {
           <span className="auth-kicker">Welcome back</span>
           <h1>Continue your follow-through.</h1>
           <p>Pick up your Care plans and check-ins — so health advice doesn’t disappear after the visit.</p>
+          <AuthProviders next={nextParam} label="or sign in with email" />
           <label className={error ? "is-invalid" : undefined}>
             Email
             <input

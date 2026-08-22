@@ -470,3 +470,100 @@
     padding-top: calc(28px + env(safe-area-inset-top));
   }
 }
+
+/* --- Google / Apple sign-in -------------------------------------------- */
+
+.auth-v2 .auth-providers {
+  margin-top: 22px;
+}
+
+.auth-v2 .auth-provider-row {
+  display: grid;
+  gap: 10px;
+}
+
+.auth-v2 .auth-provider {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid var(--auth-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--auth-ink);
+  font-family: var(--auth-sans);
+  /* 16px floor: anything smaller and iOS zooms the page on tap. */
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.auth-v2 .auth-provider:hover:not(:disabled) {
+  border-color: rgba(24, 49, 41, 0.28);
+  box-shadow: 0 6px 18px rgba(24, 49, 41, 0.08);
+}
+
+.auth-v2 .auth-provider:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.auth-v2 .auth-provider:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Apple's guidelines: their button is black-on-white or white-on-black, never
+   tinted, and the glyph inherits the label colour. */
+.auth-v2 .auth-provider-apple {
+  border-color: #000;
+  background: #000;
+  color: #fff;
+}
+
+.auth-v2 .auth-provider-apple:hover:not(:disabled) {
+  border-color: #000;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+.auth-v2 .auth-provider svg {
+  flex: none;
+}
+
+.auth-v2 .auth-provider-error {
+  margin: 10px 0 0;
+  color: #a4362f;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.auth-v2 .auth-provider-divider {
+  margin: 22px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--auth-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.auth-v2 .auth-provider-divider::before,
+.auth-v2 .auth-provider-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--auth-line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-v2 .auth-provider {
+    transition: none;
+  }
+  .auth-v2 .auth-provider:active:not(:disabled) {
+    transform: none;
+  }
+}

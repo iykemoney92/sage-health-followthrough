@@ -8,6 +8,7 @@ import { NuraLogo } from "@/components/nura-logo";
 import { SignOutButton } from "@/components/sign-out-button";
 import { CalendarNavBadge } from "@/components/calendar-nav-badge";
 import { PullToRefresh } from "@/components/pull-to-refresh";
+import { AppUpdateNotice } from "@/components/app-update-notice";
 import { TimezoneSync } from "@/components/timezone-sync";
 
 const nav = [
@@ -70,6 +71,7 @@ export function NuraShell({
     <main className="app-shell product-shell">
       <TimezoneSync />
       <PullToRefresh />
+      <AppUpdateNotice />
       <aside className="app-sidebar product-sidebar">
         <NuraLogo href="/today" compact />
         <nav>
