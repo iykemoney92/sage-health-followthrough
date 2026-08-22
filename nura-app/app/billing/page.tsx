@@ -14,7 +14,7 @@ import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { CheckoutFailTracker } from "@/components/checkout-fail-tracker";
 import { NuraShell } from "@/components/nura-shell";
 import { TrackedCheckoutLink, TrackedPortalLink } from "@/components/tracked-billing-links";
-import { UpgradeCta } from "@/components/upgrade-cta";
+import { ManageSubscriptionCta, UpgradeCta } from "@/components/upgrade-cta";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { reconcileShortCardTrial } from "@/lib/billing/reconcile-trial";
 import { getSubscriptionAccess, markExpiredSubscriptionIfNeeded } from "@/lib/billing/subscription";
@@ -148,9 +148,11 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
 
           <div className="billing-actions">
             {access?.hasPlus ? (
-              <TrackedPortalLink href="/api/billing/portal" className="primary-cta" hasPlus>
-                <Settings /> Manage or cancel
-              </TrackedPortalLink>
+              <ManageSubscriptionCta className="primary-cta">
+                <TrackedPortalLink href="/api/billing/portal" className="primary-cta" hasPlus>
+                  <Settings /> Manage or cancel
+                </TrackedPortalLink>
+              </ManageSubscriptionCta>
             ) : (
               <>
                 <UpgradeCta userId={user?.id ?? null} renewing={access?.status === "expired"}>

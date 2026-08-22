@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Capacitor } from "@capacitor/core";
+import { Settings } from "lucide-react";
 import { NativeUpgrade } from "@/components/native-upgrade";
 import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
 
@@ -90,6 +91,41 @@ export function UpgradeCta({
 
   return (
     <button type="button" className="primary-cta" disabled aria-hidden>
+      Loading…
+    </button>
+  );
+}
+
+/**
+ * "Manage or cancel", pointed at whichever system actually owns the billing.
+ *
+ * A subscription bought through StoreKit can only be changed in the App Store,
+ * and Apple treats a link out to a web billing portal as steering just as it
+ * does a link out to a web checkout. So on device this opens Apple's own
+ * subscription settings; on the web it keeps the existing customer portal.
+ */
+export function ManageSubscriptionCta({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const platform = useSyncExternalStore(noopSubscribe, clientPlatform, serverPlatform);
+
+  if (platform === "web") return <>{children}</>;
+
+  if (platform === "native") {
+    return (
+      // iOS resolves this to the Subscriptions screen in Settings.
+      <a className={className ?? "secondary-cta"} href="https://apps.apple.com/account/subscriptions">
+        <Settings /> Manage or cancel
+      </a>
+    );
+  }
+
+  return (
+    <button type="button" className={className ?? "secondary-cta"} disabled aria-hidden>
       Loading…
     </button>
   );
