@@ -7,7 +7,15 @@ import { RefreshCw, ArrowUpCircle } from "lucide-react";
 
 /** Quiet enough to be invisible in aggregate, frequent enough to catch a deploy. */
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
-const APP_STORE_URL = "https://apps.apple.com/app/id0000000000";
+
+/**
+ * The App Store Connect record for app.usenura.mobile. Overridable so a build
+ * pointed at a different listing doesn't need a code change; falls back to the
+ * real ID rather than a placeholder, which would send people to a
+ * "not available" page.
+ */
+const APP_STORE_URL =
+  process.env.NEXT_PUBLIC_IOS_APP_STORE_URL ?? "https://apps.apple.com/app/id6804203569";
 
 type VersionPayload = { build: string; minNativeBuild: number };
 
@@ -95,9 +103,11 @@ export function AppUpdateNotice() {
       <div className="app-update-notice app-update-required" role="status">
         <ArrowUpCircle aria-hidden />
         <span>A newer version of Nura is available.</span>
-        <a href={APP_STORE_URL} target="_blank" rel="noreferrer">
-          Update
-        </a>
+        {APP_STORE_URL && (
+          <a href={APP_STORE_URL} target="_blank" rel="noreferrer">
+            Update
+          </a>
+        )}
       </div>
     );
   }
