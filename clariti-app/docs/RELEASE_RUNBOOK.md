@@ -176,6 +176,10 @@ Dashboard → Authentication.
 3. **Providers → Google** → enable, with an OAuth client from Google Cloud Console.
    > Apple's Guideline 4.8 makes Sign in with Apple mandatory the moment Google
    > sign-in is offered. Ship both or neither.
+4. **Only then** set `NEXT_PUBLIC_CLARITI_OAUTH_PROVIDERS=apple,google` in Vercel
+   and redeploy. The buttons are hidden until that variable lists a provider,
+   because a provider Supabase has not been configured with returns a 400 the
+   moment somebody taps it — a dead button is worse than no button.
 
 ## 7. Vercel environment
 
@@ -187,6 +191,7 @@ Dashboard → Authentication.
 | `NEXT_PUBLIC_CLARITI_REVENUECAT_ANDROID_API_KEY` | `goog_…` from step 4.6 |
 | `NEXT_PUBLIC_IOS_APP_STORE_URL` | `https://apps.apple.com/app/id<Apple ID from step 2.2>` — **leave unset until the app is actually live** |
 | `CLARITI_MIN_NATIVE_BUILD` | `1` |
+| `NEXT_PUBLIC_CLARITI_OAUTH_PROVIDERS` | `apple,google` — **only after step 6 is done**; empty until then |
 | `CRON_SECRET` | a fresh random string; Vercel Cron sends it as `Authorization: Bearer …` |
 
 Then redeploy — `NEXT_PUBLIC_*` values are inlined at build time, so a restart is

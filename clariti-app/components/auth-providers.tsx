@@ -40,10 +40,28 @@ function AppleMark() {
   );
 }
 
-const PROVIDERS: Array<{ id: OAuthProvider; label: string; mark: () => React.ReactElement }> = [
+const ALL_PROVIDERS: Array<{ id: OAuthProvider; label: string; mark: () => React.ReactElement }> = [
   { id: "apple", label: "Apple", mark: AppleMark },
   { id: "google", label: "Google", mark: GoogleMark },
 ];
+
+/**
+ * Which providers are actually wired up in Supabase, as a comma-separated list.
+ *
+ * A button for a provider Supabase has not been configured with does not fail
+ * gracefully — it throws a 400 the moment it is tapped — so this defaults to
+ * NONE rather than to both. Turn each one on only once its provider is enabled
+ * in the Supabase dashboard, and remember that Guideline 4.8 means "google"
+ * cannot be listed without "apple".
+ */
+const ENABLED_PROVIDERS = new Set(
+  (process.env.NEXT_PUBLIC_CLARITI_OAUTH_PROVIDERS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+const PROVIDERS = ALL_PROVIDERS.filter((provider) => ENABLED_PROVIDERS.has(provider.id));
 
 /**
  * Apple and Google sign-in, above the email fields on every Clariti auth surface.
@@ -91,6 +109,11 @@ export function AuthProviders({
     // (native), so `pending` deliberately stays set — re-enabling the buttons
     // would only invite a second tap mid-handoff.
   }
+
+  // Nothing configured yet: render neither the buttons nor the "or use your
+  // email" divider, so the email form reads as the whole sign-in, not as the
+  // remainder of something that failed to load.
+  if (PROVIDERS.length === 0) return null;
 
   return (
     <div className="auth-providers">
