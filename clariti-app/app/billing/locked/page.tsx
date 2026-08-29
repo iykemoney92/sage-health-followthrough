@@ -4,6 +4,8 @@ import { CreditCard, FileHeart, Lock } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SignOutButton } from "@/components/sign-out-button";
+import { UpgradeCta } from "@/components/upgrade-cta";
+import "../billing-plans.css";
 
 function formatDate(value: string | null) {
   if (!value) return null;
@@ -12,14 +14,18 @@ function formatDate(value: string | null) {
 
 export default function BillingLockedPage() {
   const [trialEndedLabel, setTrialEndedLabel] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/billing/access", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((payload) => {
-        if (!alive || !payload?.ok) return;
-        setTrialEndedLabel(formatDate(payload.trialEndsAt ?? null));
+    Promise.all([
+      fetch("/api/billing/access", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/auth/status", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([accessPayload, authPayload]) => {
+        if (!alive) return;
+        if (accessPayload?.ok) setTrialEndedLabel(formatDate(accessPayload.trialEndsAt ?? null));
+        setUserId(authPayload?.user?.id ?? null);
       })
       .catch(() => undefined);
     return () => {
@@ -43,7 +49,16 @@ export default function BillingLockedPage() {
             <li><FileHeart size={16} strokeWidth={2.2} /> Your saved documents and analyses stay safe</li>
             <li><CreditCard size={16} strokeWidth={2.2} /> Renew anytime — cancel whenever you need to</li>
           </ul>
-          <a href="/api/billing/checkout" className="billing-lock-cta"><CreditCard size={18} /> Upgrade to Plus</a>
+          {/* Not a direct link to /api/billing/checkout: inside the app that is a
+              web checkout for digital content, which Guideline 3.1.1 forbids.
+              UpgradeCta picks StoreKit there and the web link on the web. */}
+          <UpgradeCta
+            userId={userId}
+            authenticated={Boolean(userId)}
+            hasPlus={false}
+            label="Upgrade to Plus"
+            className="billing-lock-cta"
+          />
           <Link href="/billing" className="billing-lock-secondary">View billing details</Link>
           <SignOutButton className="billing-lock-signout">Sign out</SignOutButton>
         </div>

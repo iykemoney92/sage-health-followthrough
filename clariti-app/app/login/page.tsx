@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AuthProviders } from "@/components/auth-providers";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { FormEvent, Suspense, useState } from "react";
@@ -54,6 +55,7 @@ function LoginForm() {
               ? "Your email is verified. Sign in with your password to continue."
               : "Continue with your saved documents, analyses, calls and follow-ups."}
           </p>
+          <AuthProviders />
           <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>
           <label>Password<span className="password-field"><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" required autoComplete="current-password" /><button type="button" onClick={() => setShowPassword((show) => !show)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff /> : <Eye />}</button></span></label>
           {error && <p className="auth-error">{error}</p>}

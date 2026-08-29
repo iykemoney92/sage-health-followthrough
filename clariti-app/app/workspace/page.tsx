@@ -767,7 +767,7 @@ function WorkspaceContent() {
         }
 
         // Default: open the most recent account session.
-        let resolvedSessionId = listPayload?.ok ? listPayload.sessions?.[0]?.id ?? null : null;
+        const resolvedSessionId = listPayload?.ok ? listPayload.sessions?.[0]?.id ?? null : null;
         if (resolvedSessionId) {
           const response = await fetch(`/api/sessions?sessionId=${encodeURIComponent(resolvedSessionId)}`);
           const payload = response.ok ? await response.json() : null;

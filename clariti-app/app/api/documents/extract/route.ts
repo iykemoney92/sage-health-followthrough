@@ -2,13 +2,40 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { generateText, uploadFile } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const MAX_FILE_SIZE = 12 * 1024 * 1024;
 
+/**
+ * What Clariti can actually read. Anything else reaches a vision model that will
+ * happily try, and bill for the attempt.
+ */
+const ACCEPTED_MIME_TYPES = new Set([
+  "text/plain",
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
+
 export async function POST(request: NextRequest) {
+  // This route sends whatever it is given to a vision model. Without a session
+  // check it was an open, unauthenticated OCR endpoint that anyone on the
+  // internet could point at, billed to Clariti's provider account.
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+
+  const limited = await enforceRateLimit(await getSupabaseSessionClient(), user.id, "extract");
+  if (limited) return limited;
+
   try {
     const formData = await request.formData();
     const file = formData.get("file");
@@ -18,10 +45,19 @@ export async function POST(request: NextRequest) {
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ ok: false, error: "Use a file smaller than 12MB for this demo." }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Use a file smaller than 12MB." }, { status: 400 });
     }
 
     const type = file.type || inferMimeType(file.name);
+
+    // Checked before any provider call, so an unsupported upload costs nothing.
+    if (!ACCEPTED_MIME_TYPES.has(type)) {
+      return NextResponse.json({
+        ok: false,
+        error: "Clariti can read text files, PDFs, and photos or scans (PNG, JPG, WEBP, HEIC).",
+      }, { status: 400 });
+    }
+
     const buffer = Buffer.from(await file.arrayBuffer());
 
     if (type.startsWith("text/") || file.name.toLowerCase().endsWith(".txt")) {
@@ -43,12 +79,21 @@ export async function POST(request: NextRequest) {
       return extracted(text, "image_vision");
     }
 
+    // Unreachable: ACCEPTED_MIME_TYPES above admits only text, PDF and images,
+    // and each is handled. Kept as a total return rather than a throw so a future
+    // addition to that set fails as a 400 rather than a 500.
     return NextResponse.json({
       ok: false,
-      error: "Clariti can read .txt, PDF, PNG, JPG and HEIC-style image uploads for this build.",
+      error: "Clariti can read text files, PDFs, and photos or scans (PNG, JPG, WEBP, HEIC).",
     }, { status: 400 });
   } catch (error) {
-    console.error("[clariti] document extraction failed", error);
+    // Only the error's own message, never the caught object: a provider error can
+    // carry echoed request content, and the request content here is somebody's
+    // medical document.
+    console.error(
+      "[clariti] document extraction failed:",
+      error instanceof Error ? error.message : "unknown error",
+    );
     return NextResponse.json({
       ok: false,
       error: friendlyExtractionError(error),

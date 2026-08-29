@@ -9,11 +9,24 @@
  * Usage:
  *   SUPABASE_ACCESS_TOKEN=sbp_... node scripts/configure-supabase-auth.mjs
  */
-const fs = require("fs");
-const path = require("path");
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+
+// Production stays on the list no matter what NEXT_PUBLIC_APP_URL happens to hold locally —
+// pointing .env.local at a preview deployment must not quietly drop useclariti.app.
+const PRODUCTION_URL = "https://useclariti.app";
+
+// The Capacitor shell finishes OAuth back into the app over its custom scheme rather than over
+// https, and Supabase rejects any redirect it has not been told about — so without this entry
+// native sign-in dead-ends on the provider's page. Kept in sync with NATIVE_OAUTH_REDIRECT in
+// lib/auth/oauth.ts.
+const NATIVE_REDIRECT = "app.useclariti.mobile://auth/callback";
 
 function loadEnv() {
-  const file = path.join(__dirname, "..", ".env.local");
+  const file = path.join(scriptDir, "..", ".env.local");
   if (!fs.existsSync(file)) return {};
   return Object.fromEntries(
     fs
@@ -40,7 +53,7 @@ async function main() {
   const resendKey = env.RESEND_API_KEY;
   const from = env.AUTH_EMAIL_FROM || "Clariti <hello@usenura.app>";
   const adminEmail = from.match(/<([^>]+)>/)?.[1] || from;
-  const siteUrl = (env.NEXT_PUBLIC_APP_URL || "https://useclariti.app").replace(/\/$/, "");
+  const siteUrl = (env.NEXT_PUBLIC_APP_URL || PRODUCTION_URL).replace(/\/$/, "");
 
   if (!token) {
     console.error("Missing SUPABASE_ACCESS_TOKEN. Create one at https://supabase.com/dashboard/account/tokens");
@@ -56,15 +69,21 @@ async function main() {
   }
 
   const uriAllowList = [
-    `${siteUrl}/**`,
-    `${siteUrl}/auth/confirm`,
-    `${siteUrl}/auth/callback`,
-    "http://localhost:3000/**",
-    "http://localhost:3000/auth/confirm",
-    "http://localhost:3001/**",
-    "http://localhost:3001/auth/confirm",
-    "https://clariti-health-followthrough.vercel.app/**",
-    "https://clariti-health-followthrough.vercel.app/auth/confirm",
+    ...new Set([
+      NATIVE_REDIRECT,
+      `${PRODUCTION_URL}/**`,
+      `${PRODUCTION_URL}/auth/confirm`,
+      `${PRODUCTION_URL}/auth/callback`,
+      `${siteUrl}/**`,
+      `${siteUrl}/auth/confirm`,
+      `${siteUrl}/auth/callback`,
+      "http://localhost:3000/**",
+      "http://localhost:3000/auth/confirm",
+      "http://localhost:3001/**",
+      "http://localhost:3001/auth/confirm",
+      "https://clariti-health-followthrough.vercel.app/**",
+      "https://clariti-health-followthrough.vercel.app/auth/confirm",
+    ]),
   ].join(",");
 
   const res = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/config/auth`, {
@@ -87,11 +106,16 @@ async function main() {
     }),
   });
 
-  const body = await res.text();
-  console.log("status", res.status);
-  console.log(body);
-  if (!res.ok) process.exit(1);
+  // Supabase echoes the whole auth config back, smtp_pass included, so the body never reaches
+  // stdout — a terminal scrollback or a CI log would otherwise hold the live Resend key.
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    console.error(`Supabase rejected the auth config (HTTP ${res.status}).`, detail?.message ?? "");
+    process.exit(1);
+  }
+
   console.log(`Clariti Auth Site URL → ${siteUrl}`);
+  console.log(`Redirect allow-list → ${uriAllowList.split(",").length} entries, including ${NATIVE_REDIRECT}`);
   console.log("Supabase Auth SMTP now points at Resend as Clariti.");
 }
 

@@ -1,0 +1,59 @@
+name: Clariti CI
+
+# Reusable quality gate. Triggered by Clariti Deploy (and manually via workflow_dispatch).
+on:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: clariti-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: clariti-app
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: clariti-app/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      # clariti-app has no committed suite yet. `--if-present` covers the window where there is
+      # no `test` script, `--passWithNoTests` the window where there is one but no spec file —
+      # so this step starts enforcing tests on its own once the first spec lands. The flag must
+      # not sit behind a `--` separator: pnpm forwards the separator verbatim, and vitest then
+      # reads `--passWithNoTests` as a test-name filter rather than an option and exits 1.
+      - name: Test
+        run: pnpm run --if-present test --passWithNoTests
+
+      # Compile-time catch before Vercel. Values are stubs — production env lives on Vercel.
+      - name: Build
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder
+          NEXT_PUBLIC_APP_URL: https://useclariti.app

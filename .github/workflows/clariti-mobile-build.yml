@@ -1,0 +1,91 @@
+name: Clariti Mobile Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "clariti-mobile/**"
+      - ".github/workflows/clariti-mobile-build.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "clariti-mobile/**"
+      - ".github/workflows/clariti-mobile-build.yml"
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: clariti-mobile
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Pinned rather than "latest": Gradle 8.x rejects class files newer than
+      # Java 24, and a runner that ships a newer default JDK fails to even parse
+      # the build script ("Unsupported class file major version").
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Sync Capacitor (Android)
+        run: npx cap sync android
+
+      # Debug builds self-sign with Gradle's built-in debug keystore, so this
+      # produces an installable APK with no secrets required. A real Play Store
+      # release needs a signing keystore added as a GitHub Secret and
+      # `./gradlew bundleRelease` instead — see clariti-mobile/README.md.
+      - name: Build debug APK
+        working-directory: clariti-mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clariti-android-debug-apk
+          path: clariti-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+  ios-simulator:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Sync Capacitor (iOS)
+        run: npx cap sync ios
+
+      # Unsigned simulator build — proves the app compiles on every push without
+      # needing certificates. A real TestFlight/App Store build needs a signing
+      # certificate + provisioning profile as GitHub Secrets; see
+      # clariti-mobile/README.md.
+      #
+      # No GoogleService-Info.plist is present in CI, which is fine: AppDelegate
+      # skips FirebaseApp.configure() when the file is absent, so the build and
+      # launch both succeed without push.
+      - name: Build for iOS Simulator (unsigned)
+        working-directory: clariti-mobile/ios/App
+        run: |
+          xcodebuild \
+            -project App.xcodeproj \
+            -scheme App \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build

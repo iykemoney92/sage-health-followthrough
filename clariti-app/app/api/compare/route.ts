@@ -4,7 +4,8 @@ import { claritiAnalysisSchema } from "@/lib/ai/clariti-analysis";
 import { requirePlusAccess } from "@/lib/billing/subscription";
 import { getRecentClaritiAnalyses } from "@/lib/domain/clariti-history";
 import { buildProgressionComparison } from "@/lib/domain/clariti-progression";
-import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 const requestSchema = z.object({
   analysis: claritiAnalysisSchema,
@@ -18,10 +19,12 @@ const requestSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   const user = await getSessionUser();
-  if (hasSupabaseBrowserConfig() && !user) {
+  if (!user) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
-  if (!user) return NextResponse.json({ ok: false, error: "Supabase auth is required to compare documents." }, { status: 503 });
+
+  const limited = await enforceRateLimit(await getSupabaseSessionClient(), user.id, "compare");
+  if (limited) return limited;
 
   const body = await request.json().catch(() => null);
   const parsed = requestSchema.safeParse(body);

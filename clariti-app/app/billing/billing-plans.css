@@ -1,0 +1,28 @@
+/* Styles for the purchase controls that are shared by /billing and
+   /billing/locked. They live here rather than in billing.css so the paywall's
+   store-purchase UI stays with the components that render it. */
+
+.native-billing-actions{display:grid;gap:10px;width:100%}
+
+.native-plan-choice{display:grid;gap:8px;margin:0;padding:0;border:0}
+.native-plan-legend{padding:0;font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:#718f87}
+.native-plan-option{display:flex;align-items:center;gap:11px;min-height:52px;padding:12px 14px;border:1px solid var(--border);border-radius:13px;background:var(--panel);cursor:pointer}
+.native-plan-option:has(input:checked){border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.native-plan-option input{width:20px;height:20px;flex:none;accent-color:var(--accent)}
+.native-plan-label{display:flex;align-items:baseline;gap:7px;min-width:0;flex-wrap:wrap}
+.native-plan-label strong{font-size:15px;font-weight:800;color:var(--foreground)}
+.native-plan-label span{font-size:12px;color:var(--muted)}
+
+/* Matches .billing-primary-cta's shape so the two read as one control set,
+   without the filled background that would make them compete. */
+.billing-secondary-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:11px 18px;border:1px solid var(--border);border-radius:13px;background:var(--panel);color:var(--accent-dark);font-size:13px;font-weight:700;text-decoration:none;cursor:pointer}
+.billing-secondary-cta svg{width:16px;height:16px}
+.billing-primary-cta{min-height:44px;justify-content:center;border:0;cursor:pointer}
+
+.billing-notice{margin:2px 0 0;font-size:12px;line-height:1.5;color:var(--muted)}
+.billing-notice-error{color:var(--sev-urgent-fg)}
+
+.billing-legal{margin-top:22px;padding:16px 18px;border:1px solid var(--border);border-radius:16px;background:var(--soft)}
+.billing-legal p{margin:0;font-size:11.5px;line-height:1.65;color:var(--muted)}
+.billing-legal-links{margin-top:10px!important;display:flex;gap:10px;align-items:center}
+.billing-legal-links a{color:var(--accent-dark);font-weight:700;text-decoration:underline;text-underline-offset:2px}

@@ -1,1 +1,48 @@
-.clariti-auth-page{min-height:100vh;display:grid;grid-template-columns:minmax(420px,520px) minmax(0,1fr);background:#f7faf9}.clariti-auth-panel{padding:34px;display:flex;flex-direction:column;justify-content:center;gap:22px}.clariti-auth-card{background:#fff;border:1px solid #dfe8e4;border-radius:22px;padding:28px;box-shadow:0 18px 55px rgba(35,63,55,.07);display:grid;gap:14px}.clariti-auth-card h1{font:500 35px/1.08 Georgia,"Times New Roman",serif;letter-spacing:-.035em;margin:4px 0 0;color:#21332f}.clariti-auth-card p{margin:0;color:#71807b;font-size:13px;line-height:1.55}.clariti-auth-card label{display:grid;gap:7px;color:#344942;font-size:11px;font-weight:800}.clariti-auth-card input{height:44px;border:1px solid #dfe7e4;border-radius:12px;background:#fbfdfc;padding:0 12px;outline:0;color:#263934}.clariti-auth-card input:focus{border-color:#9fc4ba;box-shadow:0 0 0 3px rgba(77,141,131,.1)}.password-field{display:grid;grid-template-columns:minmax(0,1fr) 42px;border:1px solid #dfe7e4;border-radius:12px;background:#fbfdfc;overflow:hidden}.password-field input{border:0;border-radius:0;background:transparent}.password-field button{border:0;border-left:1px solid #e6eeea;background:#fff;color:#667772;display:grid;place-items:center}.password-field svg{width:17px}.auth-check{display:flex!important;grid-template-columns:none!important;flex-direction:row;align-items:flex-start;gap:9px!important;font-weight:650!important;color:#61726d!important;line-height:1.45}.auth-check input{width:16px;height:16px;margin-top:1px;flex:none}.auth-submit{height:46px;border:0;border-radius:13px;background:#4d8d83;color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;font-weight:850}.auth-submit:disabled{opacity:.7}.auth-submit svg{width:17px}.auth-error{background:#fff4f2;border:1px solid #f1c9c1;color:#9a4637;border-radius:11px;padding:10px!important;font-size:11px!important}.auth-switch{text-align:center;font-size:12px!important}.auth-switch a{color:#2f6e66;font-weight:850;text-decoration:none}.auth-trust{display:flex;align-items:center;gap:8px;color:#7c8a85;font-size:11px;justify-content:center}.auth-trust svg{width:16px}.clariti-auth-visual{padding:36px;display:grid;place-items:center;background:radial-gradient(circle at 62% 28%,#dfeef1 0,#f4fbf8 38%,#edf4f7 100%)}.clariti-auth-visual>div{width:min(560px,100%)}.clariti-auth-visual span{display:inline-flex;padding:7px 10px;border-radius:999px;background:#fff;color:#35766c;font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.clariti-auth-visual h2{font:500 48px/1.04 Georgia,"Times New Roman",serif;letter-spacing:-.045em;color:#21332f;margin:18px 0}.clariti-auth-visual p,.clariti-auth-visual li{color:#5d706a;font-size:15px;line-height:1.6}.clariti-auth-visual ul{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:10px}.clariti-auth-visual li{display:flex;align-items:center;gap:9px}.clariti-auth-visual li svg{width:17px;color:#3f8278}@media(max-width:860px){.clariti-auth-page{grid-template-columns:1fr}.clariti-auth-visual{display:none}.clariti-auth-panel{padding:24px 18px}.clariti-auth-card{padding:22px;border-radius:18px}.clariti-auth-card h1{font-size:30px}}
+.clariti-auth-page{min-height:100dvh;display:grid;grid-template-columns:minmax(420px,520px) minmax(0,1fr);background:#f7faf9}.clariti-auth-panel{padding:34px;display:flex;flex-direction:column;justify-content:center;gap:22px}.clariti-auth-card{background:#fff;border:1px solid #dfe8e4;border-radius:22px;padding:28px;box-shadow:0 18px 55px rgba(35,63,55,.07);display:grid;gap:14px}.clariti-auth-card h1{font:500 35px/1.08 Georgia,"Times New Roman",serif;letter-spacing:-.035em;margin:4px 0 0;color:#21332f}.clariti-auth-card p{margin:0;color:#71807b;font-size:13px;line-height:1.55}.clariti-auth-card label{display:grid;gap:7px;color:#344942;font-size:11px;font-weight:800}.clariti-auth-card input{height:44px;border:1px solid #dfe7e4;border-radius:12px;background:#fbfdfc;padding:0 12px;outline:0;color:#263934}.clariti-auth-card input:focus{border-color:#9fc4ba;box-shadow:0 0 0 3px rgba(77,141,131,.1)}.password-field{display:grid;grid-template-columns:minmax(0,1fr) 42px;border:1px solid #dfe7e4;border-radius:12px;background:#fbfdfc;overflow:hidden}.password-field input{border:0;border-radius:0;background:transparent}.password-field button{border:0;border-left:1px solid #e6eeea;background:#fff;color:#667772;display:grid;place-items:center}.password-field svg{width:17px}.auth-check{display:flex!important;grid-template-columns:none!important;flex-direction:row;align-items:flex-start;gap:9px!important;font-weight:650!important;color:#61726d!important;line-height:1.45}.auth-check input{width:16px;height:16px;margin-top:1px;flex:none}.auth-submit{height:46px;border:0;border-radius:13px;background:#4d8d83;color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;font-weight:850}.auth-submit:disabled{opacity:.7}.auth-submit svg{width:17px}.auth-error{background:#fff4f2;border:1px solid #f1c9c1;color:#9a4637;border-radius:11px;padding:10px!important;font-size:11px!important}.auth-switch{text-align:center;font-size:12px!important}.auth-switch a{color:#2f6e66;font-weight:850;text-decoration:none}.auth-trust{display:flex;align-items:center;gap:8px;color:#7c8a85;font-size:11px;justify-content:center}.auth-trust svg{width:16px}.clariti-auth-visual{padding:36px;display:grid;place-items:center;background:radial-gradient(circle at 62% 28%,#dfeef1 0,#f4fbf8 38%,#edf4f7 100%)}.clariti-auth-visual>div{width:min(560px,100%)}.clariti-auth-visual span{display:inline-flex;padding:7px 10px;border-radius:999px;background:#fff;color:#35766c;font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.clariti-auth-visual h2{font:500 48px/1.04 Georgia,"Times New Roman",serif;letter-spacing:-.045em;color:#21332f;margin:18px 0}.clariti-auth-visual p,.clariti-auth-visual li{color:#5d706a;font-size:15px;line-height:1.6}.clariti-auth-visual ul{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:10px}.clariti-auth-visual li{display:flex;align-items:center;gap:9px}.clariti-auth-visual li svg{width:17px;color:#3f8278}@media(max-width:860px){.clariti-auth-page{grid-template-columns:1fr}.clariti-auth-visual{display:none}.clariti-auth-panel{padding:24px 18px}.clariti-auth-card{padding:22px;border-radius:18px}.clariti-auth-card h1{font-size:30px}}
+
+/* Sign-in and sign-up are the only surfaces that paint their own tint instead
+   of the app background. The status-bar backing on body::before reads
+   --background, so re-pointing the variable here keeps the strip matched to the
+   page underneath it rather than leaving a hard edge across the top of the
+   screen — and body, painted from the same variable, follows. */
+:root:has(.clariti-auth-page) {
+  --background: #f7faf9;
+}
+
+/* These inputs never declared a font size: they inherit 11px from the <label>
+   wrapping them, and WebKit zooms the page in on any focused field under 16px
+   and does not zoom back out. 16px is that threshold, not a type choice; the
+   viewport keeps pinch-zoom for low-vision users, so this is the only lever. */
+.clariti-auth-card input {
+  font-size: 16px;
+}
+
+/* The reveal control fills this column, and the row is 44px tall, so widening
+   the column to match is what makes it a 44x44 target. */
+.password-field {
+  grid-template-columns: minmax(0, 1fr) 44px;
+}
+
+@media (max-width: 860px) {
+  /* The panel centres its card in the full WebView, which now spans the status
+     bar and the home indicator, so it has to hold those insets off itself. */
+  .clariti-auth-panel {
+    padding: calc(24px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Apple and Google sign-in, above the email fields on the modal and both auth
+   pages. Sign in with Apple is not optional here: Guideline 4.8 requires it
+   wherever a third-party login is offered, so the pair is styled as one block
+   that cannot be split up by accident. */
+.auth-providers{display:grid;gap:10px;margin-bottom:4px}
+.auth-provider-row{display:grid;gap:8px}
+.auth-provider{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:46px;padding:0 14px;border:1px solid var(--border);border-radius:12px;background:#fff;color:var(--foreground);font-size:14px;font-weight:700;cursor:pointer}
+.auth-provider:disabled{opacity:.6;cursor:default}
+/* Apple's guidelines want their button dark with the glyph in the foreground
+   colour; Google's want the four-colour mark on white. */
+.auth-provider-apple{background:#000;border-color:#000;color:#fff}
+.auth-provider svg{flex:none}
+.auth-provider-error{margin:0;font-size:12px;line-height:1.5;color:var(--sev-urgent-fg)}
+.auth-provider-divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:11px}
+.auth-provider-divider::before,.auth-provider-divider::after{content:"";flex:1;height:1px;background:var(--border)}

@@ -46,3 +46,17 @@ export function hasBillingPortalConfig() {
 export const CLARITI_OFFERING_ID = "default";
 export const CLARITI_MONTHLY_PACKAGE_ID = "$rc_monthly";
 export const CLARITI_ANNUAL_PACKAGE_ID = "$rc_annual";
+
+/**
+ * The App Store / Play product ids the RevenueCat offering must attach to its
+ * monthly and annual packages. They are already on
+ * CLARITI_REVENUECAT_PLUS_PRODUCT_IDS, so an entitlement granted for either one
+ * flows through the existing webhook unchanged.
+ *
+ * Exported so the release runbook and the code cannot drift apart: if these
+ * change, App Store Connect, Play Console and RevenueCat all have to change too.
+ */
+export const CLARITI_STORE_PRODUCT_IDS = {
+  monthly: "clariti_plus_monthly",
+  annual: "clariti_plus_annual",
+} as const;
