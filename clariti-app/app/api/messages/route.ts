@@ -5,7 +5,8 @@ import { z } from "zod";
 import { claritiAnalysisSchema } from "@/lib/ai/clariti-analysis";
 import { requirePlusAccess } from "@/lib/billing/subscription";
 import { getRecentClaritiAnalyses, hasCompareIntent, type ClaritiHistoryEntry } from "@/lib/domain/clariti-history";
-import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 const requestSchema = z.object({
   sessionId: z.string().uuid(),
@@ -21,10 +22,12 @@ const requestSchema = z.object({
 
 export async function POST(request: NextRequest) {
   const user = await getSessionUser();
-  if (hasSupabaseBrowserConfig() && !user) {
+  if (!user) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
-  if (!user) return NextResponse.json({ ok: false, error: "Supabase auth is required to save messages." }, { status: 503 });
+
+  const limited = await enforceRateLimit(await getSupabaseSessionClient(), user.id, "messages");
+  if (limited) return limited;
 
   const body = await request.json().catch(() => null);
   const parsed = requestSchema.safeParse(body);

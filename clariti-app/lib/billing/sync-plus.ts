@@ -58,10 +58,13 @@ export async function syncPlusFromRevenueCat(supabase: SupabaseClient, appUserId
   const plusEntitlement = entitlements[PLUS_ENTITLEMENT_ID];
   const plusProductIds = new Set(getPlusProductIds());
 
-  const activeSubscription = Object.entries(subscriptions).find(([productId, sub]) => {
-    const matchesProduct = plusProductIds.has(productId) || Boolean(plusEntitlement);
-    return matchesProduct && isFuture(sub.expires_date);
-  })?.[1];
+  // Product id only. `|| Boolean(plusEntitlement)` used to be part of this test,
+  // which meant that once a Plus entitlement existed at all — including a long
+  // expired one — any unrelated active subscription on the same RevenueCat
+  // account was read as Plus.
+  const activeSubscription = Object.entries(subscriptions).find(
+    ([productId, sub]) => plusProductIds.has(productId) && isFuture(sub.expires_date),
+  )?.[1];
 
   const entitled = (plusEntitlement && isFuture(plusEntitlement.expires_date)) || Boolean(activeSubscription);
   if (!entitled) {

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { claritiIllustrationAnalysisSchema, generateClaritiIllustration } from "@/lib/ai/clariti-illustration";
-import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 const bodySchema = z.object({
   analysis: claritiIllustrationAnalysisSchema,
@@ -11,12 +12,12 @@ const bodySchema = z.object({
 
 export async function POST(request: NextRequest) {
   const user = await getSessionUser();
-  if (hasSupabaseBrowserConfig() && !user) {
+  if (!user) {
     return NextResponse.json({ ok: false, error: "Sign in before generating illustrations." }, { status: 401 });
   }
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "Supabase auth is required for generated illustrations." }, { status: 503 });
-  }
+
+  const limited = await enforceRateLimit(await getSupabaseSessionClient(), user.id, "illustrations");
+  if (limited) return limited;
 
   const body = await request.json().catch(() => null);
   const parsed = bodySchema.safeParse(body);
@@ -53,11 +54,13 @@ export async function POST(request: NextRequest) {
 
     if (uploadError) throw new Error(uploadError.message);
 
-    const { data } = supabase.storage.from("clariti-videos").getPublicUrl(path);
+    // An app-relative path, not a public URL: clariti-videos is private, because
+    // an illustration generated from someone's radiology report is as sensitive
+    // as the report. /api/media re-checks ownership and signs on each read.
     return NextResponse.json({
       ok: true,
       illustration: {
-        url: data.publicUrl,
+        url: `/api/media/${path.split("/").map(encodeURIComponent).join("/")}`,
         sceneIndex,
         model: generated.model,
         sourceAnchor: analysis.videoScenes?.[sceneIndex]?.sourceAnchor ?? analysis.sourceAnchors[0] ?? null,
@@ -75,9 +78,14 @@ function extensionFor(mediaType: string) {
   return "png";
 }
 
+/**
+ * Every branch here reaches a real person, so none of them names a bucket, a
+ * migration, or a model provider. The operator detail stays in the server log;
+ * the reader gets something they can act on.
+ */
 function formatIllustrationError(message: string) {
-  if (/no such bucket|bucket/i.test(message)) return "Generated asset storage is not ready. Apply the Supabase storage migration and try again.";
-  if (/insufficient|balance|quota|credit/i.test(message)) return "Illustration generation is not available right now. Please check model credits and try again.";
-  if (/No such provider|NoSuchProvider|model/i.test(message)) return "Illustration generation needs a supported Vercel AI Gateway image model.";
+  if (/insufficient|balance|quota|credit|no such provider|NoSuchProvider|bucket/i.test(message)) {
+    return "Illustrations are unavailable right now. Your analysis is saved — try again in a little while.";
+  }
   return "Clariti could not generate the illustration. Please try again.";
 }

@@ -282,7 +282,11 @@
 .illustration-lightbox {
   position: relative;
   width: min(1120px, calc(100vw - 40px));
-  max-height: calc(100vh - 44px);
+  /* dvh, and the safe areas subtracted with it: on iOS 100vh is the tall
+     viewport that ignores the browser chrome and the home indicator, so a
+     lightbox sized against it ran off the bottom of the screen exactly when the
+     illustration was worth looking at. */
+  max-height: calc(100dvh - 44px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   background: #fff;
   border-radius: 18px;
   padding: 16px;
@@ -296,7 +300,7 @@
 .illustration-lightbox img {
   width: 100%;
   height: auto;
-  max-height: calc(100vh - 150px);
+  max-height: calc(100dvh - 150px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   object-fit: contain;
   border-radius: 14px;
   border: 1px solid #e0e9e5;

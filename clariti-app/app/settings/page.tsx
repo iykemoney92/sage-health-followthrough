@@ -6,18 +6,22 @@ import {
   ChevronRight,
   CircleHelp,
   CreditCard,
+  FileLock,
   FileText,
   LockKeyhole,
   LogOut,
-  Mic2,
+  ScrollText,
+  Video,
   X,
   ShieldCheck,
   SlidersHorizontal,
   UserRound,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ClaritiShell } from "@/components/clariti-shell";
+import { DeleteAccountButton } from "@/components/delete-account-button";
+import { ExportDataButton } from "@/components/export-data-button";
 import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
 import "./settings.css";
 
@@ -41,16 +45,12 @@ type SettingsRowData = {
   action: () => void;
 };
 
-type FollowUpRow = {
-  id: string;
-  action: string;
-  document_title: string;
-  phone_number?: string | null;
-  scheduled_for: string;
-  call_status?: string | null;
-};
+type SettingsPanel = "videos" | "preferences" | "account" | "privacy" | "safety" | "about" | null;
 
-type SettingsPanel = "voice" | "followups" | "preferences" | "account" | "privacy" | "safety" | "about" | null;
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** settings.css only clamps the email line, so a long display name would widen the card. */
+const CLAMP_LINE = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
 
 function SettingsRow({ row }: { row: SettingsRowData }) {
   const { Icon, title, copy, meta } = row;
@@ -74,7 +74,6 @@ export default function SettingsPage() {
   const router = useRouter();
   const [account, setAccount] = useState<AccountState>({ configured: false, authenticated: false, user: null });
   const [counts, setCounts] = useState<CountsState>({ documents: 0, conversations: 0, followUps: 0 });
-  const [followUps, setFollowUps] = useState<FollowUpRow[]>([]);
   const [billing, setBilling] = useState<{ hasPlus: boolean; status: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
@@ -98,7 +97,6 @@ export default function SettingsPage() {
         const sessionsPayload = sessionsResponse.ok ? await sessionsResponse.json() : null;
         const followUpsPayload = followUpsResponse.ok ? await followUpsResponse.json() : null;
         const billingPayload = billingResponse?.ok ? await billingResponse.json() : null;
-        const savedFollowUps = followUpsPayload?.ok ? followUpsPayload.followUps ?? [] : [];
 
         if (!alive) return;
 
@@ -110,15 +108,13 @@ export default function SettingsPage() {
         setCounts({
           documents: documentsPayload?.ok ? documentsPayload.documents.length : 0,
           conversations: sessionsPayload?.ok ? sessionsPayload.sessions.length : 0,
-          followUps: savedFollowUps.length,
+          followUps: followUpsPayload?.ok ? (followUpsPayload.followUps ?? []).length : 0,
         });
-        setFollowUps(savedFollowUps);
         setBilling(billingPayload?.ok ? { hasPlus: Boolean(billingPayload.hasPlus), status: billingPayload.status } : null);
       } catch {
         if (!alive) return;
         setAccount({ configured: false, authenticated: false, user: null });
         setCounts({ documents: 0, conversations: 0, followUps: 0 });
-        setFollowUps([]);
         setBilling(null);
       } finally {
         if (alive) setLoading(false);
@@ -145,21 +141,23 @@ export default function SettingsPage() {
   }, [displayEmail, displayName]);
 
   const preferenceRows: SettingsRowData[] = [
-    { Icon: Mic2, title: "Voice explanation", copy: "Clariti call context for document follow-ups", meta: "Ready", action: () => setPanel("voice") },
-    { Icon: Bell, title: "Follow-up reminders", copy: "Email check-ins scheduled from document actions", meta: loading ? "..." : String(counts.followUps), action: () => router.push("/follow-ups") },
+    { Icon: Bell, title: "Email check-ins", copy: "Clariti emails you later to ask if anything changed", meta: loading ? "..." : String(counts.followUps), action: () => router.push("/follow-ups") },
+    { Icon: Video, title: "Explainer videos", copy: "Turn a saved analysis into a narrated walkthrough", meta: "", action: () => setPanel("videos") },
     { Icon: SlidersHorizontal, title: "Analysis preferences", copy: "Plain language, source-grounded explanations", meta: "Default", action: () => setPanel("preferences") },
   ];
 
   const claritiRows: SettingsRowData[] = [
     { Icon: BrainCircuit, title: "Saved analyses", copy: "Conversations created from your documents", meta: loading ? "..." : String(counts.conversations), action: () => router.push("/history") },
     { Icon: FileText, title: "Documents", copy: "Health documents attached to Clariti", meta: loading ? "..." : String(counts.documents), action: () => router.push("/documents") },
-    { Icon: CreditCard, title: "Clariti Plus", copy: "Unlimited analyses, videos, compare, and follow-ups", meta: loading ? "..." : billing?.hasPlus ? "Plus" : "Free", action: () => router.push("/billing") },
-    { Icon: UserRound, title: "Account", copy: account.configured ? "Supabase authentication connected" : "Supabase not configured", meta: account.authenticated ? "Signed in" : "Signed out", action: () => setPanel("account") },
+    { Icon: CreditCard, title: "Clariti Plus", copy: "Unlimited analyses, videos, compare, and check-ins", meta: loading ? "..." : billing?.hasPlus ? "Plus" : "Free", action: () => router.push("/billing") },
+    { Icon: UserRound, title: "Account", copy: account.configured ? "Email sign-in is connected" : "Sign-in is not configured", meta: account.authenticated ? "Signed in" : "Signed out", action: () => setPanel("account") },
   ];
 
   const trustRows: SettingsRowData[] = [
     { Icon: LockKeyhole, title: "Privacy & data", copy: "Your documents are scoped to your account", meta: "", action: () => setPanel("privacy") },
     { Icon: ShieldCheck, title: "Safety boundaries", copy: "Clariti explains documents; it does not diagnose", meta: "", action: () => setPanel("safety") },
+    { Icon: FileLock, title: "Privacy policy", copy: "What Clariti collects and who else processes it", meta: "", action: () => router.push("/privacy") },
+    { Icon: ScrollText, title: "Terms of use", copy: "How Clariti is meant to be used, and how Plus is billed", meta: "", action: () => router.push("/terms") },
     { Icon: CircleHelp, title: "About Clariti", copy: "Product information and support", meta: "", action: () => setPanel("about") },
   ];
 
@@ -181,16 +179,18 @@ export default function SettingsPage() {
         <header className="settings-heading">
           <p className="clariti-kicker">YOUR CLARITI</p>
           <h1>Me</h1>
-          <p>Manage your Clariti account, saved document context, follow-up preferences and privacy controls.</p>
+          <p>Manage your Clariti account, saved document context, check-in preferences and privacy controls.</p>
         </header>
 
         <section className="settings-profile-card" aria-label="Profile">
           <div className="settings-profile-avatar">{loading ? "C" : initials}</div>
           <div className="settings-profile-copy">
-            <h2>{loading ? "Loading account..." : displayName}</h2>
-            <p>{loading ? "Checking Supabase session" : displayEmail}</p>
+            <h2 style={CLAMP_LINE}>{loading ? "Loading account..." : displayName}</h2>
+            <p>{loading ? "Checking your session" : displayEmail}</p>
           </div>
-          <span className="settings-edit-link">{account.authenticated ? "Active" : "Signed out"}</span>
+          <span className="settings-edit-link" style={{ flex: "none", whiteSpace: "nowrap" }}>
+            {account.authenticated ? "Active" : "Signed out"}
+          </span>
         </section>
 
         <section className="settings-connection-card" aria-label="Clariti account status">
@@ -198,7 +198,7 @@ export default function SettingsPage() {
             <div className="settings-connection-icon"><ShieldCheck /></div>
             <div className="settings-connection-copy">
               <h3>Clariti account</h3>
-              <p>{account.authenticated ? "Your analyses and documents save to Supabase." : "Sign in to save analyses and documents."}</p>
+              <p>{account.authenticated ? "Your analyses and documents are saved to this account." : "Sign in to save analyses and documents."}</p>
             </div>
             <span className={`settings-status ${account.authenticated ? "connected" : ""}`}>
               {account.authenticated ? "Connected" : "Not connected"}
@@ -227,6 +227,18 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        <section className="settings-section">
+          <h2 className="settings-section-title">Your data</h2>
+          <div style={{ display: "grid", gap: 10 }}>
+            <ExportDataButton />
+            <DeleteAccountButton />
+          </div>
+          <p className="settings-footnote" style={{ textAlign: "left" }}>
+            Export gives you every row Clariti holds for your account as a JSON file. Delete removes all of it —
+            documents, analyses, videos and check-ins — permanently, and cannot be undone.
+          </p>
+        </section>
+
         <div className="settings-danger">
           <button className="settings-signout" type="button" onClick={() => void signOut()} disabled={signingOut}>
             <LogOut /> {signingOut ? "Signing out..." : "Sign out"}
@@ -235,7 +247,7 @@ export default function SettingsPage() {
         </div>
 
         {panel ? (
-          <SettingsModal panel={panel} account={account} counts={counts} followUps={followUps} onClose={() => setPanel(null)} />
+          <SettingsModal panel={panel} account={account} counts={counts} onClose={() => setPanel(null)} />
         ) : null}
       </main>
     </ClaritiShell>
@@ -245,50 +257,66 @@ export default function SettingsPage() {
 function SettingsModal({
   account,
   counts,
-  followUps,
   onClose,
   panel,
 }: {
   account: AccountState;
   counts: CountsState;
-  followUps: FollowUpRow[];
   onClose: () => void;
   panel: Exclude<SettingsPanel, null>;
 }) {
   const content = getPanelContent(panel, account, counts);
+  const cardRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    // The settings rows are the only route back into the list for keyboard and VoiceOver
+    // users, so focus has to land inside the panel and return to the row that opened it.
+    const opener = document.activeElement as HTMLElement | null;
+    cardRef.current?.focus();
+    return () => opener?.focus?.();
+  }, []);
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    const focusable = Array.from(cardRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === cardRef.current)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 
   return (
-    <div className="settings-modal-backdrop" role="dialog" aria-modal="true" aria-label={content.title}>
-      <section className="settings-modal-card">
+    <div className="settings-modal-backdrop" onMouseDown={onClose}>
+      <section
+        ref={cardRef}
+        className="settings-modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-panel-title"
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <button className="settings-modal-close" type="button" aria-label="Close settings panel" onClick={onClose}><X /></button>
         <p className="clariti-kicker">{content.kicker}</p>
-        <h2>{content.title}</h2>
-        <p>{content.copy}</p>
+        <h2 id="settings-panel-title">{content.title}</h2>
+        <p style={{ overflowWrap: "anywhere" }}>{content.copy}</p>
 
-        {panel === "followups" ? (
-          <div className="settings-followup-list">
-            {followUps.length > 0 ? followUps.map((followUp) => (
-              <article key={followUp.id}>
-                <strong>{followUp.action}</strong>
-                <span>{followUp.document_title}</span>
-                <small>
-                  {new Date(followUp.scheduled_for).toLocaleString()}
-                  {followUp.phone_number ? ` · ${followUp.phone_number}` : ""}
-                  {followUp.call_status ? ` · ${followUp.call_status}` : ""}
-                </small>
-              </article>
-            )) : (
-              <article>
-                <strong>No follow-ups yet</strong>
-                <span>Use “Set phone follow-up” inside a document analysis to save one here.</span>
-              </article>
-            )}
-          </div>
-        ) : (
-          <ul className="settings-modal-points">
-            {content.points.map((point) => <li key={point}>{point}</li>)}
-          </ul>
-        )}
+        <ul className="settings-modal-points">
+          {content.points.map((point) => <li key={point}>{point}</li>)}
+        </ul>
       </section>
     </div>
   );
@@ -298,17 +326,15 @@ function getPanelContent(panel: Exclude<SettingsPanel, null>, account: AccountSt
   const email = account.user?.email ?? "No signed-in email found";
 
   const panels = {
-    voice: {
-      kicker: "VOICE",
-      title: "Voice explanation",
-      copy: "Clariti uses the saved analysis as call context when you ask for a phone conversation.",
-      points: ["ElevenLabs voice calls are available from a workspace.", "Clariti sends the report summary and safety boundaries as context.", "Calls are for explanation and next-step planning, not diagnosis."],
-    },
-    followups: {
-      kicker: "REMINDERS",
-      title: "Follow-up reminders",
-      copy: `${counts.followUps} saved phone follow-up${counts.followUps === 1 ? "" : "s"} on this account.`,
-      points: [],
+    videos: {
+      kicker: "VIDEO",
+      title: "Explainer videos",
+      copy: "Clariti can turn a saved analysis into a short narrated video that walks through what the document says.",
+      points: [
+        "Built from the analysis Clariti already wrote, not from the original file.",
+        "Generated scenes are stitched into one video and kept private to your account.",
+        "One video is included on the free plan; Plus removes the limit.",
+      ],
     },
     preferences: {
       kicker: "ANALYSIS",
@@ -320,13 +346,17 @@ function getPanelContent(panel: Exclude<SettingsPanel, null>, account: AccountSt
       kicker: "ACCOUNT",
       title: "Account",
       copy: email,
-      points: [account.authenticated ? "Signed in and saving to Supabase." : "Signed out.", `${counts.conversations} saved analyses.`, `${counts.documents} saved documents.`],
+      points: [account.authenticated ? "Signed in, and saving to this account." : "Signed out.", `${counts.conversations} saved analyses.`, `${counts.documents} saved documents.`],
     },
     privacy: {
       kicker: "PRIVACY",
       title: "Privacy & data",
-      copy: "Your documents and analyses are scoped to your signed-in Supabase account.",
-      points: ["History and documents are loaded from your account only.", "Uploaded document text is used to generate grounded analysis.", "Sign out returns you to the home screen."],
+      copy: "Your documents and analyses are scoped to your signed-in account, and only you can read them.",
+      points: [
+        "Uploaded files are stored privately and opened through short-lived signed links.",
+        "Your documents are used to write your own explanation. They are never used to train AI models.",
+        "Export or permanently delete everything from Your data, further down this page.",
+      ],
     },
     safety: {
       kicker: "SAFETY",
@@ -337,8 +367,13 @@ function getPanelContent(panel: Exclude<SettingsPanel, null>, account: AccountSt
     about: {
       kicker: "ABOUT",
       title: "About Clariti",
-      copy: "Clariti helps people understand one health document at a time and continue into chat, calls, and follow-ups.",
-      points: ["Supports radiology reports, medical bills, and insurance EOBs.", "Uses AI for grounded analysis and optional human explainer video.", "Built for the healthcare hackathon demo flow."],
+      copy: "Clariti turns one confusing health document at a time into plain English, then helps you act on it — questions worth asking, sensible next steps, and a check-in so nothing gets forgotten.",
+      points: [
+        "Reads medical bills, insurance EOBs, lab results, radiology reports and discharge notes.",
+        "Every explanation points back at the wording in your document it came from.",
+        "Clariti explains and organises. It does not diagnose, prescribe, or decide coverage.",
+        "Questions or feedback: support@useclariti.app",
+      ],
     },
   };
 

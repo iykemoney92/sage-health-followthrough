@@ -50,11 +50,12 @@ export function formatHumanVideoError(error: unknown) {
   if (/minimum balance|insufficient/i.test(cleaned)) {
     return "Video generation is not available right now. Please try again later.";
   }
-  if (/clariti_video_generations|relation .* does not exist/i.test(cleaned)) {
-    return "Video storage is not set up yet in Supabase. Apply the video migrations, then retry.";
-  }
-  if (/could not save the video to storage|clariti-videos|not reachable|public video url/i.test(cleaned)) {
-    return cleaned.length > 220 ? `${cleaned.slice(0, 217)}...` : cleaned;
+  // Storage and schema failures are operator problems. The reader gets told the
+  // video did not save and that their analysis survived; the specifics stay in
+  // the server log rather than being passed through verbatim, which used to
+  // surface bucket names and migration instructions in the UI.
+  if (/clariti_video_generations|relation .* does not exist|could not save the video to storage|clariti-videos|not found in storage/i.test(cleaned)) {
+    return "Clariti could not save the finished video. Your analysis is saved — try generating it again.";
   }
   if (/sign in|unauthorized|auth/i.test(cleaned)) {
     return "Sign in again, then generate the video so Clariti can save it to your account.";

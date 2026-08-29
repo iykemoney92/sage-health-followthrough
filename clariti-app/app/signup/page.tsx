@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AuthProviders } from "@/components/auth-providers";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { FormEvent, useState } from "react";
@@ -86,6 +87,7 @@ export default function SignupPage() {
           <h1>Create your Clariti</h1>
           <p>Save document analyses, source-grounded explainers, calls and follow-ups.</p>
           <label>Your name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Full name" required /></label>
+          <AuthProviders />
           <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>
           <label>Password<span className="password-field"><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Create a password" minLength={6} required autoComplete="new-password" /><button type="button" onClick={() => setShowPassword((show) => !show)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff /> : <Eye />}</button></span></label>
           <label>Confirm password<span className="password-field"><input type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm password" minLength={6} required autoComplete="new-password" /><button type="button" onClick={() => setShowConfirmPassword((show) => !show)} aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}>{showConfirmPassword ? <EyeOff /> : <Eye />}</button></span></label>

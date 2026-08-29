@@ -70,8 +70,16 @@ export async function POST(request: NextRequest) {
   }
 
   const event = payload.event;
-  if (!event?.type || !event.app_user_id) {
+  if (!event?.type) {
     return NextResponse.json({ ok: false, error: "invalid_event" }, { status: 400 });
+  }
+
+  // TRANSFER carries transferred_from/transferred_to instead of app_user_id, so
+  // rejecting every event without one made RevenueCat retry that event forever.
+  // Acknowledge it: Clariti keys entitlements on the Supabase user id, and a
+  // transfer between store accounts does not change who owns the profile.
+  if (!event.app_user_id) {
+    return NextResponse.json({ ok: true, ignored: true, reason: "no_app_user_id", type: event.type });
   }
 
   const supabase = getOptionalSupabaseServiceClient();
@@ -101,6 +109,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: updateError }, { status: 500 });
   }
   if (!profileId) {
+    // Someone paid and nothing was granted. This is the single worst outcome in
+    // the billing path and it used to be a silent 200 — the App Store keeps the
+    // money, the account stays on free, and nobody finds out until they complain.
+    // No PHI here: an app user id and an event type are all that is logged.
+    console.error(
+      "[revenuecat] paid event matched no Clariti profile —",
+      `type=${event.type} app_user_id=${event.app_user_id} store=${event.store ?? "unknown"} eventId=${eventId}`,
+    );
     return NextResponse.json({ ok: true, eventId, processed: false, reason: "profile_not_found" });
   }
 

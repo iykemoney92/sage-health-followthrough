@@ -5,7 +5,6 @@ import {
   Files,
   MessageCircleQuestion,
   PhoneCall,
-  Sparkles,
   Video,
 } from "lucide-react";
 import Link from "next/link";
@@ -13,7 +12,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { ClaritiShell } from "@/components/clariti-shell";
+import { UpgradeCta } from "@/components/upgrade-cta";
 import "./billing.css";
+import "./billing-plans.css";
 
 type AccessState = {
   hasPlus: boolean;
@@ -62,6 +63,9 @@ function BillingPageContent() {
   const [access, setAccess] = useState<AccessState>(DEFAULT_ACCESS);
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  // The RevenueCat SDK is configured with the Supabase user id, so the paywall
+  // needs it before it can offer a store purchase.
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -74,6 +78,7 @@ function BillingPageContent() {
         const authPayload = await authResponse.json().catch(() => null);
         if (!alive) return;
         setAuthenticated(Boolean(authPayload?.authenticated));
+        setUserId(authPayload?.user?.id ?? null);
 
         if (accessResponse.ok) {
           const payload = await accessResponse.json();
@@ -123,6 +128,7 @@ function BillingPageContent() {
   }, [access, isTrialing, paidUntil, trialEnds]);
 
   const checkoutNotice = searchParams.get("checkout");
+  const manageNotice = searchParams.get("manage");
   const remainingDocs = Math.max(0, access.freeDocumentLimit - access.documentsAnalyzedCount);
   const remainingVideos = Math.max(0, access.freeVideoLimit - access.videosGeneratedCount);
 
@@ -141,8 +147,13 @@ function BillingPageContent() {
         {checkoutNotice === "failed" || checkoutNotice === "profile-update-failed" ? (
           <div className="billing-alert">Checkout did not complete. Please try again.</div>
         ) : checkoutNotice === "use-page" ? (
+          <div className="billing-alert">Checkout is unavailable right now. Please try again shortly.</div>
+        ) : manageNotice === "none" ? (
+          <div className="billing-alert">There is no active subscription to manage on this account.</div>
+        ) : manageNotice === "unavailable" ? (
           <div className="billing-alert">
-            Plus checkout needs a RevenueCat Web Purchase Link. Billing is configured through RevenueCat, not Stripe Checkout.
+            Clariti could not open your subscription settings. If you subscribed in the app, you can
+            manage it in your Apple Account settings.
           </div>
         ) : null}
 
@@ -165,16 +176,16 @@ function BillingPageContent() {
           </div>
 
           <div className="billing-actions">
-            {access.hasPlus ? (
+            {access.hasPlus && (
               <span className="billing-active-note"><CheckCircle2 /> Plus is active on this account.</span>
-            ) : authenticated ? (
-              <a href="/api/billing/checkout" className="billing-primary-cta">
-                <Sparkles /> Start Clariti Plus
-              </a>
-            ) : (
-              <Link href="/" className="billing-primary-cta">
-                Sign in to start Plus
-              </Link>
+            )}
+            {!loading && (
+              <UpgradeCta
+                userId={userId}
+                authenticated={authenticated}
+                hasPlus={access.hasPlus}
+                label={access.status === "expired" ? "Renew Clariti Plus" : "Start Clariti Plus"}
+              />
             )}
           </div>
         </section>
@@ -194,17 +205,35 @@ function BillingPageContent() {
           </div>
         </section>
 
+        {/* No prices are printed here on purpose. A subscription costs a different
+            amount in every storefront, and a hardcoded figure that disagrees with
+            the App Store is both a rejection and a lie to the reader — the buy
+            control above renders the store's own localised price instead. */}
         <section className="billing-plans">
           <article className="billing-plan-card">
             <span className="billing-plan-eyebrow">MONTHLY</span>
-            <b>Clariti Plus</b>
-            <p>Billed monthly. Cancel anytime from your purchase confirmation.</p>
+            <b>Clariti Plus, billed every month</b>
+            <p>Renews automatically each month until you cancel.</p>
           </article>
           <article className="billing-plan-card billing-plan-annual">
             <span className="billing-plan-eyebrow">ANNUAL</span>
-            <b>Clariti Plus</b>
-            <p>Best value — billed once a year.</p>
+            <b>Clariti Plus, billed every year</b>
+            <p>Best value. Renews automatically each year until you cancel.</p>
           </article>
+        </section>
+
+        <section className="billing-legal">
+          <p>
+            Clariti Plus is an auto-renewing subscription. Payment is charged when you confirm the
+            purchase, and it renews at the same price each period unless you cancel at least 24 hours
+            before the period ends. You can cancel any time from &ldquo;Manage subscription&rdquo; above,
+            or in your Apple Account settings for a purchase made in the app.
+          </p>
+          <p className="billing-legal-links">
+            <Link href="/terms">Terms of Use</Link>
+            <span aria-hidden="true">·</span>
+            <Link href="/privacy">Privacy Policy</Link>
+          </p>
         </section>
 
         <p className="billing-footnote">

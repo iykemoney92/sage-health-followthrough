@@ -1,0 +1,79 @@
+/* The update nudge. It belongs with the native shell — the store-update case only
+   ever fires there — but the reload half shows on the web too, so these styles
+   are not conditional on being in the app. */
+
+.app-update-notice {
+  align-items: center;
+  background: #21332f;
+  /* Matches the pill on the button inside it; a square bar around a rounded
+     control reads as an unstyled element rather than a deliberate one. */
+  border-radius: 999px;
+  /* Clears .clariti-shell-mobile-nav (68px tall, fixed to the bottom) and the
+     home indicator underneath it. */
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  box-shadow: 0 12px 32px rgba(31, 52, 45, 0.26);
+  color: #fff;
+  display: flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 10px;
+  left: 50%;
+  line-height: 1.3;
+  max-width: min(92vw, 420px);
+  padding: 11px 14px;
+  position: fixed;
+  transform: translateX(-50%);
+  /* Above the bottom furniture it floats over — the workspace composer is 94 and
+     the nav 95 — but under the canvas (100) and the drawer (120), because a
+     nudge should never sit on top of a surface someone opened on purpose. */
+  z-index: 96;
+}
+
+.app-update-notice svg {
+  flex: none;
+  height: 16px;
+  opacity: 0.85;
+  width: 16px;
+}
+
+/* The message is the only part allowed to shrink and wrap. */
+.app-update-notice span {
+  min-width: 0;
+}
+
+.app-update-notice button,
+.app-update-notice a {
+  background: #fff;
+  border: 0;
+  border-radius: 999px;
+  color: #21332f;
+  cursor: pointer;
+  flex: none;
+  font: inherit;
+  font-weight: 800;
+  margin-left: 2px;
+  padding: 7px 13px;
+  text-decoration: none;
+}
+
+/* A store update is a dead end until they take it, so it reads warmer than the
+   reload nudge rather than more alarming. */
+.app-update-required {
+  background: #2f6e66;
+}
+
+/* The workspace swaps the nav for a 72px dock with the message composer fixed
+   above it, so 138px of furniture stands where 68px does everywhere else. The
+   notice is a sibling of the page rather than a child, hence :has() on the body
+   — where it is unsupported the rule drops and the notice merely sits lower. */
+@media (max-width: 760px) {
+  body:has(.clariti-workspace) .app-update-notice {
+    bottom: calc(148px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (min-width: 761px) {
+  .app-update-notice {
+    bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+}

@@ -247,7 +247,7 @@ async function generateScenesAndStitch(job: VideoJobRecord): Promise<RenderedVid
     scenes: completedScenes,
   });
 
-  const stitchedUrl = await stitchWithShotstack(job.id, completedScenes, { retries: 1 });
+  const stitchedUrl = await stitchWithShotstack(job.id, await signedSceneSources(completedScenes), { retries: 1 });
   const storedUrl = await copyRemoteVideoToStorage(stitchedUrl, `${job.owner_id}/${job.id}.mp4`);
   return {
     videoUrl: storedUrl,
@@ -277,6 +277,21 @@ async function updateJob(id: string, patch: Record<string, unknown>) {
   if (error) throw new Error(`Could not update video job: ${error.message}`);
 }
 
+/**
+ * How long a scene clip's signed URL has to stay valid for Shotstack to fetch it.
+ * A five-scene stitch queues, renders, and downloads well inside this.
+ */
+const SHOTSTACK_FETCH_TTL_SECONDS = 60 * 60;
+
+/** Storage path → the app-relative URL that /api/media resolves per request. */
+function mediaUrlForPath(path: string) {
+  return `/api/media/${path.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function pathForMediaUrl(mediaUrl: string) {
+  return mediaUrl.replace(/^\/api\/media\//, "").split("/").map(decodeURIComponent).join("/");
+}
+
 async function uploadVideo(path: string, base64: string, mediaType: string) {
   const supabase = await getSupabaseSessionClient();
   const buffer = Buffer.from(base64, "base64");
@@ -285,17 +300,12 @@ async function uploadVideo(path: string, base64: string, mediaType: string) {
   const { error } = await supabase.storage
     .from("clariti-videos")
     .upload(path, buffer, { contentType: mediaType, upsert: true });
-  if (error) {
-    throw new Error(
-      /bucket|not found|row-level security|policy/i.test(error.message)
-        ? `Could not save the video to storage (${error.message}). Check that the clariti-videos bucket exists and is public.`
-        : `Could not save the video to storage: ${error.message}`,
-    );
-  }
+  if (error) throw new Error(`Could not save the video to storage: ${error.message}`);
 
-  const { data } = supabase.storage.from("clariti-videos").getPublicUrl(path);
-  if (!data.publicUrl) throw new Error("Storage upload succeeded but Clariti could not build a public video URL.");
-  return data.publicUrl;
+  // The path, not a public URL: clariti-videos is a private bucket, because these
+  // files are generated from someone's medical document. /api/media re-checks
+  // ownership and mints a short-lived signed URL on each read.
+  return mediaUrlForPath(path);
 }
 
 async function copyRemoteVideoToStorage(remoteUrl: string, path: string) {
@@ -308,22 +318,45 @@ async function copyRemoteVideoToStorage(remoteUrl: string, path: string) {
     .from("clariti-videos")
     .upload(path, buffer, { contentType: "video/mp4", upsert: true });
   if (error) throw new Error(`Could not save stitched video to storage: ${error.message}`);
-  const { data } = supabase.storage.from("clariti-videos").getPublicUrl(path);
-  if (!data.publicUrl) throw new Error("Storage upload succeeded but Clariti could not build a public video URL.");
-  return data.publicUrl;
+  return mediaUrlForPath(path);
 }
 
-async function assertStoredVideoReachable(videoUrl: string) {
-  try {
-    const response = await fetch(videoUrl, { method: "HEAD" });
-    if (response.ok) return;
-    const getResponse = await fetch(videoUrl, { method: "GET", headers: { Range: "bytes=0-1" } });
-    if (getResponse.ok || getResponse.status === 206) return;
-    throw new Error(`Stored video URL is not reachable (${response.status}).`);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Stored video URL is not reachable.";
-    throw new Error(`${message} The file may not have been saved to the public clariti-videos bucket.`);
-  }
+/**
+ * Shotstack fetches each scene clip over the public internet, so it needs a real
+ * URL rather than the app-relative one the app stores. Signing per render keeps
+ * the bucket private: the URL Shotstack receives is unguessable and expires.
+ */
+async function signedSceneSources(scenes: ClaritiVideoScene[]) {
+  const supabase = await getSupabaseSessionClient();
+  const paths = scenes.map((scene) => pathForMediaUrl(scene.videoUrl!));
+  const { data, error } = await supabase.storage
+    .from("clariti-videos")
+    .createSignedUrls(paths, SHOTSTACK_FETCH_TTL_SECONDS);
+
+  if (error) throw new Error(`Could not prepare the scene clips for stitching: ${error.message}`);
+
+  return scenes.map((scene, index) => {
+    const signed = data?.[index]?.signedUrl;
+    if (!signed) throw new Error(`Scene ${scene.sceneIndex + 1} could not be prepared for stitching.`);
+    return { ...scene, videoUrl: signed };
+  });
+}
+
+/**
+ * Confirms the finished file is actually in the bucket before the job is marked
+ * completed. It used to HEAD the public URL; with a private bucket the object
+ * listing is the equivalent check and needs no round trip through the CDN.
+ */
+async function assertStoredVideoReachable(mediaUrl: string) {
+  const path = pathForMediaUrl(mediaUrl);
+  const lastSlash = path.lastIndexOf("/");
+  const supabase = await getSupabaseSessionClient();
+  const { data, error } = await supabase.storage
+    .from("clariti-videos")
+    .list(path.slice(0, lastSlash), { search: path.slice(lastSlash + 1), limit: 1 });
+
+  if (error) throw new Error(`Clariti could not confirm the saved video: ${error.message}`);
+  if (!data?.length) throw new Error("The finished video was not found in storage after saving.");
 }
 
 async function stitchWithShotstack(jobId: string, scenes: ClaritiVideoScene[], options?: { retries?: number }) {

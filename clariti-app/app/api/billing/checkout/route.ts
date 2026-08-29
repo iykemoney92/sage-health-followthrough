@@ -3,6 +3,7 @@ import { appOriginFromRequest } from "@/lib/auth/app-origin";
 import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
 import { getBillingMode, getRevenueCatPurchaseUrl } from "@/lib/billing/revenuecat";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
+import { isNativeShellRequest } from "@/lib/native-shell";
 
 function getStripeSecretKey() {
   const mode = getBillingMode();
@@ -74,6 +75,16 @@ export async function GET(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.redirect(appUrl("/login", request));
+  }
+
+  // Apple's Guideline 3.1.1 forbids selling a digital subscription through an
+  // external checkout inside the app, and the client already routes the native
+  // shell to StoreKit instead (components/upgrade-cta.tsx). This is the second
+  // half of that: a stale page, a deep link, or a hand-typed URL inside the app
+  // must not reach pay.rev.cat either. The marker comes from `appendUserAgent`
+  // in clariti-mobile/capacitor.config.ts.
+  if (isNativeShellRequest(request)) {
+    return NextResponse.redirect(appUrl("/billing", request));
   }
 
   const purchaseUrl = getRevenueCatPurchaseUrl();

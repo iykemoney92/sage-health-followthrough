@@ -4,7 +4,8 @@ import { analyzeClaritiDocument, claritiAnalysisSchema, claritiDocumentKindSchem
 import { enforceFreeLimit, ensureClaritiProfile, FREE_DOCUMENT_LIMIT } from "@/lib/billing/subscription";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 import { inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
-import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 export const maxDuration = 120;
 
@@ -23,23 +24,26 @@ const requestSchema = z.object({
   analysis: claritiAnalysisSchema.optional(),
 });
 
-const DEMO_OWNER_ID = "00000000-0000-0000-0000-000000000001";
-
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const parsed = requestSchema.safeParse(body);
 
   if (!parsed.success) {
-    return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Clariti needs a document with readable text to analyse." }, { status: 400 });
   }
 
   try {
+    // Unconditional, not `hasSupabaseBrowserConfig() && !user`: that older shape
+    // let the route run with no user at all whenever a Supabase env var was
+    // missing, so a misconfigured deploy became an open LLM endpoint over
+    // medical documents rather than an obviously broken one.
     const user = await getSessionUser();
-    const supabaseConfigured = hasSupabaseBrowserConfig();
-
-    if (supabaseConfigured && !user) {
+    if (!user) {
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
     }
+
+    const limited = await enforceRateLimit(await getSupabaseSessionClient(), user.id, "analyze");
+    if (limited) return limited;
 
     const resolvedRequest = {
       ...parsed.data,
@@ -55,28 +59,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (user) {
-      const supabase = await getSupabaseSessionClient();
-      await ensureClaritiProfile(supabase, user.id, (user.user_metadata?.display_name as string | undefined) ?? null);
-      if (!resolvedRequest.persistOnly) {
-        const limitResponse = await enforceFreeLimit(supabase, user.id, "documents", FREE_DOCUMENT_LIMIT);
-        if (limitResponse) return limitResponse;
-      }
+    const supabase = await getSupabaseSessionClient();
+    await ensureClaritiProfile(supabase, user.id, (user.user_metadata?.display_name as string | undefined) ?? null);
+    if (!resolvedRequest.persistOnly) {
+      const limitResponse = await enforceFreeLimit(supabase, user.id, "documents", FREE_DOCUMENT_LIMIT);
+      if (limitResponse) return limitResponse;
     }
 
     const analysis = parsed.data.persistOnly && parsed.data.analysis
       ? parsed.data.analysis
       : await analyzeClaritiDocument(resolvedRequest);
 
-    const ownerId = user?.id ?? DEMO_OWNER_ID;
-    const persisted = supabaseConfigured && user
-      ? await persistAnalysis({ ...resolvedRequest, ownerId, analysis })
-      : null;
+    const persisted = await persistAnalysis({ ...resolvedRequest, ownerId: user.id, analysis });
 
     return NextResponse.json({ ok: true, analysis, persisted });
   } catch (error) {
+    // The message can carry provider text that echoes the document, and the
+    // document is somebody's medical record. It stays in the log.
+    console.error(
+      "[clariti] analysis failed:",
+      error instanceof Error ? error.message : "unknown error",
+    );
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not analyze document" },
+      { ok: false, error: "Clariti could not analyse this document. Please try again." },
       { status: 500 },
     );
   }

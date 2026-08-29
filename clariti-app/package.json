@@ -8,10 +8,17 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "trigger:follow-ups": "node scripts/trigger-follow-ups.mjs"
+    "trigger:follow-ups": "node scripts/trigger-follow-ups.mjs",
+    "test": "vitest run",
+    "shots": "node scripts/capture-store-screenshots.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.20",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/push-notifications": "^8.1.2",
+    "@revenuecat/purchases-capacitor": "^13.4.1",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.8",
     "ai": "^7.0.37",
@@ -33,6 +40,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

@@ -1,7 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED_PREFIXES = ["/workspace", "/documents", "/history", "/settings"];
+// /follow-ups belongs here too: the page lists scheduled check-ins with document
+// titles on them. Its API already requires a session, so a signed-out visitor
+// only ever saw an empty shell — but an empty shell of somebody's health
+// follow-ups is still the wrong page to render.
+const PROTECTED_PREFIXES = ["/workspace", "/documents", "/history", "/settings", "/follow-ups"];
 const AUTH_PAGES = ["/login", "/signup"];
 
 export async function proxy(request: NextRequest) {
@@ -69,5 +73,13 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/workspace/:path*", "/documents/:path*", "/history/:path*", "/settings/:path*", "/login", "/signup"],
+  matcher: [
+    "/workspace/:path*",
+    "/documents/:path*",
+    "/history/:path*",
+    "/settings/:path*",
+    "/follow-ups/:path*",
+    "/login",
+    "/signup",
+  ],
 };

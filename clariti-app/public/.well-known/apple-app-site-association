@@ -1,0 +1,19 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["7DXS32H632.app.useclariti.mobile"],
+        "components": [
+          {
+            "/": "/auth/confirm*",
+            "comment": "Email confirmation. Opening in Safari would put the session in Safari's cookie jar, leaving the app signed out."
+          },
+          {
+            "/": "/auth/callback*",
+            "comment": "The PKCE code exchange that /auth/confirm forwards to. Same cookie jar, same reason."
+          }
+        ]
+      }
+    ]
+  }
+}
