@@ -257,9 +257,16 @@ human to confirm or to fill in a form.
       *not* used for tracking. Under-declaring here is a common rejection.
 - [ ] **Demo account** in App Review Information, with a saved document already
       attached — a reviewer who cannot get past an empty state rejects for
-      Guideline 2.1. Add a note saying the outbound-call and explainer-video
-      features depend on funded third-party accounts, and say whether they are
-      funded at review time.
+      Guideline 2.1. Create it with:
+      ```bash
+      cd clariti-app && npx vercel env pull .env.review --environment=production --yes
+      set -a && . ./.env.review && set +a
+      REVIEW_EMAIL=review@useclariti.app REVIEW_PASSWORD='pick-one' node scripts/seed-review-account.mjs
+      rm .env.review
+      ```
+      Add a note saying outbound phone calls are not part of this release, and
+      that the explainer-video feature depends on a funded Shotstack account —
+      say whether it is funded at review time.
 - [ ] **Age rating**: expect 17+ / "Medical or Treatment Information".
 - [ ] **Screenshots**: 6.7" and 6.5" iPhone are required.
       `pnpm --filter clariti-app shots` captures them.
