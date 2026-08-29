@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  const limited = await enforceRateLimit(await getSupabaseSessionClient(), user.id, "compare");
+  const limited = await enforceRateLimit(await getSupabaseSessionClient(), "compare");
   if (limited) return limited;
 
   const body = await request.json().catch(() => null);

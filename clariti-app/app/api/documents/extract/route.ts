@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  const limited = await enforceRateLimit(await getSupabaseSessionClient(), user.id, "extract");
+  const limited = await enforceRateLimit(await getSupabaseSessionClient(), "extract");
   if (limited) return limited;
 
   try {

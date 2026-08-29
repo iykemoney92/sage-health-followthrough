@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Sign in before generating illustrations." }, { status: 401 });
   }
 
-  const limited = await enforceRateLimit(await getSupabaseSessionClient(), user.id, "illustrations");
+  const limited = await enforceRateLimit(await getSupabaseSessionClient(), "illustrations");
   if (limited) return limited;
 
   const body = await request.json().catch(() => null);

@@ -182,6 +182,10 @@ using ((select auth.uid()) = owner_id);
 --    and had no ceiling of any kind. The counter is a fixed window keyed on
 --    (owner, route, window start); the increment is one atomic upsert so
 --    concurrent requests cannot both read the same count.
+--
+--    NOTE: the function's signature is replaced in
+--    0007_rate_limit_derives_own_caller.sql, which drops the owner argument so a
+--    caller cannot spend someone else's quota. Apply both.
 -- ---------------------------------------------------------------------------
 
 create table if not exists clariti_rate_limits (

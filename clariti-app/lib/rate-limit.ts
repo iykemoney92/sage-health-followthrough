@@ -23,7 +23,6 @@ export type RateLimitedRoute = keyof typeof RATE_LIMITS;
 
 export async function checkRateLimit(
   supabase: SupabaseClient,
-  ownerId: string,
   route: RateLimitedRoute,
 ): Promise<{ limited: boolean; retryAfterSeconds: number }> {
   const { limit, windowSeconds } = RATE_LIMITS[route];
@@ -31,8 +30,11 @@ export async function checkRateLimit(
   const windowMs = windowSeconds * 1000;
   const windowStart = new Date(Math.floor(now / windowMs) * windowMs);
 
+  // No owner is passed: the function reads auth.uid() itself, so a caller cannot
+  // name somebody else and burn through their quota. That also means `supabase`
+  // must be the session-scoped client, never the service role — the service role
+  // has no auth.uid() and the function refuses it.
   const { data: count, error } = await supabase.rpc("clariti_increment_rate_limit", {
-    p_owner_id: ownerId,
     p_route: route,
     p_window_start: windowStart.toISOString(),
   });
@@ -62,11 +64,7 @@ export function rateLimitedResponse(retryAfterSeconds: number) {
  * The one call site pattern: resolve the user, then gate. Returns a response to
  * return early, or null to continue.
  */
-export async function enforceRateLimit(
-  supabase: SupabaseClient,
-  ownerId: string,
-  route: RateLimitedRoute,
-) {
-  const { limited, retryAfterSeconds } = await checkRateLimit(supabase, ownerId, route);
+export async function enforceRateLimit(supabase: SupabaseClient, route: RateLimitedRoute) {
+  const { limited, retryAfterSeconds } = await checkRateLimit(supabase, route);
   return limited ? rateLimitedResponse(retryAfterSeconds) : null;
 }
