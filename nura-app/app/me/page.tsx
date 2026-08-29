@@ -60,7 +60,12 @@ export default async function MePage() {
 
   const displayName =
     profile?.display_name || (user?.user_metadata?.display_name as string | undefined) || user?.email || "";
-  const firstName = displayName.split(" ")[0] || "there";
+  // When no name is set the fallback is the email address, and splitting that
+  // on a space returns the whole thing — so the heading became
+  // "someone@example.com's account". Use the part before the @ instead.
+  const firstName = displayName.includes("@")
+    ? displayName.split("@")[0] || "there"
+    : displayName.split(" ")[0] || "there";
   const avatarUrl = getUserAvatarUrl(user);
   const phone = (profile?.phone as string | null) || null;
   const channelKey = profile?.preferred_channel || "in_app";

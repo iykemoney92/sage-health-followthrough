@@ -7509,3 +7509,31 @@ body::before {
     bottom: calc(24px + env(safe-area-inset-bottom));
   }
 }
+
+/* --- Long unbroken strings must not widen the page ----------------------- */
+
+/* An email used as a display name has no spaces, so it is a single ~24ch
+   "word". Headings here are flex containers, whose children default to
+   min-width:auto and therefore refuse to shrink below that word — which pushes
+   the whole page wider than the viewport and shunts every row off-screen.
+   Both halves are needed: permission to break the word, and permission to
+   shrink. */
+.dashboard-heading h1,
+.dashboard-heading p,
+.me-profile-hero-main,
+.me-profile-copy,
+.me-profile-copy h2,
+.me-profile-copy p,
+.app-user b,
+.profile-trigger b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Settings rows and cards carry user-supplied text too. */
+.me-settings-row b,
+.me-settings-row small,
+.me-settings-row p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
