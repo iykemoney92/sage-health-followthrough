@@ -1,6 +1,7 @@
 node_modules/
 
 # iOS
+# ExportOptions.plist is checked in deliberately — see below.
 ios/App/Pods/
 ios/App/build/
 ios/App/DerivedData/
