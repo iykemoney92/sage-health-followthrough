@@ -68,7 +68,7 @@ export function ClaritiAuthModal({
       track(mode === "signup" ? "sign_up" : "sign_in");
       await onAuthenticated();
     } catch {
-      setError("Supabase is not configured yet.");
+      setError("Sign-in is unavailable right now. Please try again shortly.");
     } finally {
       setLoading(false);
     }

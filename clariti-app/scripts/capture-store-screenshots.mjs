@@ -41,9 +41,16 @@ const DEVICES = [
   { dir: "clariti-ios-6.5", width: 414, height: 896, scale: 3 },
 ];
 
+/**
+ * SHOT_SESSION_ID opens the workspace on a specific saved analysis. Without it
+ * /workspace resolves a session client-side and the capture lands on the loading
+ * state — a screenshot of a spinner is worse than no screenshot.
+ */
+const SESSION_ID = process.env.SHOT_SESSION_ID;
+
 const SHOTS = [
   { name: "01-start", path: "/" },
-  { name: "02-workspace", path: "/workspace" },
+  { name: "02-workspace", path: SESSION_ID ? `/workspace?sessionId=${SESSION_ID}` : "/workspace" },
   { name: "03-history", path: "/history" },
   { name: "04-documents", path: "/documents" },
   { name: "05-plus", path: "/billing" },
@@ -204,9 +211,23 @@ try {
           return document.fonts.ready.then(() => true);
         })()`,
       );
-      // Data loads after hydration on every one of these pages, so a fixed settle
-      // beats capturing a screen full of skeletons.
-      await sleep(1800);
+      // Data loads after hydration on every one of these pages. Rather than guess
+      // a settle time, wait for the page's own loading copy to disappear — the
+      // workspace fetches a document, its messages and its analysis, and takes
+      // several times longer than the list pages.
+      await evaluate(
+        socket,
+        `(async () => {
+          for (let i = 0; i < 60; i++) {
+            const text = document.body.innerText || "";
+            const busy = /Loading saved analysis|Getting your document|Checking your account|One moment/i.test(text);
+            if (!busy && text.length > 200) return true;
+            await new Promise((r) => setTimeout(r, 250));
+          }
+          return false;
+        })()`,
+      );
+      await sleep(600);
 
       const { data } = await rpc(socket, "Page.captureScreenshot", {
         format: "png",

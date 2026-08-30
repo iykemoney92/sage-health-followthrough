@@ -1479,7 +1479,7 @@ function WorkspaceContent() {
             <h1>{booting ? "Loading saved analysis" : loadError ? "Could not load this report" : "No active analysis yet"}</h1>
             <p className="clariti-lead">
               {booting
-                ? "Clariti is loading your saved session, document, messages and analysis from Supabase."
+                ? "Getting your document and its analysis."
                 : loadError
                   ? loadError
                   : "Ask Clariti about one health document from Home. The workspace will open after there is a saved database session to review."}

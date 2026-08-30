@@ -37,7 +37,7 @@ function LoginForm() {
       router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
       router.refresh();
     } catch {
-      setError("Supabase is not configured yet. Add the Supabase env vars to enable auth.");
+      setError("Sign-in is unavailable right now. Please try again shortly.");
     } finally {
       setLoading(false);
     }

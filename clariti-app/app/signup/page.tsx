@@ -53,7 +53,7 @@ export default function SignupPage() {
       router.push("/");
       router.refresh();
     } catch {
-      setError("Supabase is not configured yet. Add the Supabase env vars to enable auth.");
+      setError("Accounts are unavailable right now. Please try again shortly.");
     } finally {
       setLoading(false);
     }
