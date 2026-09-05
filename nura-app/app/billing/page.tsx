@@ -14,6 +14,7 @@ import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { CheckoutFailTracker } from "@/components/checkout-fail-tracker";
 import { NuraShell } from "@/components/nura-shell";
 import { TrackedCheckoutLink, TrackedPortalLink } from "@/components/tracked-billing-links";
+import { PlatformCopy } from "@/components/platform-copy";
 import { ManageSubscriptionCta, UpgradeCta } from "@/components/upgrade-cta";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { reconcileShortCardTrial } from "@/lib/billing/reconcile-trial";
@@ -173,8 +174,10 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
           </div>
           {access?.hasPlus ? (
             <p className="billing-cancel-hint">
-              Opens Stripe’s customer portal to update your card, download invoices, or cancel. Access stays until the
-              current period ends.
+              <PlatformCopy
+                web="Opens Stripe’s customer portal to update your card, download invoices, or cancel. Access stays until the current period ends."
+                native="Opens your Apple subscriptions, where you can change or cancel Nura Plus. Access stays until the current period ends."
+              />
             </p>
           ) : null}
         </section>

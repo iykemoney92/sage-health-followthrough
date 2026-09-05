@@ -22,6 +22,7 @@ import { NuraLogo } from "@/components/nura-logo";
 import { PhoneNumberInput } from "@/components/phone-number-input";
 import { PushNotificationsToggle } from "@/components/push-notifications-toggle";
 import { TrackedCheckoutLink } from "@/components/tracked-billing-links";
+import { PlatformCopy } from "@/components/platform-copy";
 import { UpgradeCta } from "@/components/upgrade-cta";
 import { useToast } from "@/components/toast";
 import { WhatsAppOpenButton } from "@/components/whatsapp-open-button";
@@ -136,7 +137,14 @@ function DesktopCopy({ step, trialExpired }: { step: number; trialExpired?: bool
                 ? ["Stay in the loop.", "Turn on browser notifications so a check-in or reply from Nura reaches you even when the tab isn’t open. Optional — skip it if you’d rather not."]
                 : trialExpired
                   ? ["Your free trial has ended.", "Upgrade to Plus to unlock your Care plans and check-ins again. Everything you shared stays saved."]
-                  : ["Start your free trial.", `Add a card to unlock Nura fully. You won’t be charged for ${CARD_TRIAL_DAYS} days, and you can cancel anytime before then.`];
+                  : [
+                      "Start your free trial.",
+                      <PlatformCopy
+                        key="trial-copy"
+                        web={`Add a card to unlock Nura fully. You won’t be charged for ${CARD_TRIAL_DAYS} days, and you can cancel anytime before then.`}
+                        native={`Subscribe through the App Store to unlock Nura fully. The first ${CARD_TRIAL_DAYS} days are free, and you can cancel anytime before then in your Apple subscriptions.`}
+                      />,
+                    ];
 
   return (
     <aside className="onboarding-desktop-copy">
@@ -990,7 +998,12 @@ function OnboardingFlow() {
                   <p className="onboarding-intro paywall-intro">
                     {trialExpired
                       ? "Nura is paused until you upgrade to Plus. Renew to keep your Care plans, check-ins, and conversations going."
-                      : `Last step before your dashboard. Add a card to keep Nura going after the trial. You won’t be charged for ${CARD_TRIAL_DAYS} days, and you can cancel anytime before then.`}
+                      : (
+                          <PlatformCopy
+                            web={`Last step before your dashboard. Add a card to keep Nura going after the trial. You won’t be charged for ${CARD_TRIAL_DAYS} days, and you can cancel anytime before then.`}
+                            native={`Last step before your dashboard. Subscribe to Nura Plus through the App Store — the first ${CARD_TRIAL_DAYS} days are free, and you can cancel anytime before then.`}
+                          />
+                        )}
                   </p>
                   <ul className="paywall-benefits">
                     <li><Check size={14} strokeWidth={3} /> Unlimited Care plans and check-ins</li>
@@ -1010,7 +1023,12 @@ function OnboardingFlow() {
                   <p className="control-note">
                     {trialExpired
                       ? "Your Care plans stay saved — upgrade to unlock them again."
-                      : `A card is required to start the trial — you won’t be charged until day ${CARD_TRIAL_DAYS + 1}.`}
+                      : (
+                        <PlatformCopy
+                          web={`A card is required to start the trial — you won’t be charged until day ${CARD_TRIAL_DAYS + 1}.`}
+                          native={`Billed to your Apple ID after the free trial — you won’t be charged until day ${CARD_TRIAL_DAYS + 1}. Cancel anytime in Settings › Apple ID › Subscriptions.`}
+                        />
+                      )}
                   </p>
                   {!trialExpired ? (
                     <button
