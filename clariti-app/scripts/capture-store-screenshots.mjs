@@ -39,6 +39,10 @@ const OUT_ROOT = fileURLToPath(new URL("../../store-assets/", import.meta.url));
 const DEVICES = [
   { dir: "clariti-ios-6.7", width: 430, height: 932, scale: 3 },
   { dir: "clariti-ios-6.5", width: 414, height: 896, scale: 3 },
+  // iPad Pro 12.9" is not optional: the shell ships with
+  // TARGETED_DEVICE_FAMILY = "1,2", so App Store Connect refuses the submission
+  // without a 2048 x 2732 set. 1024 x 1366 at 2x is that size natively.
+  { dir: "clariti-ipad-12.9", width: 1024, height: 1366, scale: 2 },
 ];
 
 /**

@@ -1516,3 +1516,24 @@
 }
 
 @keyframes claritiThinkingSweep{to{transform:translateX(100%)}}@keyframes claritiThinkingDot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+
+/* iPad portrait is 1024pt wide, and until now nothing owned that width.
+   globals.css turns the canvas into a `position: fixed` overlay below 1100px,
+   while the 761–1280px rule above still reserves a 430px third column — so the
+   grid demanded 238 + 420 + 430 = 1088px inside 1024px AND the overlay sat on
+   top of the chat it had already made room for. The result read as a clipped
+   layout: composer buttons and the send control disappeared under the panel.
+   Above 860px the three panes genuinely fit if the rails narrow, so put the
+   canvas back in flow rather than floating it. Narrower tablets and phones keep
+   the overlay, which is the right pattern when there isn't room for three. */
+@media (min-width: 861px) and (max-width: 1100px) {
+  .clariti-workspace {
+    grid-template-columns: 200px minmax(0, 1fr) 360px;
+  }
+
+  .clariti-canvas {
+    position: static;
+    width: auto;
+    box-shadow: none;
+  }
+}

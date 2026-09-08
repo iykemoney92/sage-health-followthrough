@@ -31,16 +31,24 @@ Verified against the live services, not assumed:
 
 - The Apple Developer account is active and a distribution certificate for team
   `7DXS32H632` is installed on this machine.
+- The App ID `app.useclariti.mobile` is registered, and the App Store
+  distribution profile named `Clariti App Store` exists and is installed — the
+  Release configuration signs against it on every archive.
 - `useclariti.app` resolves and serves the production app.
-- The Clariti RevenueCat project exists with the `plus` entitlement and a
-  `default` offering — but that offering returns **`"packages": []`**. It has a web
-  checkout link attached and nothing else.
+- The Clariti RevenueCat project exists with the `plus` entitlement, and the
+  `default` offering now returns **both** packages — `$rc_monthly` →
+  `clariti_plus_monthly` and `$rc_annual` → `clariti_plus_annual` — to the
+  production iOS key. The paywall has real prices to render.
 - `CLARITI_REVENUECAT_PLUS_PRODUCT_IDS` in Vercel production already allowlists
   `clariti_plus_monthly` and `clariti_plus_annual`, so an entitlement granted for
   either flows through the existing webhook with no code change.
-- No App ID for `app.useclariti.mobile` is registered (no matching provisioning
-  profile exists locally, and there is no `appl_` key anywhere in the repo or in
-  Vercel).
+- Migration `0006_private_artifacts_and_limits.sql` is applied. Both storage
+  buckets — `clariti-documents` and `clariti-videos` — are private, and the media
+  routes hand out signed URLs rather than public ones.
+- Build 1 (`CFBundleVersion 1`, `MARKETING_VERSION 1.0`) is uploaded, processed
+  and attached to version 1.0. Every subsequent archive needs a higher
+  `CURRENT_PROJECT_VERSION`, set in **both** Release and Debug configuration
+  blocks of `project.pbxproj`.
 
 ---
 
@@ -48,15 +56,11 @@ Verified against the live services, not assumed:
 
 <https://developer.apple.com/account/resources>
 
-1. **Identifiers → +** → App IDs → App.
-   - Description: `Clariti`
-   - Bundle ID: **Explicit**, `app.useclariti.mobile`
-   - Capabilities — tick exactly these, because the entitlements file already
-     claims all three and a mismatch fails the signing step:
-     - **Push Notifications**
-     - **Associated Domains**
-     - **Sign In with Apple** (Enable as a primary App ID)
-   - Register.
+1. ~~**Identifiers → +** → App IDs → App.~~ **Already done.** The App ID
+   `app.useclariti.mobile` is registered with **Push Notifications**,
+   **Associated Domains** and **Sign In with Apple** (primary). Those three have
+   to stay ticked: `App.entitlements` claims all three, and a mismatch fails the
+   signing step rather than warning.
 
 2. **Keys → +** → tick **Apple Push Notifications service (APNs)** → name it
    `Clariti APNs` → Continue → Register → **Download the `.p8`**. Note the **Key
@@ -68,10 +72,11 @@ Verified against the live services, not assumed:
    to `app.useclariti.mobile` → Register → download the `.p8`, note the Key ID.
    This is the key Supabase needs in step 6.
 
-4. **Profiles → +** → **App Store Connect** distribution →
-   App ID `app.useclariti.mobile` → your Apple Distribution certificate →
-   **name it exactly `Clariti App Store`** (the Xcode Release configuration looks
-   it up by that name) → Generate → Download → double-click to install.
+4. ~~**Profiles → +** → **App Store Connect** distribution~~ **Already done.**
+   The profile named `Clariti App Store` exists and is installed; the Xcode
+   Release configuration looks it up by that exact name via
+   `PROVISIONING_PROFILE_SPECIFIER`. Only regenerate it if a capability changes
+   or it expires — and keep the name, or the archive stops signing.
 
 ## 2. App Store Connect — the app record
 
@@ -127,12 +132,12 @@ Copy it; RevenueCat needs it in step 4.
 2. **Apps → + New** → **Play Store** (only when doing Android; see step 8).
 3. **Products → + New**, twice, on the iOS app: `clariti_plus_monthly` and
    `clariti_plus_annual`.
-4. **Offerings → `default`** → add two packages:
-   - `$rc_monthly` → `clariti_plus_monthly`
-   - `$rc_annual` → `clariti_plus_annual`
-   > This is the step that fixes `"packages": []`. Until it is done, the app's
-   > paywall correctly refuses to show a buy button, because a button that cannot
-   > complete a purchase is worse than none.
+4. ~~**Offerings → `default`** → add two packages~~ **Already done.** `default`
+   returns `$rc_monthly` → `clariti_plus_monthly` and `$rc_annual` →
+   `clariti_plus_annual` to the production iOS key. If the paywall ever shows no
+   buy button again, check this first: the app refuses to render one when the
+   offering is empty, because a button that cannot complete a purchase is worse
+   than none.
 5. **Entitlements → `plus`** → attach both products.
 6. **API keys** → copy the **public** app-specific keys:
    - iOS key (`appl_…`) → Vercel `NEXT_PUBLIC_CLARITI_REVENUECAT_IOS_API_KEY`
@@ -225,7 +230,10 @@ cd clariti-mobile
 npx cap sync
 ```
 
-**iOS:**
+**iOS:** bump `CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`
+first — it appears in **two** configuration blocks and both have to move together,
+or the Debug and Release halves of the project disagree. App Store Connect
+rejects an upload whose build number it has already seen.
 
 ```bash
 cd ios/App
@@ -249,6 +257,17 @@ cd android && ./gradlew bundleRelease
 The code side of every item below is already done; these are the ones that need a
 human to confirm or to fill in a form.
 
+- [ ] **Attach both subscriptions to the 1.0 version.** On the version page,
+      scroll to **In-App Purchases and Subscriptions** → **+** → tick
+      `clariti_plus_monthly` and `clariti_plus_annual` → Save. This is a separate
+      action from creating them in step 3, and skipping it is silent: the app
+      gets reviewed and released while the subscriptions stay in "Ready to
+      Submit", so every purchase in the live app fails.
+      > Nothing can check this for you. The App Store Connect API rejects
+      > `include=subscription` on `appStoreVersions` with a 400, and no other
+      > relationship reports the attachment, so the only confirmation is seeing
+      > both products listed on the version page before you press **Submit for
+      > Review**.
 - [ ] **Privacy Policy URL**: `https://useclariti.app/privacy` — mandatory field.
 - [ ] **Terms of Use (EULA) URL**: `https://useclariti.app/terms`.
 - [ ] **App Privacy questionnaire.** Clariti collects an email address, uploaded
@@ -268,8 +287,17 @@ human to confirm or to fill in a form.
       that the explainer-video feature depends on a funded Shotstack account —
       say whether it is funded at review time.
 - [ ] **Age rating**: expect 17+ / "Medical or Treatment Information".
-- [ ] **Screenshots**: 6.7" and 6.5" iPhone are required.
-      `pnpm --filter clariti-app shots` captures them.
+- [ ] **Screenshots**: 6.7" and 6.5" iPhone, plus an iPad set — the shell ships
+      with `TARGETED_DEVICE_FAMILY = "1,2"`, so App Store Connect will not accept
+      the submission without one. `pnpm --filter clariti-app shots` captures all
+      three into `store-assets/clariti-ios-6.7`, `clariti-ios-6.5` and
+      `clariti-ipad-12.9`.
+      > Upload only the `clariti-` directories. `store-assets/` also holds
+      > `nura-ios-6.5` and `nura-ipad-13`, which are the other app in this repo:
+      > same green palette, entirely different product. `nura-ipad-13` is the
+      > larger 2064 × 2752 set, so it is the one most likely to get picked up by
+      > mistake for the iPad slot — `clariti-ipad-12.9` at 2048 × 2732 is the
+      > correct upload and Apple accepts it there.
 - [ ] **Account deletion** is reachable in-app from Settings — Guideline 5.1.1(v).
       Verify it before submitting; reviewers test this one.
 - [ ] **Restore purchases** is on the paywall — Guideline 3.1.1.
@@ -282,6 +310,6 @@ human to confirm or to fill in a form.
 
 - Set `NEXT_PUBLIC_IOS_APP_STORE_URL` (step 7) and redeploy, so the in-app
   "update available" notice can link to the listing.
-- Apply migration `0006_private_artifacts_and_limits.sql` **before** the first
-  native release if it has not been applied already — it makes the
-  `clariti-videos` bucket private, and the app's media route depends on that.
+- Nothing to do about `0006_private_artifacts_and_limits.sql` — it is applied,
+  and `clariti-documents` and `clariti-videos` are both private. Left here only
+  because an earlier draft of this runbook listed it as outstanding.
