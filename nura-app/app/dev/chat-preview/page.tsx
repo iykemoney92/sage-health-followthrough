@@ -76,8 +76,12 @@ export default function ChatPreviewPage() {
 
         <aside className="context-panel">
           <span className="auth-kicker">RELATED CONTEXT</span>
-          <h2>No Care plan yet</h2>
-          <p>Nura will connect what you share to a Care plan as the conversation continues.</p>
+          {/* The linked-plan variant of the panel, matching /workspace with an
+              active plan. The panel is hidden below 900px, so this fixture is
+              only ever seen on tablet — and an empty rail there is a poorer
+              read of the product than the state most conversations are in. */}
+          <h2>Headaches &amp; sleep rhythm</h2>
+          <p>Nura has connected this conversation to this Care plan.</p>
           <article>
             <FileText />
             <div>

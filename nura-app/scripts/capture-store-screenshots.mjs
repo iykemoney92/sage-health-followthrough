@@ -21,12 +21,18 @@ const PORT = 9222;
 const BASE = process.env.SHOT_BASE_URL ?? "http://localhost:3000";
 // fileURLToPath, not .pathname: a repo path containing spaces stays
 // percent-encoded in .pathname and would create a literally-named directory.
-const OUT_DIR = fileURLToPath(new URL("../../store-assets/ios-6.5/", import.meta.url));
+const OUT_ROOT = fileURLToPath(new URL("../../store-assets/", import.meta.url));
 
-// 414 × 896 at 3× — the 6.5" iPhone (XS Max / 11 Pro Max) Apple sizes against.
-const WIDTH = 414;
-const HEIGHT = 896;
-const SCALE = 3;
+const DEVICES = [
+  // 414 × 896 at 3× — the 6.5" iPhone (XS Max / 11 Pro Max) Apple sizes against.
+  { dir: "ios-6.5", width: 414, height: 896, scale: 3 },
+  // The iPad set is not optional: the shell ships with
+  // TARGETED_DEVICE_FAMILY = "1,2", so App Store Connect refuses the submission
+  // without shots for 13" iPad displays. 1032 × 1376 at 2× is the 13" iPad Pro's
+  // 2064 × 2752 natively. Every screen here has a real two-column tablet layout,
+  // so these are the same components again rather than stretched phone shots.
+  { dir: "ipad-13", width: 1032, height: 1376, scale: 2 },
+];
 
 const SHOTS = [
   { name: "01-today", path: "/dev/desktop-preview?view=today" },
@@ -100,46 +106,50 @@ try {
   });
 
   await rpc(socket, "Page.enable");
-  await rpc(socket, "Emulation.setDeviceMetricsOverride", {
-    width: WIDTH,
-    height: HEIGHT,
-    deviceScaleFactor: SCALE,
-    mobile: true,
-  });
 
-  await mkdir(OUT_DIR, { recursive: true });
+  for (const device of DEVICES) {
+    await rpc(socket, "Emulation.setDeviceMetricsOverride", {
+      width: device.width,
+      height: device.height,
+      deviceScaleFactor: device.scale,
+      mobile: true,
+    });
 
-  for (const shot of SHOTS) {
-    await rpc(socket, "Page.navigate", { url: `${BASE}${shot.path}` });
-    // Wait for the load event rather than a fixed delay, then settle webfonts.
-    await new Promise((resolve) => {
-      const onMessage = (event) => {
-        if (JSON.parse(event.data).method === "Page.loadEventFired") {
-          socket.removeEventListener("message", onMessage);
-          resolve();
-        }
-      };
-      socket.addEventListener("message", onMessage);
-    });
-    await rpc(socket, "Runtime.evaluate", {
-      expression: `
-        (() => {
-          const style = document.createElement("style");
-          style.textContent = ${JSON.stringify(HIDE_CSS)};
-          document.head.appendChild(style);
-          return document.fonts.ready.then(() => true);
-        })()
-      `,
-      awaitPromise: true,
-    });
-    await sleep(400);
+    const outDir = `${OUT_ROOT}${device.dir}/`;
+    await mkdir(outDir, { recursive: true });
 
-    const { data } = await rpc(socket, "Page.captureScreenshot", {
-      format: "png",
-      captureBeyondViewport: false,
-    });
-    await writeFile(`${OUT_DIR}${shot.name}.png`, Buffer.from(data, "base64"));
-    console.log(`captured ${shot.name}`);
+    for (const shot of SHOTS) {
+      await rpc(socket, "Page.navigate", { url: `${BASE}${shot.path}` });
+      // Wait for the load event rather than a fixed delay, then settle webfonts.
+      await new Promise((resolve) => {
+        const onMessage = (event) => {
+          if (JSON.parse(event.data).method === "Page.loadEventFired") {
+            socket.removeEventListener("message", onMessage);
+            resolve();
+          }
+        };
+        socket.addEventListener("message", onMessage);
+      });
+      await rpc(socket, "Runtime.evaluate", {
+        expression: `
+          (() => {
+            const style = document.createElement("style");
+            style.textContent = ${JSON.stringify(HIDE_CSS)};
+            document.head.appendChild(style);
+            return document.fonts.ready.then(() => true);
+          })()
+        `,
+        awaitPromise: true,
+      });
+      await sleep(400);
+
+      const { data } = await rpc(socket, "Page.captureScreenshot", {
+        format: "png",
+        captureBeyondViewport: false,
+      });
+      await writeFile(`${outDir}${shot.name}.png`, Buffer.from(data, "base64"));
+      console.log(`captured ${device.dir}/${shot.name}`);
+    }
   }
 
   socket.close();
