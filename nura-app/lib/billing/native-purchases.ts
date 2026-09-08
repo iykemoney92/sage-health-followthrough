@@ -63,9 +63,14 @@ export async function configureNativePurchases(userId: string) {
 
 export type PlusOffer = {
   package: PurchasesPackage;
+  /** Store-localised product name, e.g. "Nura Plus Monthly". */
+  title: string;
   /** Store-localised price string — never hardcode a currency in the UI. */
   priceString: string;
+  /** ISO 8601 billing period from the store, e.g. "P1M". */
   period: string | null;
+  /** Free-trial length when the store offers one to this account, else null. */
+  trial: { units: number; unit: string } | null;
 };
 
 /**
@@ -80,11 +85,32 @@ export async function getPlusOffer(): Promise<PlusOffer | null> {
   const chosen = current?.availablePackages?.[0];
   if (!chosen) return null;
 
+  const intro = chosen.product.introPrice;
   return {
     package: chosen,
+    title: chosen.product.title,
     priceString: chosen.product.priceString,
     period: chosen.product.subscriptionPeriod ?? null,
+    // An intro price of zero is a free trial; a paid intro is not, and is
+    // rare enough that the terms line just falls back to the plain price.
+    trial: intro && intro.price === 0 ? { units: intro.periodNumberOfUnits, unit: intro.periodUnit } : null,
   };
+}
+
+/** "P1M" → "month", "P1Y" → "year", "P1W" → "week"; anything else → null. */
+export function describePeriod(period: string | null): string | null {
+  const match = period ? /^P(\d+)([DWMY])$/.exec(period) : null;
+  if (!match) return null;
+  const count = Number(match[1]);
+  const unit = { D: "day", W: "week", M: "month", Y: "year" }[match[2] as "D" | "W" | "M" | "Y"];
+  return count === 1 ? unit : `${count} ${unit}s`;
+}
+
+/** RevenueCat's period units are "DAY" | "WEEK" | "MONTH" | "YEAR". */
+export function describeTrial(trial: PlusOffer["trial"]): string | null {
+  if (!trial) return null;
+  const unit = trial.unit.toLowerCase();
+  return `${trial.units}-${unit} free trial`;
 }
 
 export type PurchaseOutcome =

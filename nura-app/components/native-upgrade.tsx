@@ -1,17 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Browser } from "@capacitor/browser";
 import { CreditCard, RotateCcw } from "lucide-react";
 import { track } from "@/lib/analytics";
 import {
   configureNativePurchases,
+  describePeriod,
+  describeTrial,
   getPlusOffer,
   isNativePurchaseAvailable,
   purchasePlus,
   restorePlus,
   type PlusOffer,
 } from "@/lib/billing/native-purchases";
+
+/** Apple's standard EULA, which is also what the App Store listing links to. */
+const APPLE_STANDARD_EULA = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
 
 /**
  * The upgrade control inside the iOS/Android app.
@@ -105,17 +112,44 @@ export function NativeUpgrade({
 
   if (!offer) return null;
 
+  const period = describePeriod(offer.period);
+  const trial = describeTrial(offer.trial);
+  const pricePerPeriod = period ? `${offer.priceString} per ${period}` : offer.priceString;
+
   return (
     <>
       <button type="button" className="primary-cta" onClick={() => void buy()} disabled={busy !== null}>
         <CreditCard />{" "}
         {busy === "purchase"
           ? "Opening the App Store…"
-          : `${renewing ? "Renew" : "Upgrade to"} Plus — ${offer.priceString}`}
+          : trial && !renewing
+            ? `Start ${trial}`
+            : `${renewing ? "Renew" : "Upgrade to"} Plus — ${pricePerPeriod}`}
       </button>
       <button type="button" className="secondary-cta" onClick={() => void restore()} disabled={busy !== null}>
         <RotateCcw /> {busy === "restore" ? "Restoring…" : "Restore purchases"}
       </button>
+      {/* Guideline 3.1.2: the paywall itself must state the product, the
+          length and price of each period, and link to the Terms of Use and
+          privacy policy. Everything here comes from the store except the
+          renewal sentence, which is Apple's standard wording. */}
+      <p className="paywall-terms">
+        {offer.title} · {trial ? `${trial}, then ` : ""}
+        {pricePerPeriod}. Billed to your Apple Account; renews automatically until cancelled at least 24 hours before
+        the period ends. Manage in Settings › Apple Account › Subscriptions.{" "}
+        <a
+          href={APPLE_STANDARD_EULA}
+          onClick={(event) => {
+            // Inside the shell an external page would replace the app with no
+            // way back, so it opens in the in-app browser sheet instead.
+            event.preventDefault();
+            void Browser.open({ url: APPLE_STANDARD_EULA });
+          }}
+        >
+          Terms of Use
+        </a>{" "}
+        · <Link href="/privacy">Privacy Policy</Link>
+      </p>
       {message && (
         <p className={message.tone === "error" ? "billing-notice billing-notice-error" : "billing-notice"} role="status">
           {message.text}
