@@ -37,13 +37,20 @@ export async function getDocumentAnalysisCount(supabase: SupabaseClient, ownerId
   return count ?? 0;
 }
 
-/** Actual generated-video count for this owner — derived from real rows, not a client-writable counter. */
+/**
+ * Actual generated-video count for this owner — derived from real rows, not a
+ * client-writable counter.
+ *
+ * 'failed' counts too. A job usually fails after the scenes have already been
+ * rendered and billed, so leaving it out meant a free-tier account could keep
+ * spending provider money by generating videos that die at the stitch.
+ */
 export async function getVideoGenerationCount(supabase: SupabaseClient, ownerId: string) {
   const { count } = await supabase
     .from("clariti_video_generations")
     .select("id", { count: "exact", head: true })
     .eq("owner_id", ownerId)
-    .in("status", ["queued", "scripting", "generating_scenes", "stitching", "completed"]);
+    .in("status", ["queued", "scripting", "generating_scenes", "stitching", "completed", "failed"]);
   return count ?? 0;
 }
 
@@ -82,7 +89,22 @@ export async function getSubscriptionAccess(
     : "free";
   const trialEndsAt = profile.trial_ends_at ?? trialEndFromStart(profile.trial_started_at);
   const paidUntil = profile.subscription_current_period_ends_at ?? null;
-  const activePaidStatus = status === "active" || status === "grace_period" || (status === "cancelled" && isFuture(paidUntil));
+  // A stored 'active' is only as fresh as the last webhook that arrived. If the
+  // period we were told about has already ended, a renewal notice we never
+  // received is a likelier explanation than a subscription that renews forever,
+  // so the status stops counting on its own. A row with no period end at all is
+  // still trusted — that is missing information, not evidence of a lapse.
+  //
+  // 'grace_period' is held to the same test rather than exempted. The date
+  // stored against it is already the end of the grace period, not of the lapsed
+  // paid period — lib/billing/revenuecat-webhook.ts writes graceEnd ?? periodEnd
+  // on BILLING_ISSUE — and Apple bounds grace at sixteen days. Exempting it
+  // would put the missed-webhook hole back one status over: a dropped EXPIRATION
+  // after a billing issue would grant Plus forever.
+  const paidPeriodLive = !paidUntil || isFuture(paidUntil);
+  const activePaidStatus =
+    ((status === "active" || status === "grace_period") && paidPeriodLive)
+    || (status === "cancelled" && isFuture(paidUntil));
   const trialActive = status === "trialing" && isFuture(trialEndsAt);
   const hasPlus = (tier === "plus" && activePaidStatus) || trialActive;
 
@@ -90,6 +112,9 @@ export async function getSubscriptionAccess(
     status = "expired";
   }
   if (!hasPlus && status === "cancelled" && !isFuture(paidUntil)) {
+    status = "expired";
+  }
+  if (!hasPlus && (status === "active" || status === "grace_period") && !paidPeriodLive) {
     status = "expired";
   }
 
@@ -149,7 +174,7 @@ export type PlusFeature = "documents" | "videos" | "follow_ups" | "calls" | "com
 const FEATURE_MESSAGES: Record<PlusFeature, string> = {
   documents: `You have used your ${FREE_DOCUMENT_LIMIT} free document analyses. Upgrade to Clariti Plus for unlimited analyses.`,
   videos: `You have used your ${FREE_VIDEO_LIMIT} free explainer video. Upgrade to Clariti Plus for unlimited videos.`,
-  follow_ups: "Phone follow-ups are a Clariti Plus feature.",
+  follow_ups: "Email check-ins are a Clariti Plus feature. Clariti emails you later to ask whether anything changed.",
   calls: "Live calls with Clariti are a Clariti Plus feature.",
   compare: "Comparing documents over time is a Clariti Plus feature.",
 };

@@ -68,7 +68,7 @@ export async function syncPlusFromRevenueCat(supabase: SupabaseClient, appUserId
 
   const entitled = (plusEntitlement && isFuture(plusEntitlement.expires_date)) || Boolean(activeSubscription);
   if (!entitled) {
-    return { ok: true as const, hasPlus: false, reason: "no_active_entitlement" as const };
+    return clearStalePlus(supabase, appUserId);
   }
 
   const periodType = (activeSubscription?.period_type ?? "").toUpperCase();
@@ -101,4 +101,67 @@ export async function syncPlusFromRevenueCat(supabase: SupabaseClient, appUserId
   }
 
   return { ok: true as const, hasPlus: true, status, trialEndsAt: isTrial ? periodEndsAt : null, periodEndsAt };
+}
+
+type StoredProfileRow = {
+  subscription_tier?: string | null;
+  subscription_status?: string | null;
+  trial_ends_at?: string | null;
+  stripe_customer_id?: string | null;
+  revenuecat_app_user_id?: string | null;
+};
+
+/**
+ * RevenueCat has no live entitlement for this account. Until now that was the
+ * end of it, which made this poller upgrade-only: a lapse or a refund that
+ * never arrived as a webhook could never take Plus away again, and the profile
+ * kept saying "plus" indefinitely.
+ *
+ * Three accounts are left alone on purpose. A trial that has not run out yet is
+ * granted by Clariti itself and has no RevenueCat subscription behind it, so an
+ * empty subscriber response says nothing about it. Neither does it say anything
+ * about an account billed directly through Stripe, which RevenueCat does not
+ * own.
+ *
+ * Nor about an account RevenueCat has never heard of. GET /v1/subscribers/:id
+ * answers 200 with no entitlements for an id that does not exist there, so a
+ * REST key pointed at the wrong project or environment reads as "everybody
+ * lapsed" and would revoke Plus from paying App Store subscribers one paywall
+ * load at a time. A stored revenuecat_app_user_id is what says RevenueCat is the
+ * recorded source of truth for this account; both the upgrade path above and the
+ * webhook write it, so a genuine lapse or refund is still caught.
+ */
+async function clearStalePlus(supabase: SupabaseClient, appUserId: string) {
+  const noEntitlement = { ok: true as const, hasPlus: false, reason: "no_active_entitlement" as const };
+
+  const { data } = await supabase
+    .from("clariti_profiles")
+    .select("subscription_tier, subscription_status, trial_ends_at, stripe_customer_id, revenuecat_app_user_id")
+    .eq("id", appUserId)
+    .maybeSingle();
+
+  const profile = (data ?? null) as StoredProfileRow | null;
+  if (!profile || profile.subscription_tier !== "plus") return noEntitlement;
+  if (profile.stripe_customer_id) return noEntitlement;
+  if (profile.subscription_status === "trialing" && isFuture(profile.trial_ends_at)) {
+    return { ok: true as const, hasPlus: true, reason: "local_trial_active" as const };
+  }
+  // Checked after the trial so a Clariti-granted trial keeps reporting itself as
+  // live rather than falling out here as "no entitlement".
+  if (!profile.revenuecat_app_user_id) return noEntitlement;
+
+  const { error } = await supabase
+    .from("clariti_profiles")
+    .update({
+      subscription_tier: "free",
+      subscription_status: "expired",
+      subscription_updated_at: new Date().toISOString(),
+    })
+    .eq("id", appUserId);
+
+  if (error) {
+    return { ok: false as const, hasPlus: false, reason: "profile_update_failed" as const, error: error.message };
+  }
+
+  return { ok: true as const, hasPlus: false, reason: "downgraded" as const };
 }

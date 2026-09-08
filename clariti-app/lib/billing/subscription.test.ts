@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getSubscriptionAccess, isSubscriptionLockedOut } from "./subscription";
+import { getSubscriptionAccess, getVideoGenerationCount, isSubscriptionLockedOut } from "./subscription";
 
 const DAY = 24 * 60 * 60 * 1000;
 const OWNER_ID = "00000000-0000-0000-0000-000000000001";
@@ -80,6 +80,110 @@ describe("getSubscriptionAccess", () => {
       OWNER_ID,
     );
     expect(access.hasPlus).toBe(true);
+  });
+
+  // The date stored against a billing issue is the end of the grace period, not
+  // of the lapsed paid period, so a grace period that has run out is a dropped
+  // EXPIRATION event — the same missed-webhook hole as a stale "active".
+  it("stops trusting a grace period once its stored end has passed", async () => {
+    const access = await getSubscriptionAccess(
+      fakeSupabase({
+        subscription_tier: "plus",
+        subscription_status: "grace_period",
+        subscription_current_period_ends_at: new Date(Date.now() - DAY).toISOString(),
+      }),
+      OWNER_ID,
+    );
+    expect(access.hasPlus).toBe(false);
+    expect(access.status).toBe("expired");
+  });
+
+  it("keeps a grace period entitled while the store is still retrying", async () => {
+    const access = await getSubscriptionAccess(
+      fakeSupabase({
+        subscription_tier: "plus",
+        subscription_status: "grace_period",
+        subscription_current_period_ends_at: new Date(Date.now() + 5 * DAY).toISOString(),
+      }),
+      OWNER_ID,
+    );
+    expect(access.hasPlus).toBe(true);
+  });
+
+  it("keeps an active subscription entitled while its paid period runs", async () => {
+    const access = await getSubscriptionAccess(
+      fakeSupabase({
+        subscription_tier: "plus",
+        subscription_status: "active",
+        subscription_current_period_ends_at: new Date(Date.now() + 20 * DAY).toISOString(),
+      }),
+      OWNER_ID,
+    );
+    expect(access.hasPlus).toBe(true);
+    expect(access.status).toBe("active");
+  });
+
+  // The renewal webhook that would have pushed the period forward never
+  // arrived. A stored "active" on its own must not grant Plus indefinitely.
+  it("stops trusting a stored active status once its paid period has passed", async () => {
+    const access = await getSubscriptionAccess(
+      fakeSupabase({
+        subscription_tier: "plus",
+        subscription_status: "active",
+        subscription_current_period_ends_at: new Date(Date.now() - DAY).toISOString(),
+      }),
+      OWNER_ID,
+    );
+    expect(access.hasPlus).toBe(false);
+    expect(access.status).toBe("expired");
+    expect(access.tier).toBe("free");
+  });
+
+  // Absent is not the same as lapsed: rows written before the column was
+  // populated have no period end, and revoking on missing information would
+  // lock out paying accounts.
+  it("keeps an active subscription with no recorded period end", async () => {
+    const access = await getSubscriptionAccess(
+      fakeSupabase({ subscription_tier: "plus", subscription_status: "active" }),
+      OWNER_ID,
+    );
+    expect(access.hasPlus).toBe(true);
+  });
+
+  it("keeps a live trial entitled regardless of the paid period end", async () => {
+    const access = await getSubscriptionAccess(
+      fakeSupabase({
+        subscription_tier: "plus",
+        subscription_status: "trialing",
+        trial_ends_at: new Date(Date.now() + 3 * DAY).toISOString(),
+        subscription_current_period_ends_at: new Date(Date.now() - DAY).toISOString(),
+      }),
+      OWNER_ID,
+    );
+    expect(access.hasPlus).toBe(true);
+    expect(access.status).toBe("trialing");
+  });
+});
+
+describe("getVideoGenerationCount", () => {
+  // A job that dies at the stitch has already had its scenes rendered and
+  // billed, so it has to count against the free allowance like any other.
+  it("counts failed jobs alongside running and completed ones", async () => {
+    const statuses: string[][] = [];
+    const builder: Record<string, unknown> = {
+      select: () => builder,
+      eq: () => builder,
+      in: (_column: string, values: string[]) => {
+        statuses.push(values);
+        return builder;
+      },
+      then: (resolve: (value: { count: number; error: null }) => unknown) => resolve({ count: 2, error: null }),
+    };
+    const supabase = { from: () => builder } as unknown as SupabaseClient;
+
+    await expect(getVideoGenerationCount(supabase, OWNER_ID)).resolves.toBe(2);
+    expect(statuses[0]).toContain("failed");
+    expect(statuses[0]).toContain("completed");
   });
 });
 
