@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { CreditCard, RotateCcw, Settings2 } from "lucide-react";
+import { CreditCard, RefreshCw, RotateCcw, Settings2 } from "lucide-react";
 import {
   configureNativePurchases,
   getNativeManagementUrl,
@@ -19,60 +18,84 @@ import {
  *
  * Apple's Guideline 3.1.1 requires digital subscriptions sold in the app to go
  * through In-App Purchase, so the web checkout link must not be reachable from a
- * native build. This renders in its place and reports, via `onUnavailable`, when
- * native purchasing isn't configured — the caller then falls back to the web
- * flow, which is correct on the web and never happens on device.
+ * native build. This renders in its place.
+ *
+ * When the offering comes back empty this component used to tell its parent to
+ * render something else instead, which took Restore purchases down with it — and
+ * Restore is a Guideline 3.1.1 requirement, so it must never be conditionally
+ * removed. An unavailable store is now a state inside this component: the buy
+ * control disappears, an explanation and a retry take its place, and Restore and
+ * Manage subscription stay exactly where they were.
  */
 export function NativeUpgrade({
   userId,
   hasPlus,
-  onUnavailable,
+  onPurchased,
 }: {
   userId: string;
   hasPlus: boolean;
-  onUnavailable: () => void;
+  onPurchased?: () => void | Promise<void>;
 }) {
-  const router = useRouter();
   const [offers, setOffers] = useState<PlusOffer[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [manageUrl, setManageUrl] = useState<string | null>(null);
+  const [storeState, setStoreState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [reloadToken, setReloadToken] = useState(0);
   const [busy, setBusy] = useState<"purchase" | "restore" | null>(null);
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
 
   useEffect(() => {
-    if (!isNativePurchaseAvailable()) {
-      onUnavailable();
-      return;
-    }
-
     let active = true;
     void (async () => {
+      if (!isNativePurchaseAvailable()) {
+        if (active) setStoreState("unavailable");
+        return;
+      }
+
+      setStoreState("loading");
       try {
         await configureNativePurchases(userId);
-        const [plus, management] = await Promise.all([getPlusOffers(), getNativeManagementUrl()]);
+      } catch {
+        if (active) setStoreState("unavailable");
+        return;
+      }
+
+      // Resolved on its own rather than inside the offering fetch. Sharing a
+      // Promise.all with getPlusOffers meant an unreachable store — the likely
+      // failure, and the one getOfferings throws on while getNativeManagementUrl
+      // catches its own — took Manage subscription down with the buy button. An
+      // active subscriber needs that link most exactly when the store is
+      // misbehaving. It still comes after configure, because the SDK has no
+      // customer to describe until then.
+      void getNativeManagementUrl().then((url) => {
+        if (active) setManageUrl(url);
+      });
+
+      try {
+        const plus = await getPlusOffers();
         if (!active) return;
 
-        setManageUrl(management);
         // No packages usually means the products aren't approved yet or the
-        // store isn't reachable. Falling back beats showing a buy button that
-        // cannot work.
+        // store isn't reachable. Showing a buy button that cannot work is worse
+        // than saying so.
         if (!plus.length) {
-          onUnavailable();
+          setStoreState("unavailable");
           return;
         }
         setOffers(plus);
         // Annual first if it exists — it is the better deal, and preselecting it
         // matches the order the paywall lists them in.
         setSelected(plus.find((offer) => offer.period === "P1Y")?.identifier ?? plus[0].identifier);
+        setStoreState("ready");
       } catch {
-        if (active) onUnavailable();
+        if (active) setStoreState("unavailable");
       }
     })();
 
     return () => {
       active = false;
     };
-  }, [userId, onUnavailable]);
+  }, [userId, reloadToken]);
 
   const buy = useCallback(async () => {
     const offer = offers.find((entry) => entry.identifier === selected);
@@ -90,10 +113,12 @@ export function NativeUpgrade({
     }
 
     setMessage({ tone: "info", text: "You’re on Clariti Plus. Thanks for supporting the work." });
-    // The webhook writes the entitlement server-side; refresh rather than
-    // optimistically unlocking, so the UI reflects what the server actually has.
-    router.refresh();
-  }, [offers, router, selected]);
+    // The entitlement is written server-side, so the paywall has to re-read it
+    // rather than optimistically unlock. router.refresh() cannot do that here:
+    // the billing page fetches its access state from a client effect that only
+    // runs once, so the caller hands down the refetch itself.
+    await onPurchased?.();
+  }, [offers, onPurchased, selected]);
 
   const restore = useCallback(async () => {
     setMessage(null);
@@ -107,60 +132,69 @@ export function NativeUpgrade({
     }
     if (result.restored) {
       setMessage({ tone: "info", text: "Your subscription is restored." });
-      router.refresh();
+      await onPurchased?.();
       return;
     }
     setMessage({ tone: "info", text: "No previous purchase found on this Apple Account." });
-  }, [router]);
-
-  if (hasPlus) {
-    return (
-      <div className="native-billing-actions">
-        {manageUrl && (
-          <a className="billing-secondary-cta" href={manageUrl} target="_blank" rel="noreferrer">
-            <Settings2 /> Manage subscription
-          </a>
-        )}
-        <button type="button" className="billing-secondary-cta" onClick={() => void restore()} disabled={busy !== null}>
-          <RotateCcw /> {busy === "restore" ? "Restoring…" : "Restore purchases"}
-        </button>
-        {message && <BillingNotice tone={message.tone} text={message.text} />}
-      </div>
-    );
-  }
-
-  if (!offers.length) return null;
+  }, [onPurchased]);
 
   return (
     <div className="native-billing-actions">
-      <fieldset className="native-plan-choice">
-        <legend className="native-plan-legend">Choose a plan</legend>
-        {offers.map((offer) => {
-          const period = readablePeriod(offer.period);
-          return (
-            <label key={offer.identifier} className="native-plan-option">
-              <input
-                type="radio"
-                name="clariti-plus-plan"
-                value={offer.identifier}
-                checked={selected === offer.identifier}
-                onChange={() => setSelected(offer.identifier)}
-                disabled={busy !== null}
-              />
-              <span className="native-plan-label">
-                {/* The store's own localised string, verbatim: it is the only
-                    price that is correct in every storefront. */}
-                <strong>{offer.priceString}</strong>
-                {period && <span>per {period}</span>}
-              </span>
-            </label>
-          );
-        })}
-      </fieldset>
+      {!hasPlus && storeState === "ready" && (
+        <>
+          <fieldset className="native-plan-choice">
+            <legend className="native-plan-legend">Choose a plan</legend>
+            {offers.map((offer) => {
+              const period = readablePeriod(offer.period);
+              return (
+                <label key={offer.identifier} className="native-plan-option">
+                  <input
+                    type="radio"
+                    name="clariti-plus-plan"
+                    value={offer.identifier}
+                    checked={selected === offer.identifier}
+                    onChange={() => setSelected(offer.identifier)}
+                    disabled={busy !== null}
+                  />
+                  <span className="native-plan-label">
+                    {/* The store's own localised string, verbatim: it is the only
+                        price that is correct in every storefront. */}
+                    <strong>{offer.priceString}</strong>
+                    {period && <span>per {period}</span>}
+                  </span>
+                </label>
+              );
+            })}
+          </fieldset>
 
-      <button type="button" className="billing-primary-cta" onClick={() => void buy()} disabled={busy !== null || !selected}>
-        <CreditCard /> {busy === "purchase" ? "Opening the App Store…" : "Subscribe to Clariti Plus"}
-      </button>
+          <button type="button" className="billing-primary-cta" onClick={() => void buy()} disabled={busy !== null || !selected}>
+            <CreditCard /> {busy === "purchase" ? "Opening the App Store…" : "Subscribe to Clariti Plus"}
+          </button>
+        </>
+      )}
+
+      {!hasPlus && storeState === "unavailable" && (
+        <>
+          <BillingNotice
+            tone="info"
+            text="The App Store did not return the Clariti Plus subscription on this device. If you have already subscribed, Restore purchases will bring it back."
+          />
+          <button
+            type="button"
+            className="billing-secondary-cta"
+            onClick={() => setReloadToken((token) => token + 1)}
+            disabled={busy !== null}
+          >
+            <RefreshCw /> Check again
+          </button>
+        </>
+      )}
+
+      {manageUrl && (
+        <a className="billing-secondary-cta" href={manageUrl} target="_blank" rel="noreferrer">
+          <Settings2 /> Manage subscription
+        </a>
+      )}
 
       <button type="button" className="billing-secondary-cta" onClick={() => void restore()} disabled={busy !== null}>
         <RotateCcw /> {busy === "restore" ? "Restoring…" : "Restore purchases"}

@@ -8,7 +8,7 @@ import {
   Video,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { ClaritiShell } from "@/components/clariti-shell";
@@ -25,6 +25,7 @@ type AccessState = {
   videosGeneratedCount: number;
   freeDocumentLimit: number;
   freeVideoLimit: number;
+  webCheckoutAvailable: boolean;
 };
 
 const DEFAULT_ACCESS: AccessState = {
@@ -36,6 +37,7 @@ const DEFAULT_ACCESS: AccessState = {
   videosGeneratedCount: 0,
   freeDocumentLimit: 3,
   freeVideoLimit: 1,
+  webCheckoutAvailable: true,
 };
 
 const FEATURES = [
@@ -67,45 +69,58 @@ function BillingPageContent() {
   // needs it before it can offer a store purchase.
   const [userId, setUserId] = useState<string | null>(null);
 
+  /**
+   * Hoisted out of the mount effect so a StoreKit purchase can re-read
+   * entitlement. Without it the paywall kept saying "Free" with a live Subscribe
+   * button after a successful purchase — router.refresh() cannot re-run an
+   * effect with an empty dependency list, and /api/billing/access already
+   * force-syncs from RevenueCat, so this one fetch is the whole fix.
+   */
+  const loadAccess = useCallback(async () => {
+    try {
+      const response = await fetch("/api/billing/access", { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = await response.json();
+      if (!payload?.ok) return;
+      setAccess({
+        hasPlus: Boolean(payload.hasPlus),
+        status: payload.status ?? "free",
+        trialEndsAt: payload.trialEndsAt ?? null,
+        currentPeriodEndsAt: payload.currentPeriodEndsAt ?? null,
+        documentsAnalyzedCount: payload.documentsAnalyzedCount ?? 0,
+        videosGeneratedCount: payload.videosGeneratedCount ?? 0,
+        freeDocumentLimit: payload.freeDocumentLimit ?? 3,
+        freeVideoLimit: payload.freeVideoLimit ?? 1,
+        webCheckoutAvailable: payload.webCheckoutAvailable !== false,
+      });
+    } catch {
+      // Leave the last known state on screen rather than flashing back to Free.
+    }
+  }, []);
+
   useEffect(() => {
     let alive = true;
-    async function load() {
+    async function loadAuth() {
       try {
-        const [authResponse, accessResponse] = await Promise.all([
-          fetch("/api/auth/status", { cache: "no-store" }),
-          fetch("/api/billing/access", { cache: "no-store" }),
-        ]);
-        const authPayload = await authResponse.json().catch(() => null);
+        const response = await fetch("/api/auth/status", { cache: "no-store" });
+        const payload = await response.json().catch(() => null);
         if (!alive) return;
-        setAuthenticated(Boolean(authPayload?.authenticated));
-        setUserId(authPayload?.user?.id ?? null);
-
-        if (accessResponse.ok) {
-          const payload = await accessResponse.json();
-          if (alive && payload?.ok) {
-            setAccess({
-              hasPlus: Boolean(payload.hasPlus),
-              status: payload.status ?? "free",
-              trialEndsAt: payload.trialEndsAt ?? null,
-              currentPeriodEndsAt: payload.currentPeriodEndsAt ?? null,
-              documentsAnalyzedCount: payload.documentsAnalyzedCount ?? 0,
-              videosGeneratedCount: payload.videosGeneratedCount ?? 0,
-              freeDocumentLimit: payload.freeDocumentLimit ?? 3,
-              freeVideoLimit: payload.freeVideoLimit ?? 1,
-            });
-          }
-        }
+        setAuthenticated(Boolean(payload?.authenticated));
+        setUserId(payload?.user?.id ?? null);
       } catch {
         if (alive) setAuthenticated(false);
-      } finally {
-        if (alive) setLoading(false);
       }
     }
-    void load();
+
+    void (async () => {
+      await Promise.all([loadAuth(), loadAccess()]);
+      if (alive) setLoading(false);
+    })();
+
     return () => {
       alive = false;
     };
-  }, []);
+  }, [loadAccess]);
 
   const trialEnds = formatDate(access.trialEndsAt);
   const paidUntil = formatDate(access.currentPeriodEndsAt);
@@ -185,6 +200,8 @@ function BillingPageContent() {
                 authenticated={authenticated}
                 hasPlus={access.hasPlus}
                 label={access.status === "expired" ? "Renew Clariti Plus" : "Start Clariti Plus"}
+                webCheckoutAvailable={access.webCheckoutAvailable}
+                onPurchased={loadAccess}
               />
             )}
           </div>

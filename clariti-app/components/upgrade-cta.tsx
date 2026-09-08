@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { CreditCard, Sparkles } from "lucide-react";
 import { isNativeShell } from "@/lib/billing/native-purchases";
 import { NativeUpgrade } from "@/components/native-upgrade";
@@ -12,9 +12,9 @@ import { NativeUpgrade } from "@/components/native-upgrade";
  * On the web this is the RevenueCat Web Purchase Link. Inside the iOS/Android
  * shell it must be StoreKit/Play Billing instead — Guideline 3.1.1 forbids
  * sending someone out to a web checkout for digital content — so `NativeUpgrade`
- * takes over there. It calls back through `onUnavailable` if native purchasing
- * turns out not to be configured, and rather than falling back to the web link
- * (which would be the violation) the shell shows a plain "unavailable" message.
+ * takes over there and stays in charge even when the store has nothing to sell:
+ * falling back to the web link would be the violation, and dropping the control
+ * altogether would take Restore purchases with it.
  *
  * Both billing surfaces render this, so neither can drift out of compliance
  * independently.
@@ -25,12 +25,18 @@ export function UpgradeCta({
   hasPlus,
   label,
   className,
+  onPurchased,
+  webCheckoutAvailable = true,
 }: {
   userId: string | null;
   authenticated: boolean;
   hasPlus: boolean;
   label: string;
   className?: string;
+  /** Re-read entitlement after a store purchase — see NativeUpgrade. */
+  onPurchased?: () => void | Promise<void>;
+  /** False when /api/billing/checkout has nowhere to send a web buyer. */
+  webCheckoutAvailable?: boolean;
 }) {
   // Capacitor's platform is only knowable in the browser. useSyncExternalStore
   // rather than an effect so the server renders nothing and the client renders
@@ -42,12 +48,8 @@ export function UpgradeCta({
     () => (isNativeShell() ? ("native" as const) : ("web" as const)),
     () => "unknown" as const,
   );
-  const [nativeUnavailable, setNativeUnavailable] = useState(false);
-  const onUnavailable = useCallback(() => setNativeUnavailable(true), []);
 
-  const surface = platform === "native" && nativeUnavailable ? "native-unavailable" : platform;
-
-  if (surface === "unknown") return null;
+  if (platform === "unknown") return null;
 
   if (!authenticated || !userId) {
     return (
@@ -57,16 +59,8 @@ export function UpgradeCta({
     );
   }
 
-  if (surface === "native") {
-    return <NativeUpgrade userId={userId} hasPlus={hasPlus} onUnavailable={onUnavailable} />;
-  }
-
-  if (surface === "native-unavailable") {
-    return (
-      <p className="billing-notice" role="status">
-        Subscriptions are temporarily unavailable in the app. Please try again shortly.
-      </p>
-    );
+  if (platform === "native") {
+    return <NativeUpgrade userId={userId} hasPlus={hasPlus} onPurchased={onPurchased} />;
   }
 
   if (hasPlus) {
@@ -74,6 +68,17 @@ export function UpgradeCta({
       <a href="/api/billing/portal" className={className ?? "billing-secondary-cta"}>
         <CreditCard /> Manage subscription
       </a>
+    );
+  }
+
+  // No configured web checkout means /api/billing/checkout has nowhere to send
+  // this person, and a button that lands on a "Page not found" is worse than an
+  // honest sentence.
+  if (!webCheckoutAvailable) {
+    return (
+      <p className="billing-notice" role="status">
+        Clariti Plus cannot be purchased on the web right now. You can subscribe in the Clariti app on iPhone.
+      </p>
     );
   }
 

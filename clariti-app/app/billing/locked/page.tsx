@@ -2,7 +2,8 @@
 
 import { CreditCard, FileHeart, Lock } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { SignOutButton } from "@/components/sign-out-button";
 import { UpgradeCta } from "@/components/upgrade-cta";
 import "../billing-plans.css";
@@ -13,25 +14,35 @@ function formatDate(value: string | null) {
 }
 
 export default function BillingLockedPage() {
+  const router = useRouter();
   const [trialEndedLabel, setTrialEndedLabel] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [webCheckoutAvailable, setWebCheckoutAvailable] = useState(true);
+
+  /** Also the post-purchase refetch: once Plus is on, this screen is over. */
+  const loadAccess = useCallback(async () => {
+    const payload = await fetch("/api/billing/access", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (!payload?.ok) return;
+    setTrialEndedLabel(formatDate(payload.trialEndsAt ?? null));
+    setWebCheckoutAvailable(payload.webCheckoutAvailable !== false);
+    if (payload.hasPlus) router.replace("/workspace");
+  }, [router]);
 
   useEffect(() => {
     let alive = true;
-    Promise.all([
-      fetch("/api/billing/access", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/auth/status", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
-    ])
-      .then(([accessPayload, authPayload]) => {
-        if (!alive) return;
-        if (accessPayload?.ok) setTrialEndedLabel(formatDate(accessPayload.trialEndsAt ?? null));
-        setUserId(authPayload?.user?.id ?? null);
-      })
-      .catch(() => undefined);
+    void (async () => {
+      const authPayload = await fetch("/api/auth/status", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (alive) setUserId(authPayload?.user?.id ?? null);
+      await loadAccess();
+    })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [loadAccess]);
 
   return (
     <main className="billing-lock-page">
@@ -58,6 +69,8 @@ export default function BillingLockedPage() {
             hasPlus={false}
             label="Upgrade to Plus"
             className="billing-lock-cta"
+            webCheckoutAvailable={webCheckoutAvailable}
+            onPurchased={loadAccess}
           />
           <Link href="/billing" className="billing-lock-secondary">View billing details</Link>
           <SignOutButton className="billing-lock-signout">Sign out</SignOutButton>

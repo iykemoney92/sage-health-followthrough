@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appOriginFromRequest } from "@/lib/auth/app-origin";
 import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
-import { getBillingMode, getRevenueCatPurchaseUrl } from "@/lib/billing/revenuecat";
+import { getRevenueCatPurchaseUrl, getStripeSecretKey } from "@/lib/billing/revenuecat";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
 import { isNativeShellRequest } from "@/lib/native-shell";
-
-function getStripeSecretKey() {
-  const mode = getBillingMode();
-  if (mode === "live") {
-    return process.env.STRIPE_SECRET_KEY || process.env.STRIPE_TEST_SECRET_KEY || "";
-  }
-  return process.env.STRIPE_TEST_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "";
-}
 
 function appUrl(path: string, request: NextRequest) {
   return new URL(path, appOriginFromRequest(request));

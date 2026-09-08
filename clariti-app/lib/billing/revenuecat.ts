@@ -4,7 +4,6 @@
 // Public Web Billing keys below are safe defaults (not secrets); override via env for a different project.
 const SANDBOX_WEB_BILLING_KEY = "rcb_sb_UtzSoDBAiQjzqIMEPEeLYONzl";
 const LIVE_WEB_BILLING_KEY = "rcb_HEYtcZcnyvyWUyjUeEALOgYCFHOV";
-const LIVE_PURCHASE_URL = "https://pay.rev.cat/kwyahcrkjwtnlsep/";
 const SANDBOX_PURCHASE_URL = "https://pay.rev.cat/sandbox/mdknmcezqkniaxti/";
 
 export function getBillingMode(): "sandbox" | "live" {
@@ -26,12 +25,41 @@ export function getRevenueCatWebBillingPublicKey() {
   return process.env.NEXT_PUBLIC_CLARITI_REVENUECAT_SANDBOX_WEB_BILLING_KEY || SANDBOX_WEB_BILLING_KEY;
 }
 
-/** Hosted RevenueCat Web Purchase Link (pay.rev.cat/...). Checkout appends the app user id. */
+/**
+ * Hosted RevenueCat Web Purchase Link (pay.rev.cat/...). Checkout appends the
+ * app user id.
+ *
+ * Live has no baked-in default. The one that used to live here outlived the
+ * RevenueCat link it named, and because it was a code constant every signed-in
+ * web user kept being sent to a "Page not found" that no environment change
+ * could switch off. Coming only from the environment, an operator can retarget
+ * the web funnel — or close it — without a deploy, and callers can tell that
+ * there is nowhere to send a buyer rather than sending them into a dead end.
+ */
 export function getRevenueCatPurchaseUrl() {
   const mode = getBillingMode();
   return mode === "live"
-    ? (process.env.CLARITI_REVENUECAT_WEB_PURCHASE_URL || LIVE_PURCHASE_URL)
+    ? (process.env.CLARITI_REVENUECAT_WEB_PURCHASE_URL || "").trim()
     : (process.env.CLARITI_REVENUECAT_SANDBOX_WEB_PURCHASE_URL || SANDBOX_PURCHASE_URL);
+}
+
+/** The secret Stripe key for the mode in play — checkout's emergency fallback. */
+export function getStripeSecretKey() {
+  const mode = getBillingMode();
+  if (mode === "live") {
+    return process.env.STRIPE_SECRET_KEY || process.env.STRIPE_TEST_SECRET_KEY || "";
+  }
+  return process.env.STRIPE_TEST_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "";
+}
+
+/**
+ * True when /api/billing/checkout has somewhere to send a web buyer. The paywall
+ * reads this so it can say so plainly instead of rendering a button that lands
+ * on an error page.
+ */
+export function hasWebCheckoutConfig() {
+  if (getRevenueCatPurchaseUrl()) return true;
+  return Boolean(getStripeSecretKey() && process.env.STRIPE_PLUS_PRICE_ID?.trim());
 }
 
 /** Secret REST API key for server-side subscriber lookups (sync-plus). Not required for the webhook path. */

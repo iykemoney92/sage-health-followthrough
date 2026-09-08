@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasWebCheckoutConfig } from "@/lib/billing/revenuecat";
 import { syncPlusFromRevenueCat } from "@/lib/billing/sync-plus";
 import {
   FREE_DOCUMENT_LIMIT,
@@ -39,5 +40,9 @@ export async function GET() {
     videosGeneratedCount: access.videosGeneratedCount,
     freeDocumentLimit: FREE_DOCUMENT_LIMIT,
     freeVideoLimit: FREE_VIDEO_LIMIT,
+    // So the web paywall can drop the Upgrade button rather than send someone to
+    // a checkout that is not configured. The native shell ignores this and buys
+    // through StoreKit either way.
+    webCheckoutAvailable: hasWebCheckoutConfig(),
   });
 }

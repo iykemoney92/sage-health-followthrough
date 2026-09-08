@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appOriginFromRequest } from "@/lib/auth/app-origin";
-import { getBillingMode } from "@/lib/billing/revenuecat";
+import { getStripeSecretKey } from "@/lib/billing/revenuecat";
 import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
 import { getOptionalSupabaseServiceClient } from "@/lib/integrations/supabase";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
@@ -14,12 +14,6 @@ type StripeCheckoutSession = {
   customer?: string | { id?: string } | null;
   metadata?: { owner_id?: string } | null;
 };
-
-function getStripeSecretKey() {
-  const mode = getBillingMode();
-  if (mode === "live") return process.env.STRIPE_SECRET_KEY || process.env.STRIPE_TEST_SECRET_KEY || "";
-  return process.env.STRIPE_TEST_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "";
-}
 
 function customerIdFrom(value: string | { id?: string } | null | undefined) {
   if (!value) return null;
