@@ -119,8 +119,35 @@ async function triggerDueFollowUps(request: NextRequest, mode: "agent" | "cron")
       continue;
     }
 
-    const email = looksLikeEmail(contact) ? contact.toLowerCase() : await resolveOwnerEmail(supabase, followUp.owner_id);
+    // The destination is resolved from the account, not read off the row. Rows written before
+    // check-ins were locked to the account email can name any address a client sent, and this
+    // is Clariti-branded mail from Clariti's sending domain — so the stored contact only
+    // decides whether the row is a legacy phone one, never where the mail goes.
+    const owner = await resolveOwnerEmail(supabase, followUp.owner_id);
+    if (!owner.ok) {
+      // Every row depends on this lookup now, so a Supabase blip would otherwise
+      // cancel a scheduled check-in outright: the batch claim above has already
+      // set triggered_at, and the selector only picks up rows where it is null.
+      // Release the claim the same way a failed send does and let the next tick
+      // try again.
+      await supabase
+        .from("clariti_follow_ups")
+        .update({ triggered_at: null, call_status: "failed", call_error: owner.error })
+        .eq("id", followUp.id);
+      console.error("[agent/trigger-follow-ups] owner lookup failed", {
+        mode,
+        followUpId: followUp.id,
+        ownerId: followUp.owner_id,
+        error: owner.error,
+      });
+      results.push({ followUpId: followUp.id, status: "failed", error: owner.error });
+      continue;
+    }
+
+    const email = owner.email;
     if (!email) {
+      // The account answered and has no address on it — a deleted owner, not an
+      // outage — so the row is genuinely undeliverable and stays claimed.
       await supabase
         .from("clariti_follow_ups")
         .update({ call_status: "skipped_no_email" })
@@ -198,13 +225,19 @@ async function triggerDueFollowUps(request: NextRequest, mode: "agent" | "cron")
   return NextResponse.json({ ok: true, mode, triggered: results });
 }
 
+/**
+ * "The account has no email" and "the admin API did not answer" are different
+ * facts and get different handling, so they cannot both come back as null. One
+ * is permanent and cancels the check-in; the other is an outage the next tick
+ * should retry.
+ */
 async function resolveOwnerEmail(
   supabase: NonNullable<ReturnType<typeof getOptionalSupabaseServiceClient>>,
   ownerId: string,
-) {
+): Promise<{ ok: true; email: string | null } | { ok: false; error: string }> {
   const { data, error } = await supabase.auth.admin.getUserById(ownerId);
-  if (error) return null;
-  return data.user?.email?.trim().toLowerCase() || null;
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, email: data.user?.email?.trim().toLowerCase() || null };
 }
 
 function looksLikeEmail(value: string) {

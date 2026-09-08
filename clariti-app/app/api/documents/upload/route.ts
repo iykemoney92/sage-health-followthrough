@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { documentKindSchema } from "@/lib/schemas/clariti";
+import { MAX_UPLOAD_BYTES, uploadSizeLimitError } from "@/lib/domain/clariti-uploads";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
 
 const metadataSchema = z.object({
@@ -25,6 +26,12 @@ export async function POST(request: NextRequest) {
 
   if (!(file instanceof File)) {
     return NextResponse.json({ ok: false, error: "A document file is required." }, { status: 400 });
+  }
+  // Mirrors the extract route, and for the same reason: Vercel refuses a larger body at
+  // the edge with a non-JSON 413, so this only covers the narrow band between the limit
+  // Clariti advertises and the one the platform imposes.
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json({ ok: false, error: uploadSizeLimitError() }, { status: 400 });
   }
   if (!parsed.success) {
     return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });

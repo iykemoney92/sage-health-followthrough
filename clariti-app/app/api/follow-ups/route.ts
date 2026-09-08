@@ -60,9 +60,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  const checkInEmail = (email ?? user?.email ?? "").trim().toLowerCase();
-  if (!checkInEmail) {
-    return NextResponse.json({ ok: false, error: "An email address is required for Clariti check-ins." }, { status: 400 });
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "Supabase auth is required to schedule Clariti check-ins." }, { status: 503 });
+  }
+
+  // The destination is the account's own address, never one the caller names. A check-in is
+  // Clariti-branded mail from Clariti's sending domain, so accepting a client-supplied address
+  // made this a relay anyone with a session could point at a stranger — paid for in Clariti's
+  // sender reputation. Supabase has already verified this address at sign-up, which is why
+  // matching it is enough and a separate verification round trip is not needed.
+  const checkInEmail = (user.email ?? "").trim().toLowerCase();
+  if (!checkInEmail || !user.email_confirmed_at) {
+    return NextResponse.json({
+      ok: false,
+      error: "Confirm the email address on your account before scheduling a check-in.",
+    }, { status: 400 });
+  }
+
+  const requestedEmail = email?.trim().toLowerCase();
+  if (requestedEmail && requestedEmail !== checkInEmail) {
+    return NextResponse.json({
+      ok: false,
+      error: "Clariti sends check-ins to the email address on your account. Change your account email to send them somewhere else.",
+    }, { status: 400 });
   }
 
   const callPrompt =
@@ -73,68 +93,66 @@ export async function POST(request: NextRequest) {
   let persistedId: string | null = null;
   let persistedMessage: { id: string; role: string; content: string; created_at: string } | null = null;
 
-  if (user) {
-    const supabase = await getSupabaseSessionClient();
-    const plusResponse = await requirePlusAccess(supabase, user.id, "follow_ups");
-    if (plusResponse) return plusResponse;
+  const supabase = await getSupabaseSessionClient();
+  const plusResponse = await requirePlusAccess(supabase, user.id, "follow_ups");
+  if (plusResponse) return plusResponse;
 
-    const { data: session, error: sessionError } = await supabase
-      .from("clariti_sessions")
-      .select("id")
-      .eq("id", sessionId)
-      .eq("owner_id", user.id)
-      .maybeSingle();
+  const { data: session, error: sessionError } = await supabase
+    .from("clariti_sessions")
+    .select("id")
+    .eq("id", sessionId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
 
-    if (sessionError || !session) {
-      return NextResponse.json({ ok: false, error: "Clariti could not find this saved analysis." }, { status: 404 });
-    }
-
-    const insertPayload = {
-      session_id: sessionId,
-      owner_id: user.id,
-      channel,
-      action,
-      document_title: analysis.title,
-      document_kind: analysis.kind,
-      call_prompt: callPrompt,
-      // Reuse phone_number column as contact destination for email check-ins.
-      phone_number: checkInEmail,
-      safety_note: analysis.safetyNote,
-      scheduled_for: scheduledFor,
-      analysis_payload: analysis,
-    };
-    const { data, error } = await supabase
-      .from("clariti_follow_ups")
-      .insert(insertPayload)
-      .select("id")
-      .maybeSingle();
-
-    if (error && /phone_number|analysis_payload/i.test(error.message)) {
-      const { analysis_payload: analysisPayloadForNewerSchema, phone_number: phoneNumberForNewerSchema, ...fallbackPayload } = insertPayload;
-      void analysisPayloadForNewerSchema;
-      void phoneNumberForNewerSchema;
-      const { data: fallbackData } = await supabase
-        .from("clariti_follow_ups")
-        .insert(fallbackPayload)
-        .select("id")
-        .maybeSingle();
-      persistedId = (fallbackData?.id as string | undefined) ?? null;
-    } else if (error) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-    } else {
-      persistedId = (data?.id as string | undefined) ?? null;
-    }
-
-    const confirmation =
-      `Done. I’ll email ${checkInEmail} around ${new Date(scheduledFor).toLocaleString()} to check in about: ${action}. ` +
-      "Clariti will ask if anything changed or if you need further analysis.";
-    const { data: messageData } = await supabase
-      .from("clariti_messages")
-      .insert({ session_id: sessionId, role: "assistant", content: confirmation })
-      .select("id, role, content, created_at")
-      .maybeSingle();
-    persistedMessage = (messageData as typeof persistedMessage) ?? null;
+  if (sessionError || !session) {
+    return NextResponse.json({ ok: false, error: "Clariti could not find this saved analysis." }, { status: 404 });
   }
+
+  const insertPayload = {
+    session_id: sessionId,
+    owner_id: user.id,
+    channel,
+    action,
+    document_title: analysis.title,
+    document_kind: analysis.kind,
+    call_prompt: callPrompt,
+    // Reuse phone_number column as contact destination for email check-ins.
+    phone_number: checkInEmail,
+    safety_note: analysis.safetyNote,
+    scheduled_for: scheduledFor,
+    analysis_payload: analysis,
+  };
+  const { data, error } = await supabase
+    .from("clariti_follow_ups")
+    .insert(insertPayload)
+    .select("id")
+    .maybeSingle();
+
+  if (error && /phone_number|analysis_payload/i.test(error.message)) {
+    const { analysis_payload: analysisPayloadForNewerSchema, phone_number: phoneNumberForNewerSchema, ...fallbackPayload } = insertPayload;
+    void analysisPayloadForNewerSchema;
+    void phoneNumberForNewerSchema;
+    const { data: fallbackData } = await supabase
+      .from("clariti_follow_ups")
+      .insert(fallbackPayload)
+      .select("id")
+      .maybeSingle();
+    persistedId = (fallbackData?.id as string | undefined) ?? null;
+  } else if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  } else {
+    persistedId = (data?.id as string | undefined) ?? null;
+  }
+
+  const confirmation =
+    `Done. I’ll email ${checkInEmail} around ${new Date(scheduledFor).toLocaleString()} to check in about: ${action}. ` +
+    "Clariti will ask if anything changed or if you need further analysis.";
+  const { data: messageData } = await supabase
+    .from("clariti_messages")
+    .insert({ session_id: sessionId, role: "assistant", content: confirmation })
+    .select("id, role, content, created_at")
+    .maybeSingle();
+  persistedMessage = (messageData as typeof persistedMessage) ?? null;
 
   return NextResponse.json({
     ok: true,

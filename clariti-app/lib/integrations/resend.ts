@@ -149,6 +149,37 @@ ${site.replace(/^https?:\/\//, "")}
 `;
 }
 
+export function resetPasswordEmailHtml({ resetUrl, firstName }: { resetUrl: string; firstName?: string }) {
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  return claritiEmailShell({
+    preview: "Set a new password for your Clariti account.",
+    eyebrow: "Reset password",
+    title: "Reset your password.",
+    bodyHtml: `${greeting}<br/><br/>Use the button below to set a new password for your Clariti account. The link works once and expires in about an hour.`,
+    ctaLabel: "Set a new password",
+    ctaUrl: resetUrl,
+    footerNote: "If you didn’t ask to reset your password, you can ignore this email. Your current password keeps working.",
+  });
+}
+
+export function resetPasswordEmailText({ resetUrl, firstName }: { resetUrl: string; firstName?: string }) {
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  const site = claritiAppUrl();
+  return `Clariti — Reset your password
+
+${greeting}
+
+Set a new password for your Clariti account:
+${resetUrl}
+
+The link works once and expires in about an hour.
+
+If you didn’t ask to reset your password, you can ignore this email. Your current password keeps working.
+
+${site.replace(/^https?:\/\//, "")}
+`;
+}
+
 export function checkInEmailHtml({
   documentTitle,
   action,

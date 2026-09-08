@@ -3,12 +3,11 @@ import { generateText, uploadFile } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { MAX_UPLOAD_BYTES, uploadSizeLimitError } from "@/lib/domain/clariti-uploads";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-const MAX_FILE_SIZE = 12 * 1024 * 1024;
 
 /**
  * What Clariti can actually read. Anything else reaches a vision model that will
@@ -44,8 +43,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "A document file is required." }, { status: 400 });
     }
 
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ ok: false, error: "Use a file smaller than 12MB." }, { status: 400 });
+    // Vercel refuses a body over 4.5MB at the edge, before this function is invoked, so
+    // anything much larger never reaches this check — it comes back as a plain-text 413.
+    // This fires only in the band between what Clariti advertises and what the platform
+    // allows, and it is what gives that band a JSON error the client can read.
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ ok: false, error: uploadSizeLimitError() }, { status: 400 });
     }
 
     const type = file.type || inferMimeType(file.name);

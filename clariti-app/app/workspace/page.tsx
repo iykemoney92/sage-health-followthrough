@@ -46,6 +46,7 @@ import { FlagCard } from "@/components/clariti/flag-card";
 import { MetricChip } from "@/components/clariti/metric-chip";
 import { KeyPointList } from "@/components/clariti/key-point-list";
 import { AnalysisTeaserCard } from "@/components/clariti/analysis-teaser-card";
+import { prepareDocumentForUpload, readDocumentApiResponse } from "@/components/clariti/document-upload";
 import { buildFallbackAnalysis, inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
 
 type Drawer = "chats" | "documents" | "history";
@@ -201,6 +202,9 @@ function WorkspaceContent() {
   const [videoGenerating, setVideoGenerating] = useState(false);
   const [videoStatus, setVideoStatus] = useState<string | null>(null);
   const [videoProgress, setVideoProgress] = useState(0);
+  // Which pipeline the job actually runs. Production falls back to a single clip whenever
+  // the stitch key is missing, and the progress copy used to narrate five scenes regardless.
+  const [videoPipeline, setVideoPipeline] = useState<string | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [generatedIllustrations, setGeneratedIllustrations] = useState<Record<number, GeneratedIllustration>>({});
   const [expandedIllustration, setExpandedIllustration] = useState<GeneratedIllustration | null>(null);
@@ -372,6 +376,7 @@ function WorkspaceContent() {
     setVideoGenerating(false);
     setVideoStatus(null);
     setVideoProgress(0);
+    setVideoPipeline(null);
     setVideoError(null);
     setVideoScene(0);
     setGeneratedIllustrations({});
@@ -410,6 +415,7 @@ function WorkspaceContent() {
     const inFlight = ["queued", "scripting", "generating_scenes", "stitching"].includes(job.status);
     setVideoStatus(job.status);
     setVideoProgress(job.progress ?? 0);
+    setVideoPipeline(job.pipeline ?? null);
     setVideoError(job.status === "failed" ? formatHumanVideoError(job.error ?? "The video job failed.") : null);
 
     if (inFlight && !videoGeneratingRef.current) {
@@ -916,11 +922,13 @@ function WorkspaceContent() {
     setVideoError(null);
     setVideoStatus("queued");
     setVideoProgress(5);
+    setVideoPipeline(null);
     setCanvasOpen(false);
     try {
       const job = await createSceneVideoJob(analysis, durationSeconds, sessionId);
       setVideoStatus(job.status);
       setVideoProgress(job.progress ?? 5);
+      setVideoPipeline(job.pipeline ?? null);
       const completed = await pollSceneVideoJob(job.id, (status, progress) => {
         setVideoStatus(status);
         setVideoProgress(progress);
@@ -1130,13 +1138,19 @@ function WorkspaceContent() {
     ]);
 
     try {
+      // Shrink the photo, or say plainly that the PDF is too big, before either request goes
+      // out. An oversize body is rejected by the edge with a non-JSON 413 the routes never see.
+      const prepared = await prepareDocumentForUpload(file);
+      if (!prepared.ok) throw new Error(prepared.error);
+      const uploadReadyFile = prepared.file;
+
       const formData = new FormData();
-      formData.set("file", file);
+      formData.set("file", uploadReadyFile);
       const extractResponse = await fetch("/api/documents/extract", { method: "POST", body: formData });
-      const extractPayload = await extractResponse.json().catch(() => null);
-      const extractedText = String(extractPayload?.extractedText ?? extractPayload?.text ?? "");
-      if (!extractResponse.ok || !extractPayload?.ok || !extractedText.trim()) {
-        throw new Error(extractPayload?.error ?? "Could not read that document.");
+      const extractPayload = await readDocumentApiResponse(extractResponse);
+      const extractedText = String(extractPayload.extractedText ?? "");
+      if (!extractResponse.ok || !extractPayload.ok || !extractedText.trim()) {
+        throw new Error(extractPayload.error ?? "Could not read that document.");
       }
       const documentText = extractedText;
       const inferredKind = inferClaritiKind({
@@ -1154,16 +1168,24 @@ function WorkspaceContent() {
       let documentId: string | undefined;
       try {
         const uploadForm = new FormData();
-        uploadForm.set("file", file);
+        uploadForm.set("file", uploadReadyFile);
         uploadForm.set("kind", kind);
         uploadForm.set("extractedText", documentText);
         const uploadResponse = await fetch("/api/documents/upload", { method: "POST", body: uploadForm });
-        const uploadPayload = await uploadResponse.json().catch(() => null);
-        if (uploadResponse.ok && uploadPayload?.ok && uploadPayload.document?.id) {
-          documentId = String(uploadPayload.document.id);
+        const uploadPayload = await readDocumentApiResponse(uploadResponse);
+        if (!uploadResponse.ok || !uploadPayload.ok || !uploadPayload.document?.id) {
+          throw new Error(uploadPayload.error ?? "Clariti could not save this document to your history.");
         }
-      } catch {
-        // Upload is best-effort; analysis can still proceed from extracted text.
+        documentId = String(uploadPayload.document.id);
+      } catch (uploadCaught) {
+        // Analysis can still run from the extracted text, so this is not fatal — but it used to
+        // be swallowed whole, and a document that never reached history looked like a document
+        // that had been saved.
+        const reason = uploadCaught instanceof Error
+          ? uploadCaught.message
+          : "Clariti could not save this document to your history.";
+        console.error("[clariti] document upload failed:", reason);
+        showToast(`${reason} The analysis still ran from the text Clariti read.`);
       }
 
       const analyzeResponse = await fetch("/api/analyze", {
@@ -1356,12 +1378,18 @@ function WorkspaceContent() {
       ]);
     } catch (caught) {
       showToast(caught instanceof Error ? caught.message : "Could not read that document.");
+      // The toast clears itself in under three seconds, so the bubble is the only
+      // durable answer. Telling someone whose PDF is too large to "try again with
+      // a clearer PDF" sends them round the same loop, so the specific reason —
+      // the size cap, most often — is what stays on screen.
       setChatMessages((current) => [
         ...current,
         {
           id: createLocalId("upload-error"),
           role: "assistant",
-          content: "I couldn’t read or analyze that document. Try again with a clearer PDF, image, or .txt file.",
+          content: caught instanceof Error && caught.message
+            ? caught.message
+            : "I couldn’t read or analyze that document. Try again with a clearer PDF, image, or .txt file.",
           createdAt: createLocalTimestamp(),
         },
       ]);
@@ -1387,7 +1415,7 @@ function WorkspaceContent() {
       `I want to set an email check-in about this ${session.tag.toLowerCase()}. ` +
       `Clariti should email me to ask if anything changed, if I need further analysis, or if I want to compare a newer report. ` +
       `Report context: ${analysis.summary}. Suggested focus: ${action}. ` +
-      `Help me choose the purpose and a safe day/time. Use my account email${accountEmail ? ` (${accountEmail})` : ""} unless I give a different one. Do not ask for a phone number.`;
+      `Help me choose the purpose and a safe day/time. Clariti emails my account address${accountEmail ? ` (${accountEmail})` : ""} and cannot send check-ins anywhere else, so do not ask me for an address or a phone number.`;
     await sendMessageToAgent(content, {
       clearInput: false,
       followUpDraftOverride: draft,
@@ -1398,7 +1426,9 @@ function WorkspaceContent() {
 
   const maybeCaptureFollowUpDetails = async (content: string, draft: FollowUpDraft): Promise<"scheduled" | "captured" | "none"> => {
     if (!analysis) return "none";
-    const email = extractEmailAddress(content) ?? draft.email ?? accountEmail ?? undefined;
+    // Check-ins only ever go to the account's own address — the route refuses any other — so an
+    // address typed into the chat is treated as conversation, not as a destination.
+    const email = accountEmail ?? draft.email ?? undefined;
     const hasTime = hasSchedulingTime(content);
     const timingText = hasTime ? content : draft.timingText;
 
@@ -1430,12 +1460,25 @@ function WorkspaceContent() {
           analysis,
         }),
       });
-      const payload = await response.json();
+      // A platform error page is not JSON, and parsing one unguarded threw a
+      // SyntaxError that the catch below would have printed into the chat.
+      const payload = await response.json().catch(() => null);
       if (response.status === 402 && isPlusRequiredPayload(payload)) {
         redirectToUpgrade(payload.message);
         return "none";
       }
-      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not schedule check-in");
+      if (!response.ok || !payload?.ok) {
+        // Only the 400s this route writes itself are sentences meant for a
+        // reader: the wrong address, and an account email that is not confirmed
+        // yet. Everything else it returns is a zod flatten() object or a raw
+        // Postgres message, which would reach the chat as "[object Object]" or
+        // leak the database's own words. Those go to the console instead.
+        const actionable = response.status === 400 && typeof payload?.error === "string" ? payload.error : null;
+        if (!actionable) {
+          console.error("[workspace] check-in save failed", { status: response.status, error: payload?.error });
+        }
+        throw new Error(actionable ?? "");
+      }
       setFollowUpDraft(null);
       const savedMessage = payload.message as { id: string; role: string; content: string; created_at?: string } | null;
       setChatMessages((current) => [
@@ -1454,14 +1497,20 @@ function WorkspaceContent() {
       ]);
       track("email_checkin_scheduled", { kind: analysis.kind });
       return "scheduled";
-    } catch {
+    } catch (caught) {
       setFollowUpDraft({ ...draft, email, timingText });
+      // The route rejects an address that is not the account's own, and refuses until the
+      // account email is confirmed. Both are things the person can act on, so the reason
+      // goes in the reply rather than being flattened into "try again". Anything else
+      // arrives here with no message and falls back to the plain sentence.
       setChatMessages((current) => [
         ...current,
         {
           id: createLocalId("local-followup-save-failed"),
           role: "assistant",
-          content: "I have the check-in details, but I could not save them yet. Please try again in a moment.",
+          content: caught instanceof Error && caught.message
+            ? `I have the check-in details, but I could not save them. ${caught.message}`
+            : "I have the check-in details, but I could not save them yet. Please try again in a moment.",
           createdAt: createLocalTimestamp(),
         },
       ]);
@@ -1522,7 +1571,6 @@ function WorkspaceContent() {
               <button
                 key={item.id}
                 className={`${activeSidebarId === item.id ? "active" : ""} ${"pending" in item && item.pending ? "pending" : ""}`}
-                // eslint-disable-next-line react-hooks/refs -- selectSession reads refs only inside its onClick body (the sanctioned pattern); this call is unchanged from before the sidebar-grouping change, and the rule misattributes an unrelated warning to this line whenever the grouped-view branch below exists in the same component (verified via isolation: removing the ternary's other branch clears it; restructuring that branch does not).
                 onClick={() => selectSession(item)}
               >
                 <span className={`file-icon file-icon-${item.kind}`}>{sidebarIcon(item.kind)}</span>
@@ -1739,7 +1787,7 @@ function WorkspaceContent() {
               <button className={canvasTab === "detail" ? "active" : ""} onClick={() => setCanvasTab("detail")}>{getClaritiKindMeta(active).detailTab}</button>
               <button className={canvasTab === "actions" ? "active" : ""} onClick={() => setCanvasTab("actions")}>Next steps</button>
             </div>
-            <AnalysisCanvas analysis={analysis} tab={canvasTab} videoScene={videoScene} generatedVideoUrl={generatedVideo?.url ?? null} generatedIllustration={generatedIllustrations[videoScene] ?? null} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} videoGenerating={videoGenerating} videoStatus={videoStatus} videoProgress={videoProgress} videoError={videoError} onSceneChange={setVideoScene} onGenerateVideo={generateHumanVideo} onGenerateIllustration={generateIllustration} onOpenIllustration={setExpandedIllustration} onCreateQuestionList={createQuestionList} onOpenSource={() => openSheet("source")} />
+            <AnalysisCanvas analysis={analysis} tab={canvasTab} videoScene={videoScene} generatedVideoUrl={generatedVideo?.url ?? null} generatedIllustration={generatedIllustrations[videoScene] ?? null} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} videoGenerating={videoGenerating} videoStatus={videoStatus} videoProgress={videoProgress} videoPipeline={videoPipeline} videoError={videoError} onSceneChange={setVideoScene} onGenerateVideo={generateHumanVideo} onGenerateIllustration={generateIllustration} onOpenIllustration={setExpandedIllustration} onCreateQuestionList={createQuestionList} onOpenSource={() => openSheet("source")} />
             <section className="canvas-continuity">
               <div><p className="canvas-kicker">CONTINUE WITH CLARITI</p><h3>Don’t stop at understanding.</h3><p>Schedule an email check-in so Clariti can ask if anything changed.</p></div>
               <div className="continuity-actions"><button onClick={() => void beginFollowUpConversation()}><Bell />Set email check-in</button></div>
@@ -1812,6 +1860,7 @@ function AnalysisCanvas({
   videoGenerating,
   videoStatus,
   videoProgress,
+  videoPipeline,
   videoError,
   onSceneChange,
   onGenerateVideo,
@@ -1831,6 +1880,7 @@ function AnalysisCanvas({
   videoGenerating: boolean;
   videoStatus: string | null;
   videoProgress: number;
+  videoPipeline: string | null;
   videoError: string | null;
   onSceneChange: (scene: number) => void;
   onGenerateVideo: (durationSeconds: number) => Promise<void>;
@@ -1864,7 +1914,7 @@ function AnalysisCanvas({
             <div><strong>{concernMetric?.value ?? "Ask"}</strong><span>{concernMetric?.label ?? "Ask your clinician"}</span></div>
           </section>
           <KeyPointList points={analysis.keyPoints} variant="list" />
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : family === "lab" ? (
         <>
@@ -1879,7 +1929,7 @@ function AnalysisCanvas({
             {analysis.metrics.slice(0, 3).map((metric) => <MetricChip {...metric} key={metric.label} />)}
           </section>
           <KeyPointList points={analysis.keyPoints} variant="list" heading="Markers to understand" />
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : family === "care_plan" ? (
         <>
@@ -1892,7 +1942,7 @@ function AnalysisCanvas({
           </section>
           <KeyPointList points={analysis.keyPoints} variant="timeline" limit={3} />
           <section className="canvas-card"><h3>In plain English</h3><p>{analysis.plainEnglish}</p></section>
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : family === "medication" ? (
         <>
@@ -1904,7 +1954,7 @@ function AnalysisCanvas({
             </div>
           </section>
           <KeyPointList points={analysis.keyPoints} variant="pills" />
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : (
         <>
@@ -1913,7 +1963,7 @@ function AnalysisCanvas({
           </section>
           <section className="canvas-card"><h3>In plain English</h3><p>{analysis.plainEnglish}</p></section>
           <KeyPointList points={analysis.keyPoints} variant="list" />
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       )}
       {analysis.flags.map((flag) => <FlagCard flag={flag} key={flag.label} />)}
@@ -2121,6 +2171,7 @@ function VideoStoryboard({
   generating,
   jobStatus,
   jobProgress,
+  jobPipeline,
   videoError,
   onSceneChange,
   onGenerateVideo,
@@ -2137,6 +2188,7 @@ function VideoStoryboard({
   generating: boolean;
   jobStatus: string | null;
   jobProgress: number;
+  jobPipeline: string | null;
   videoError: string | null;
   onSceneChange: (scene: number) => void;
   onGenerateVideo: (durationSeconds: number) => Promise<void>;
@@ -2145,6 +2197,9 @@ function VideoStoryboard({
 }) {
   const scenes = getVideoStoryboardScenes(analysis);
   const meta = getVideoExplainerMeta(analysis);
+  // Only the Shotstack pipeline renders and stitches five clips. The single-render fallback
+  // produces one, and until the job says which is running neither claim is safe to make.
+  const multiScene = jobPipeline === "ai-video-scenes-shotstack";
   const durationSeconds = 30;
   const videoRef = useRef<HTMLVideoElement>(null);
   const generatedSceneIndexes = Object.keys(generatedIllustrations)
@@ -2172,11 +2227,15 @@ function VideoStoryboard({
       ) : (
         <div className="video-explainer-media video-empty-state" aria-hidden={generating ? undefined : true}>
           <div className="video-preview-copy">
-            <span>{generating ? `${formatVideoJobStatus(jobStatus)} · ${jobProgress}%` : "No video yet"}</span>
+            <span>{generating ? `${formatVideoJobStatus(jobStatus, jobPipeline)} · ${jobProgress}%` : "No video yet"}</span>
             <b>{generating ? "Creating your explainer…" : meta.title}</b>
             <small>
               {generating
-                ? "Clariti is generating five short scenes in parallel, then stitching them into one explainer."
+                ? multiScene
+                  ? "Clariti is generating five short scenes in parallel, then stitching them into one explainer."
+                  : jobPipeline
+                    ? "Clariti is rendering one short explainer clip."
+                    : "Clariti is putting your explainer together."
                 : "This box is a preview card, not a video player. Use the button below to generate a short explainer."}
             </small>
           </div>
@@ -2301,6 +2360,7 @@ type VideoJobPayload = {
   id: string;
   status: string;
   progress: number;
+  pipeline?: string | null;
   videoUrl?: string | null;
   error?: string | null;
   createdAt?: string | null;
@@ -2359,12 +2419,21 @@ async function pollSceneVideoJob(
   onProgress: (status: string, progress: number) => void,
 ) {
   let processPromise: Promise<VideoJobPayload | null> | null = null;
+  // A worker that turns the claim down for quota puts the row back to "queued", which is
+  // exactly the state this loop re-kicks. Left unchecked that is a kick every four
+  // seconds against a ceiling the caller has already met — spending more of the very
+  // budget it is waiting on. The refusal is the answer, so stop and say so.
+  let refusal: string | null = null;
 
   const kickProcess = () => {
     if (processPromise) return;
     processPromise = fetch(`/api/videos/report-explainer/${jobId}?process=1`, { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json().catch(() => null);
+        if (response.status === 429) {
+          refusal = String(payload?.error ?? "You have made a lot of requests in a short time. Try again shortly.");
+          return null;
+        }
         if (!response.ok || !payload?.ok || !payload.job) return null;
         const job = payload.job as VideoJobPayload;
         onProgress(job.status, job.progress ?? 0);
@@ -2388,6 +2457,7 @@ async function pollSceneVideoJob(
     onProgress(job.status, job.progress ?? 0);
     if (job.status === "completed") return job;
     if (job.status === "failed") throw new Error(formatHumanVideoError(job.error ?? "The video job failed."));
+    if (refusal) throw new Error(refusal);
 
     if (job.status === "queued" || isVideoJobStale(job)) {
       kickProcess();
@@ -2645,22 +2715,23 @@ function inferScheduledFor(value: string) {
   return date.toISOString();
 }
 
-function formatVideoJobStatus(status: string | null | undefined) {
+function formatVideoJobStatus(status: string | null | undefined, pipeline: string | null | undefined) {
+  const multiScene = pipeline === "ai-video-scenes-shotstack";
   switch (status) {
     case "queued":
-      return "Queued — preparing your 5-scene explainer";
+      return multiScene ? "Queued — preparing your 5-scene explainer" : "Queued — preparing your explainer";
     case "scripting":
-      return "Writing the 5-scene explainer script";
+      return multiScene ? "Writing the 5-scene explainer script" : "Writing the explainer script";
     case "generating_scenes":
-      return "Creating the five scene clips";
+      return multiScene ? "Creating the five scene clips" : "Rendering the explainer clip";
     case "stitching":
-      return "Stitching the five scenes together";
+      return multiScene ? "Stitching the five scenes together" : "Finishing the explainer";
     case "completed":
       return "Video ready";
     case "failed":
       return "Video generation failed";
     default:
-      return "Preparing your 5-scene explainer";
+      return "Preparing your explainer";
   }
 }
 
