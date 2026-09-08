@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Clariti has no advertising or attribution SDK and links nothing to
+	     third-party data. There is no analytics product in the shell either:
+	     the WebView loads useclariti.app and that is the whole app. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!-- Required-reason APIs. RevenueCat ships its own manifest for what it
+	     touches; this one covers the shell. UserDefaults is read and written by
+	     WKWebView's data store and by the Capacitor plugins, and CA92.1
+	     ("access info from the same app") is the reason that fits. File
+	     timestamps come from the WebView cache and from documents handed to the
+	     app through the share and photo pickers, which is C617.1 — files the
+	     user themselves gave us, inside our own container. -->
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- These have to agree with the App Privacy answers filed in App Store
+	     Connect, so keep the two in step. Clariti asks for an email address to
+	     make an account, takes the bills, EOBs and reports people upload, and
+	     stores the text extracted from them alongside the analysis it writes
+	     back. All of it hangs off the signed-in account, so all of it is linked
+	     to identity; none of it follows anyone to another app or site. -->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeEmailAddress</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+		</dict>
+		<!-- An uploaded EOB or radiology report is health data whatever else it
+		     is, and so is the extracted text and the explanation generated from
+		     it. Under-declaring this is the rejection the runbook warns about. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeHealth</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+		</dict>
+		<!-- The document files themselves, plus anything typed into the
+		     composer next to them. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+		</dict>
+	</array>
+</dict>
+</plist>

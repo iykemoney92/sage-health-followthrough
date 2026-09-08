@@ -23,6 +23,12 @@ const config: CapacitorConfig = {
     // welcome route to land on the way Nura has.
     url: serverUrl,
     cleartext: false,
+    // Without this the offline failure is a permanently white screen: nothing
+    // is bundled to fall back to, so Capacitor's didFailProvisionalNavigation
+    // handler has nowhere to send the WebView and the app stays dead until it
+    // is force-quit. `www/error.html` is the one page in `webDir` that is
+    // meant to be loaded, and it is self-contained for that reason.
+    errorPath: "error.html",
     // Capacitor's iOS WebView only treats a top-level navigation as "inside the
     // app" if its URL starts with `server.url` verbatim. Allowlisting the host
     // keeps same-origin navigation (/workspace, /history, /billing) inside the
