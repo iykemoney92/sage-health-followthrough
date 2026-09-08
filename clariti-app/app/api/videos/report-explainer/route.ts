@@ -3,6 +3,7 @@ import { z } from "zod";
 import { buildVideoScenes, claritiVideoAnalysisSchema, designExplainerStoryboard, formatHumanVideoError, normalizeHumanVideoDuration } from "@/lib/ai/clariti-video";
 import { enforceFreeLimit, FREE_VIDEO_LIMIT } from "@/lib/billing/subscription";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
 
@@ -67,6 +68,20 @@ export async function POST(request: NextRequest) {
       resumed: true,
     });
   }
+
+  // The free-tier gate stops at hasPlus, which left a subscriber with no ceiling
+  // at all on the most expensive thing Clariti does. The duplicate-job guard
+  // above is no substitute: it is scoped to one session, so the cheap loop of
+  // "new session, new job" walks straight past it. Charged after the ownership,
+  // free-tier and resume checks, so neither a malformed request nor a client
+  // polling an already-running job burns somebody's quota.
+  //
+  // The queue windows, not the claim ones: a queued row costs nothing, and
+  // sharing a budget with the claim would let queued jobs banked in one window
+  // be cashed in the next. What this ceiling is for is telling an honest client
+  // "not this hour" before it has a job to wait on.
+  const rateLimited = await enforceRateLimit(supabase, "videosQueue", "videosQueueDaily");
+  if (rateLimited) return rateLimited;
 
   // Multi-scene Shotstack is the product default whenever the stitch key is present.
   // Set CLARITI_VIDEO_PIPELINE=single only to force the short one-clip path.

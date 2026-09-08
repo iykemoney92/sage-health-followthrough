@@ -2,6 +2,7 @@ import { experimental_generateVideo as generateVideo } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import { buildHumanPresenterPrompt, claritiVideoAnalysisSchema, formatHumanVideoError, normalizeHumanVideoDuration, type ClaritiVideoAnalysis, type ClaritiVideoScene } from "@/lib/ai/clariti-video";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -74,6 +75,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ ok: true, job: publicJob((latest as VideoJobRecord | null) ?? job) });
   }
 
+  // This is the ceiling that bounds spend, and it is charged on its own windows
+  // rather than the ones the enqueue route uses: a queued row is free, and a
+  // claim is five Veo renders and a stitch. A stale job can also be re-claimed
+  // any number of times, each one a fresh render, and none of those pass through
+  // the enqueue route.
+  const rateLimited = await enforceRateLimit(supabase, "videos", "videosDaily");
+  if (rateLimited) {
+    // Rolled back from the pre-claim record, not the claimed one: claiming
+    // rewrites every scene to "generating", so `job` is the state to restore.
+    await releaseJob(job);
+    return rateLimited;
+  }
+
   const processed = await processJob(claimed);
   return NextResponse.json({ ok: true, job: publicJob(processed) });
 }
@@ -101,6 +115,27 @@ async function claimJob(job: VideoJobRecord): Promise<VideoJobRecord | null> {
 
   if (error) throw new Error(error.message);
   return (data as VideoJobRecord | null) ?? null;
+}
+
+/**
+ * Undo a claim that turned out not to be allowed to spend anything. The row goes
+ * back to 'queued' rather than 'failed' so the same job is still there to run
+ * once the window rolls over — being over a ceiling is not a broken job.
+ */
+async function releaseJob(job: VideoJobRecord) {
+  const supabase = await getSupabaseSessionClient();
+  await supabase
+    .from("clariti_video_generations")
+    .update({
+      status: "queued",
+      progress: job.progress ?? 8,
+      // Written back verbatim rather than re-marked: any scene already rendered
+      // has been paid for, and a rollback should not throw that away.
+      scenes: job.scenes ?? [],
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", job.id)
+    .eq("owner_id", job.owner_id);
 }
 
 async function processJob(job: VideoJobRecord): Promise<VideoJobRecord> {
