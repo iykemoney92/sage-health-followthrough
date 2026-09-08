@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { enforceAnonRateLimit } from "@/lib/auth/anon-rate-limit";
 import { appOriginFromRequest } from "@/lib/auth/app-origin";
 import { confirmUrlFromGenerateLink } from "@/lib/auth/links";
 import { getSupabaseAdminClient, hasSupabaseServiceRole } from "@/lib/auth/supabase-admin";
@@ -31,6 +32,19 @@ export async function POST(request: NextRequest) {
   const { mode, password } = parsed.data;
   const email = normalizeEmail(parsed.data.email);
   const name = parsed.data.name?.trim() || undefined;
+
+  // Supabase has its own per-IP limiter, but this call is proxied, so every
+  // attempt reaches it wearing the Vercel egress address. An attacker guessing
+  // passwords therefore spends a budget shared with everybody signing in from
+  // the same region — their flood surfaces as sign-in failures for real users.
+  // Throttling here, on the caller's own address, keeps that budget theirs.
+  //
+  // The connection only, never the submitted address. A counter on the address
+  // is spent by whoever types it, so gating sign-in on one would let anybody who
+  // knows a Clariti user's email spend that user's budget from anywhere and lock
+  // them out of their own correct password.
+  const throttled = enforceAnonRateLimit(request, "password");
+  if (throttled) return throttled;
 
   if (mode === "signin") {
     const supabase = await getSupabaseSessionClient();

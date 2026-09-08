@@ -7,6 +7,7 @@ import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
 import { OAUTH_NEXT_KEY } from "@/lib/auth/oauth";
+import { recordProviderTokenPresence } from "@/lib/auth/provider-tokens";
 import { safeNextPath } from "@/lib/auth/safe-path";
 
 /** Must match CFBundleURLTypes in clariti-mobile's Info.plist and Supabase's allow list. */
@@ -60,13 +61,17 @@ export function NativeDeepLinks() {
       const code = incoming.searchParams.get("code");
       if (!code) return;
 
-      const { error } = await getSupabaseBrowserClient().auth.exchangeCodeForSession(code);
+      const { data, error } = await getSupabaseBrowserClient().auth.exchangeCodeForSession(code);
       if (cancelled) return;
 
       if (error) {
         router.replace(backToSignIn);
         return;
       }
+
+      // Native is where nearly every Apple sign-in actually lands, so the question of
+      // whether Supabase returns a provider_refresh_token has to be asked here too.
+      recordProviderTokenPresence(data.session);
 
       const stored = window.sessionStorage.getItem(OAUTH_NEXT_KEY);
       window.sessionStorage.removeItem(OAUTH_NEXT_KEY);

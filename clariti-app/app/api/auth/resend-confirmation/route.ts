@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { enforceAnonRateLimit } from "@/lib/auth/anon-rate-limit";
 import { appOriginFromRequest } from "@/lib/auth/app-origin";
 import { confirmUrlFromGenerateLink } from "@/lib/auth/links";
 import { getSupabaseAdminClient, hasSupabaseServiceRole } from "@/lib/auth/supabase-admin";
@@ -9,11 +10,19 @@ const bodySchema = z.object({
   email: z.string().email(),
 });
 
-export async function POST(request: NextRequest) {
-  if (!hasSupabaseServiceRole()) {
-    return NextResponse.json({ ok: false, error: "Couldn’t resend confirmation right now." }, { status: 502 });
-  }
+/**
+ * One answer for every address, whichever way the work below goes.
+ *
+ * The route used to say "That email is already confirmed" to a confirmed
+ * account and something else to everyone else, which let anyone sort addresses
+ * into Clariti members and strangers a request at a time.
+ */
+const ACCEPTED = {
+  ok: true,
+  message: "If that account needs confirmation, we sent a new email.",
+} as const;
 
+export async function POST(request: NextRequest) {
   const json = await request.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
@@ -21,6 +30,18 @@ export async function POST(request: NextRequest) {
   }
 
   const email = parsed.data.email.trim().toLowerCase();
+
+  // Before any admin call: generateLink mails the address it is given and
+  // creates the account as a side effect, so an unthrottled caller here can send
+  // Clariti-branded mail to strangers until Resend suspends the sending domain
+  // and confirmation stops working for real signups.
+  const throttled = enforceAnonRateLimit(request, "resendConfirmation", email);
+  if (throttled) return throttled;
+
+  if (!hasSupabaseServiceRole()) {
+    return NextResponse.json({ ok: false, error: "Couldn’t resend confirmation right now." }, { status: 502 });
+  }
+
   const admin = getSupabaseAdminClient();
   const origin = appOriginFromRequest(request);
   const redirectTo = `${origin}/auth/confirm`;
@@ -34,20 +55,17 @@ export async function POST(request: NextRequest) {
 
   if (magicLink.error || !magicLink.data?.properties) {
     console.error("[resend-confirmation] generateLink failed", magicLink.error?.message);
-    return NextResponse.json({ ok: true, message: "If that account needs confirmation, we sent a new email." });
+    return NextResponse.json(ACCEPTED);
   }
 
+  // Nothing to send, but the answer stays the same as the one a real resend gets.
   if (magicLink.data.user?.email_confirmed_at) {
-    return NextResponse.json({
-      ok: true,
-      message: "That email is already confirmed. You can sign in.",
-      status: "already_confirmed",
-    });
+    return NextResponse.json(ACCEPTED);
   }
 
   const confirmUrl = confirmUrlFromGenerateLink(origin, magicLink.data.properties);
   if (!confirmUrl) {
-    return NextResponse.json({ ok: true, message: "If that account needs confirmation, we sent a new email." });
+    return NextResponse.json(ACCEPTED);
   }
 
   const firstName =
@@ -70,11 +88,10 @@ export async function POST(request: NextRequest) {
         devConfirmUrl: confirmUrl,
       });
     }
-    return NextResponse.json({ ok: false, error: "Confirmation email couldn’t be sent right now." }, { status: 502 });
+    // Only an unconfirmed account ever reaches a send, so reporting the failure
+    // would say out loud what the uniform answer above exists to withhold.
+    return NextResponse.json(ACCEPTED);
   }
 
-  return NextResponse.json({
-    ok: true,
-    message: "If that account needs confirmation, we sent a new email.",
-  });
+  return NextResponse.json(ACCEPTED);
 }

@@ -53,7 +53,7 @@ function LoginForm() {
           <p>
             {emailConfirmed
               ? "Your email is verified. Sign in with your password to continue."
-              : "Continue with your saved documents, analyses, calls and follow-ups."}
+              : "Continue with your saved documents, analyses, explainers and email check-ins."}
           </p>
           <AuthProviders />
           <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>
@@ -64,7 +64,7 @@ function LoginForm() {
         </form>
         <div className="auth-trust"><LockKeyhole /> Your documents stay private and under your control.</div>
       </section>
-      <aside className="clariti-auth-visual"><div><span>Document clarity</span><h2>Understand the document, then act on the next step.</h2><p>Clariti keeps each analysis, source anchor, call context and follow-up together.</p></div></aside>
+      <aside className="clariti-auth-visual"><div><span>Document clarity</span><h2>Understand the document, then act on the next step.</h2><p>Clariti keeps each analysis, source anchor, explainer and email check-in together.</p></div></aside>
     </main>
   );
 }

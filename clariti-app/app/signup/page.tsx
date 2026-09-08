@@ -85,7 +85,7 @@ export default function SignupPage() {
         <form className="clariti-auth-card" onSubmit={handleSubmit}>
           <span className="clariti-kicker">GET STARTED</span>
           <h1>Create your Clariti</h1>
-          <p>Save document analyses, source-grounded explainers, calls and follow-ups.</p>
+          <p>Save document analyses, source-grounded explainers and email check-ins.</p>
           <label>Your name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Full name" required /></label>
           <AuthProviders />
           <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>

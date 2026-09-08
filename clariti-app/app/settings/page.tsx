@@ -8,6 +8,7 @@ import {
   CreditCard,
   FileLock,
   FileText,
+  KeyRound,
   LockKeyhole,
   LogOut,
   ScrollText,
@@ -111,11 +112,14 @@ export default function SettingsPage() {
           followUps: followUpsPayload?.ok ? (followUpsPayload.followUps ?? []).length : 0,
         });
         setBilling(billingPayload?.ok ? { hasPlus: Boolean(billingPayload.hasPlus), status: billingPayload.status } : null);
-      } catch {
+      } catch (caught) {
         if (!alive) return;
-        setAccount({ configured: false, authenticated: false, user: null });
-        setCounts({ documents: 0, conversations: 0, followUps: 0 });
-        setBilling(null);
+        // A failed fetch says nothing about the account, so the old branch here — which
+        // reset to signed-out and zero counts — turned a dropped connection into the
+        // false claim "Signed out." and no saved documents. Keeping the last known state
+        // is the honest reading; the reason goes to the console because this page has
+        // nowhere to show it.
+        console.error("[clariti] settings failed to load:", caught);
       } finally {
         if (alive) setLoading(false);
       }
@@ -152,6 +156,20 @@ export default function SettingsPage() {
     { Icon: CreditCard, title: "Clariti Plus", copy: "Unlimited analyses, videos, compare, and check-ins", meta: loading ? "..." : billing?.hasPlus ? "Plus" : "Free", action: () => router.push("/billing") },
     { Icon: UserRound, title: "Account", copy: account.configured ? "Email sign-in is connected" : "Sign-in is not configured", meta: account.authenticated ? "Signed in" : "Signed out", action: () => setPanel("account") },
   ];
+
+  // /auth/reset-password doubles as the change-password screen: reached this way it asks for
+  // the current password first, and only a visitor arriving on a recovery link skips that. It
+  // turns a signed-out visitor away, which is why the row only appears once we know there is
+  // an account behind it.
+  if (account.authenticated) {
+    claritiRows.push({
+      Icon: KeyRound,
+      title: "Change password",
+      copy: "Set a new password for email sign-in",
+      meta: "",
+      action: () => router.push("/auth/reset-password"),
+    });
+  }
 
   const trustRows: SettingsRowData[] = [
     { Icon: LockKeyhole, title: "Privacy & data", copy: "Your documents are scoped to your account", meta: "", action: () => setPanel("privacy") },
@@ -332,7 +350,7 @@ function getPanelContent(panel: Exclude<SettingsPanel, null>, account: AccountSt
       copy: "Clariti can turn a saved analysis into a short narrated video that walks through what the document says.",
       points: [
         "Built from the analysis Clariti already wrote, not from the original file.",
-        "Generated scenes are stitched into one video and kept private to your account.",
+        "The finished video is kept private to your account.",
         "One video is included on the free plan; Plus removes the limit.",
       ],
     },

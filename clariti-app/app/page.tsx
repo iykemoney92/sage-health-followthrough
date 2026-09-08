@@ -18,6 +18,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { ClaritiAuthModal } from "@/components/clariti-auth-modal";
 import { ClaritiShell } from "@/components/clariti-shell";
+import { prepareDocumentForUpload, readDocumentApiResponse } from "@/components/clariti/document-upload";
 import type { ClaritiAnalysisKind } from "@/lib/ai/clariti-analysis";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 import { inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
@@ -191,10 +192,17 @@ function HomeContent() {
     const timeout = window.setTimeout(() => controller.abort(), 60000);
 
     try {
+      // runJourney uploads this same file again, so the prepared copy replaces the picked
+      // one in state: sending the original bytes to /upload and the shrunk bytes to
+      // /extract would file a document that does not match the text Clariti analysed.
+      const prepared = await prepareDocumentForUpload(file);
+      if (!prepared.ok) throw new Error(prepared.error);
+      setSelectedFile(prepared.file);
+
       const formData = new FormData();
-      formData.set("file", file);
+      formData.set("file", prepared.file);
       const response = await fetch("/api/documents/extract", { method: "POST", body: formData, signal: controller.signal });
-      const payload = await readJsonResponse(response);
+      const payload = await readDocumentApiResponse(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not read this document.");
       const extractedText = String(payload.extractedText ?? "");
       const inferredKind = inferClaritiKind({
@@ -281,7 +289,7 @@ function HomeContent() {
         formData.set("extractedText", textForAnalysis);
 
         const uploadResponse = await fetch("/api/documents/upload", { method: "POST", body: formData });
-        const uploadPayload = await readJsonResponse(uploadResponse);
+        const uploadPayload = await readDocumentApiResponse(uploadResponse);
         if (!uploadResponse.ok || !uploadPayload.ok) throw new Error(uploadPayload.error ?? "Could not upload document");
         documentId = typeof uploadPayload.document === "object" && uploadPayload.document && "id" in uploadPayload.document
           ? String(uploadPayload.document.id)
@@ -425,20 +433,6 @@ function HomeContent() {
       )}
     </ClaritiShell>
   );
-}
-
-async function readJsonResponse(response: Response) {
-  const text = await response.text();
-  try {
-    return JSON.parse(text) as { ok?: boolean; error?: string; extractedText?: string; extractionMethod?: string; document?: { id?: string } };
-  } catch {
-    return {
-      ok: false,
-      error: response.ok
-        ? "Clariti received an unreadable server response. Please try again."
-        : "Clariti could not read this document in production. Try a clearer PDF/image, a text-based PDF, or paste the report text.",
-    };
-  }
 }
 
 function isEmptyOrStarterPrompt(value: string) {
