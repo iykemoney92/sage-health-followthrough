@@ -132,8 +132,8 @@ Copy it; RevenueCat needs it in step 4.
 2. ~~**Apps → + New** → **Play Store**~~ **Done 2026-09-09.** `Clariti Android`
    (`appa7ba601e5b`, package `app.useclariti.mobile`) exists with Play products
    `clariti_plus_monthly:monthly` and `clariti_plus_annual:annual`, both attached
-   to `plus` and to the `default` packages. It still has **no service account
-   credentials**, so Google purchases cannot be validated until step 8.5 is done.
+   to `plus` and to the `default` packages. Service-account credentials are
+   uploaded and valid (see step 8.5).
 3. **Products → + New**, twice, on the iOS app: `clariti_plus_monthly` and
    `clariti_plus_annual`.
 4. ~~**Offerings → `default`** → add two packages~~ **Already done.** `default`
@@ -220,11 +220,14 @@ not enough.
 4. ~~**Monetize → Subscriptions**~~ **Done 2026-09-09.** `clariti_plus_monthly`
    (base plan `monthly`, USD 9.99) and `clariti_plus_annual` (base plan `annual`,
    USD 79.99) are active in Play Console, priced in 177 countries.
-5. **Still open.** Grant RevenueCat access: create a Google Cloud service
-   account, invite its email in Play Console → Users and permissions with
-   *View financial data* and *Manage orders and subscriptions*, and upload its
-   JSON key to the RevenueCat `Clariti Android` app. Until then Play purchases
-   reach RevenueCat unverified and the paywall cannot be trusted end to end.
+5. ~~Grant RevenueCat access~~ **Done 2026-09-09.** Service account
+   `revenuecat-play@aisp-2039c.iam.gserviceaccount.com` (GCP project `aisp-2039c`,
+   key at `~/.android/keystores/revenuecat-play-sa.json`, never committed) is a
+   Play Console user with *View app information*, *View financial data* and
+   *Manage orders and subscriptions* only. Its JSON is uploaded to both RevenueCat
+   Play apps and reads **Valid credentials**. Real-time developer notifications
+   go through Pub/Sub topic `projects/aisp-2039c/topics/revenuecat-clariti-rtdn`
+   (set in Play Console → Monetization setup, connected in RevenueCat).
 6. **App Links** need `https://useclariti.app/.well-known/assetlinks.json` listing
    the SHA-256 fingerprint of your **Play App Signing** certificate (Play Console →
    Setup → App integrity). Until that file exists, `android:autoVerify` fails
