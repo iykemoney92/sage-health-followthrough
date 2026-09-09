@@ -129,7 +129,11 @@ Copy it; RevenueCat needs it in step 4.
    - Upload the **In-App Purchase Key** (App Store Connect → Users and Access →
      Integrations → In-App Purchase → generate) so RevenueCat can verify receipts
      server-side.
-2. **Apps → + New** → **Play Store** (only when doing Android; see step 8).
+2. ~~**Apps → + New** → **Play Store**~~ **Done 2026-09-09.** `Clariti Android`
+   (`appa7ba601e5b`, package `app.useclariti.mobile`) exists with Play products
+   `clariti_plus_monthly:monthly` and `clariti_plus_annual:annual`, both attached
+   to `plus` and to the `default` packages. It still has **no service account
+   credentials**, so Google purchases cannot be validated until step 8.5 is done.
 3. **Products → + New**, twice, on the iOS app: `clariti_plus_monthly` and
    `clariti_plus_annual`.
 4. ~~**Offerings → `default`** → add two packages~~ **Already done.** `default`
@@ -142,6 +146,7 @@ Copy it; RevenueCat needs it in step 4.
 6. **API keys** → copy the **public** app-specific keys:
    - iOS key (`appl_…`) → Vercel `NEXT_PUBLIC_CLARITI_REVENUECAT_IOS_API_KEY`
    - Android key (`goog_…`) → `NEXT_PUBLIC_CLARITI_REVENUECAT_ANDROID_API_KEY`
+     (**set 2026-09-09** in production, preview and development).
 7. **Integrations → Webhooks** — confirm the existing webhook points at
    `https://useclariti.app/api/revenuecat/webhook` and that its Authorization
    header matches `CLARITI_REVENUECAT_WEBHOOK_AUTH_HEADER` in Vercel. The route
@@ -212,11 +217,14 @@ not enough.
 3. ~~Wire `signingConfigs.release`~~ **Done.** `android/app/build.gradle` reads
    `CLARITI_ANDROID_KEYSTORE*` env vars or `android/keystore.properties`
    (gitignored) and falls back to an unsigned build when neither is present.
-4. **Monetize → Subscriptions** → create `clariti_plus_monthly` and
-   `clariti_plus_annual` with the same ids as iOS.
-5. Grant RevenueCat access: create a Google Cloud service account with the
-   *Pub/Sub Editor* and *Android Publisher* roles, and upload its JSON to the
-   RevenueCat Play Store app.
+4. ~~**Monetize → Subscriptions**~~ **Done 2026-09-09.** `clariti_plus_monthly`
+   (base plan `monthly`, USD 9.99) and `clariti_plus_annual` (base plan `annual`,
+   USD 79.99) are active in Play Console, priced in 177 countries.
+5. **Still open.** Grant RevenueCat access: create a Google Cloud service
+   account, invite its email in Play Console → Users and permissions with
+   *View financial data* and *Manage orders and subscriptions*, and upload its
+   JSON key to the RevenueCat `Clariti Android` app. Until then Play purchases
+   reach RevenueCat unverified and the paywall cannot be trusted end to end.
 6. **App Links** need `https://useclariti.app/.well-known/assetlinks.json` listing
    the SHA-256 fingerprint of your **Play App Signing** certificate (Play Console →
    Setup → App integrity). Until that file exists, `android:autoVerify` fails
