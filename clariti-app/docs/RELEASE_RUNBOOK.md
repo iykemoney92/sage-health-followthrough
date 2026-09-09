@@ -284,8 +284,10 @@ human to confirm or to fill in a form.
       rm .env.review
       ```
       Add a note saying outbound phone calls are not part of this release, and
-      that the explainer-video feature depends on a funded Shotstack account —
-      say whether it is funded at review time.
+      that the explainer-video feature renders a single Veo clip and needs no
+      Shotstack account. Shotstack is optional stitching for a five-scene cut;
+      leave `SHOTSTACK_API_KEY` unset unless you hold a key Shotstack currently
+      accepts — a dead key is probed and ignored, so there is no reason to set one.
 - [ ] **Age rating**: expect 17+ / "Medical or Treatment Information".
 - [ ] **Screenshots**: 6.7" and 6.5" iPhone, plus an iPad set — the shell ships
       with `TARGETED_DEVICE_FAMILY = "1,2"`, so App Store Connect will not accept
