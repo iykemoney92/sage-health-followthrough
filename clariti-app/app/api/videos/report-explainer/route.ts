@@ -3,6 +3,7 @@ import { z } from "zod";
 import { buildVideoScenes, claritiVideoAnalysisSchema, designExplainerStoryboard, formatHumanVideoError, normalizeHumanVideoDuration } from "@/lib/ai/clariti-video";
 import { enforceFreeLimit, FREE_VIDEO_LIMIT } from "@/lib/billing/subscription";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
+import { shotstackIsUsable } from "@/lib/integrations/shotstack";
 import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
@@ -83,9 +84,11 @@ export async function POST(request: NextRequest) {
   const rateLimited = await enforceRateLimit(supabase, "videosQueue", "videosQueueDaily");
   if (rateLimited) return rateLimited;
 
-  // Multi-scene Shotstack is the product default whenever the stitch key is present.
-  // Set CLARITI_VIDEO_PIPELINE=single only to force the short one-clip path.
-  const pipeline = process.env.SHOTSTACK_API_KEY && process.env.CLARITI_VIDEO_PIPELINE !== "single"
+  // Multi-scene Shotstack is the product default when the stitch key actually
+  // works — not merely when it is set. A dead key used to get as far as paying
+  // for five Veo scenes before failing at the stitch. Set
+  // CLARITI_VIDEO_PIPELINE=single to force the one-clip path regardless.
+  const pipeline = process.env.CLARITI_VIDEO_PIPELINE !== "single" && (await shotstackIsUsable())
     ? "ai-video-scenes-shotstack"
     : "ai-video-job-single-render";
   const requestedDurationSeconds = pipeline === "ai-video-scenes-shotstack"

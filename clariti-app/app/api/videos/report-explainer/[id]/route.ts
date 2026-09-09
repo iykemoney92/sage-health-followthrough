@@ -1,5 +1,6 @@
 import { experimental_generateVideo as generateVideo } from "ai";
 import { NextRequest, NextResponse } from "next/server";
+import { getShotstackApiKey, getShotstackBaseUrl } from "@/lib/integrations/shotstack";
 import { buildHumanPresenterPrompt, claritiVideoAnalysisSchema, formatHumanVideoError, normalizeHumanVideoDuration, type ClaritiVideoAnalysis, type ClaritiVideoScene } from "@/lib/ai/clariti-video";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -217,7 +218,7 @@ async function generateSinglePresenterVideo(job: VideoJobRecord, analysis: Clari
 }
 
 async function renderExplainerVideo(job: VideoJobRecord, analysis: ClaritiVideoAnalysis): Promise<RenderedVideoResult> {
-  if (job.pipeline !== "ai-video-scenes-shotstack" || !process.env.SHOTSTACK_API_KEY) {
+  if (job.pipeline !== "ai-video-scenes-shotstack" || !getShotstackApiKey()) {
     return generateSinglePresenterVideo(job, analysis);
   }
 
@@ -395,9 +396,9 @@ async function assertStoredVideoReachable(mediaUrl: string) {
 }
 
 async function stitchWithShotstack(jobId: string, scenes: ClaritiVideoScene[], options?: { retries?: number }) {
-  const apiKey = process.env.SHOTSTACK_API_KEY;
+  const apiKey = getShotstackApiKey();
   if (!apiKey) throw new Error("SHOTSTACK_API_KEY is required for scene stitching.");
-  const baseUrl = (process.env.SHOTSTACK_BASE_URL ?? "https://api.shotstack.io/edit/v1").replace(/\/$/, "");
+  const baseUrl = getShotstackBaseUrl();
   const retries = options?.retries ?? 0;
   let lastError: Error | null = null;
 
