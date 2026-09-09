@@ -117,6 +117,11 @@ cd android
 ./gradlew bundleRelease
 ```
 
-Release signing is not configured in `app/build.gradle` yet — see the runbook's
-Play Console section for generating the keystore and wiring `signingConfigs.release`
-to it via environment variables.
+Release signing reads the upload key from env vars (`CLARITI_ANDROID_KEYSTORE`,
+`CLARITI_ANDROID_KEYSTORE_PASSWORD`, `CLARITI_ANDROID_KEY_ALIAS`,
+`CLARITI_ANDROID_KEY_PASSWORD`) or from `android/keystore.properties` (gitignored),
+and leaves the build unsigned when neither exists so CI's debug job still works.
+The key is `~/.android/keystores/clariti-upload.jks` (passwords in the sibling
+`clariti-upload.properties`). Gradle 8.14 needs a JDK ≤ 24 — use Android Studio's
+bundled JBR: `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`.
+Bump `versionCode` in `app/build.gradle` before every upload.

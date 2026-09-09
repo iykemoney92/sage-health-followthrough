@@ -205,14 +205,13 @@ not enough.
 ## 8. Google Play (Android)
 
 1. Play Console → **Create app** → `Clariti`, package `app.useclariti.mobile`.
-2. Generate a release keystore and keep it somewhere you will still have in three
-   years — losing it means never updating the app again:
-   ```bash
-   keytool -genkey -v -keystore clariti-release.keystore \
-     -alias clariti -keyalg RSA -keysize 2048 -validity 10000
-   ```
-3. Wire `android/app/build.gradle`'s `signingConfigs.release` to it via
-   environment variables (never commit the keystore or its passwords).
+2. ~~Generate a release keystore~~ **Done 2026-09-09.** The upload key is
+   `~/.android/keystores/clariti-upload.jks` (alias `clariti-upload`, passwords in
+   `clariti-upload.properties` beside it). Play App Signing holds the app-signing
+   key, so this is only the upload key. Back it up off this machine.
+3. ~~Wire `signingConfigs.release`~~ **Done.** `android/app/build.gradle` reads
+   `CLARITI_ANDROID_KEYSTORE*` env vars or `android/keystore.properties`
+   (gitignored) and falls back to an unsigned build when neither is present.
 4. **Monetize → Subscriptions** → create `clariti_plus_monthly` and
    `clariti_plus_annual` with the same ids as iOS.
 5. Grant RevenueCat access: create a Google Cloud service account with the

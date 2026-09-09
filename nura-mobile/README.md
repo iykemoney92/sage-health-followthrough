@@ -67,14 +67,29 @@ you'd ship to TestFlight/Play or hand to a real device.
    pair (or introduce [fastlane](https://fastlane.tools) `match`/`gym` for
    this — worth it once you're doing this regularly).
 
-**Android, to sign a release build for Play Console:**
-1. Generate a release keystore: `keytool -genkey -v -keystore release.keystore ...`
-2. Add it as a GitHub Secret (base64-encoded) plus the keystore/key
-   passwords, decode it in CI, and point `android/app/build.gradle`'s
-   `signingConfigs.release` at it via env vars.
-3. Swap `assembleDebug` for `bundleRelease` (Play Store wants an `.aab`, not
-   an `.apk`).
-4. Google Play Console account ($25 one-time).
+**Android — release signing is wired (2026-09-09).** `android/app/build.gradle`
+reads the upload key from env vars (`NURA_ANDROID_KEYSTORE`,
+`NURA_ANDROID_KEYSTORE_PASSWORD`, `NURA_ANDROID_KEY_ALIAS`,
+`NURA_ANDROID_KEY_PASSWORD`) or, failing that, from `android/keystore.properties`
+(gitignored). With neither present the release build stays unsigned, so CI's
+debug job is unaffected. The upload key lives at
+`~/.android/keystores/nura-upload.jks` with its passwords in the sibling
+`nura-upload.properties`; the copy in `android/keystore.properties` just points
+at it. Play App Signing holds the real app-signing key, so a lost upload key is
+recoverable through Play support — but back the `.jks` up anyway.
+
+```bash
+# Gradle 8.14 needs a JDK ≤ 24; Android Studio's bundled JBR is 21.
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+npx cap sync android
+cd android && ./gradlew bundleRelease
+# → android/app/build/outputs/bundle/release/app-release.aab
+```
+
+Bump `versionCode` in `android/app/build.gradle` before each upload — Play
+rejects a version code it has already seen. Play Console app id
+`4972442730738909449` (package `app.usenura.mobile`); the first build went to
+the Internal testing track.
 
 **Billing note:** `nura-app`'s RevenueCat integration currently uses a *web*
 purchase link (`lib/billing/revenuecat.ts`) to avoid the App Store's IAP cut.

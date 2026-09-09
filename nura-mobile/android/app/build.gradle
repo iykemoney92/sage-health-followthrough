@@ -16,10 +16,37 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Release (upload-key) signing. Values come from env vars first, then from
+    // android/keystore.properties (gitignored). With neither present the release
+    // build is left unsigned, which keeps CI's debug-only job working.
+    def keystoreProps = new Properties()
+    def keystorePropsFile = rootProject.file("keystore.properties")
+    if (keystorePropsFile.exists()) {
+        keystorePropsFile.withInputStream { keystoreProps.load(it) }
+    }
+    def releaseStoreFile = System.getenv("NURA_ANDROID_KEYSTORE") ?: keystoreProps.getProperty("storeFile")
+    def releaseStorePassword = System.getenv("NURA_ANDROID_KEYSTORE_PASSWORD") ?: keystoreProps.getProperty("storePassword")
+    def releaseKeyAlias = System.getenv("NURA_ANDROID_KEY_ALIAS") ?: keystoreProps.getProperty("keyAlias")
+    def releaseKeyPassword = System.getenv("NURA_ANDROID_KEY_PASSWORD") ?: keystoreProps.getProperty("keyPassword")
+    def hasReleaseSigning = releaseStoreFile != null && file(releaseStoreFile).exists()
+
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
