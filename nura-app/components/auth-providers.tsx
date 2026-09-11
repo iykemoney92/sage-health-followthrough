@@ -64,9 +64,15 @@ export function AuthProviders({ next, label = "or continue with" }: { next?: str
     setPending(provider);
     track("oauth_start", { provider });
 
-    const { error: providerError } = await signInWithProvider(provider, next);
+    // Treated as a failure if it throws as well as if it returns an error: the
+    // buttons stay disabled while a sign-in is pending, so anything escaping
+    // this call would leave both of them stuck on "Opening…" with nothing on
+    // screen, which is what App Review saw as an unresponsive button.
+    const failed = await signInWithProvider(provider, next)
+      .then(({ error: providerError }) => Boolean(providerError))
+      .catch(() => true);
 
-    if (providerError) {
+    if (failed) {
       track("oauth_fail", { provider });
       setError("We couldn’t reach that sign-in provider. Try again, or use your email below.");
       setPending(null);

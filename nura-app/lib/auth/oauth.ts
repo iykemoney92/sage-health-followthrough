@@ -21,6 +21,9 @@ export const NATIVE_OAUTH_REDIRECT = "app.usenura.mobile://auth/callback";
 /** Carries the post-sign-in destination across the Safari round trip. */
 export const OAUTH_NEXT_KEY = "nura-oauth-next";
 
+/** Shown when the in-app browser refuses to open the provider's page. */
+const OPEN_FAILED = "Couldn’t open the sign-in page. Try again.";
+
 export function isNativeShell() {
   return Capacitor.isNativePlatform();
 }
@@ -57,7 +60,21 @@ export async function signInWithProvider(provider: OAuthProvider, next?: string 
     // Remembered across the round trip because the return arrives via
     // appUrlOpen, which carries only what the provider put in the URL.
     if (nextPath) window.sessionStorage.setItem(OAUTH_NEXT_KEY, nextPath);
-    await Browser.open({ url: data.url, presentationStyle: "popover" });
+    // Default (full-screen) presentation rather than `presentationStyle:
+    // "popover"`. On iPhone the popover style silently degrades to a full-screen
+    // sheet, so it looked correct in testing; on iPad it is a real popover, and
+    // App Review found both provider buttons dead there. Full screen is what
+    // SFSafariViewController is documented for and behaves identically on every
+    // device, which is the only property that matters for a sign-in handoff.
+    try {
+      await Browser.open({ url: data.url });
+    } catch {
+      // Never propagate: the caller disables both provider buttons while a
+      // sign-in is pending, so a rejection here leaves them stuck reading
+      // "Opening…" with nothing on screen — the unresponsive button App Review
+      // reported under guideline 2.1(a).
+      return { error: { message: OPEN_FAILED } };
+    }
     return { error: null };
   }
 
