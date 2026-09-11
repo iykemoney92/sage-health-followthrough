@@ -83,6 +83,7 @@ function HomeContent() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [authConfigured, setAuthConfigured] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  const [aiConsent, setAiConsent] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [authIntent, setAuthIntent] = useState<"submit" | "navigate" | null>(null);
@@ -125,6 +126,7 @@ function HomeContent() {
         if (!alive || !payload?.ok) return;
         setAuthConfigured(Boolean(payload.configured));
         setAuthenticated(Boolean(payload.authenticated));
+        setAiConsent(Boolean(payload.aiConsent));
       })
       .catch(() => undefined);
 
@@ -180,6 +182,17 @@ function HomeContent() {
 
   const handleFileSelected = async (file: File | undefined) => {
     if (!file) return;
+
+    // Picking a file posts it straight to /api/documents/extract, which is the
+    // first moment a document would leave the device — so a signed-in user who
+    // has not agreed to AI processing goes to the gate instead of the extractor.
+    // The route refuses them anyway; this just makes the refusal a question
+    // rather than an error.
+    if (authenticated && !aiConsent) {
+      router.push("/ai-consent?next=%2F");
+      return;
+    }
+
     setError(null);
     setSelectedFile(file);
     setDocumentText("");

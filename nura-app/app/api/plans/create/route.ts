@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { processAttachments } from "@/lib/ai/attachments";
+import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { enforceThreadLimit } from "@/lib/billing/subscription";
 import { primaryCheckinChannel } from "@/lib/domain/checkin-channel";
 import { draftPlanFromIntake } from "@/lib/domain/draft-plan-from-intake";
@@ -52,6 +53,10 @@ export async function POST(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+
+  if (!hasAiConsent(user)) {
+    return aiConsentRequiredResponse();
   }
 
   const body = await request.json().catch(() => null);

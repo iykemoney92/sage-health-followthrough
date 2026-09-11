@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { AI_CONSENT_PATH, hasAiConsent } from "@/lib/ai-consent";
 import { isSubscriptionLockedOut } from "@/lib/billing/subscription";
 import { getVerifiedSubscriptionAccess } from "@/lib/billing/verified-access";
 
@@ -85,6 +86,21 @@ export async function middleware(request: NextRequest) {
   if (user && isAuthPage) {
     const url = request.nextUrl.clone();
     url.pathname = postAuthPath(user);
+    return NextResponse.redirect(url);
+  }
+
+  // No AI consent yet → the gate, before anything that could reach the model.
+  // It sits ahead of the billing lock deliberately: the lock screen sends
+  // nothing anywhere, whereas /summary and /plans/[id] call Anthropic during
+  // their server render, so a client-side dialog could not have stopped them.
+  if (user && isProtected && !hasAiConsent(user)) {
+    const url = request.nextUrl.clone();
+    url.pathname = AI_CONSENT_PATH;
+    url.search = "";
+    const next = `${pathname}${request.nextUrl.search}`;
+    if (next.startsWith("/") && !next.startsWith("//")) {
+      url.searchParams.set("next", next);
+    }
     return NextResponse.redirect(url);
   }
 

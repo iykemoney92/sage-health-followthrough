@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
 import { primaryCheckinChannel } from "@/lib/domain/checkin-channel";
+import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { draftNextCheckInAfterCompletion } from "@/lib/domain/journey-create";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
@@ -43,6 +44,10 @@ export async function POST(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+
+  if (!hasAiConsent(user)) {
+    return aiConsentRequiredResponse();
   }
 
   const body = await request.json().catch(() => null);

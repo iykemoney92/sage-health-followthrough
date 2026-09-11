@@ -6,6 +6,7 @@ import { claritiAnalysisSchema } from "@/lib/ai/clariti-analysis";
 import { requirePlusAccess } from "@/lib/billing/subscription";
 import { getRecentClaritiAnalyses, hasCompareIntent, type ClaritiHistoryEntry } from "@/lib/domain/clariti-history";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 const requestSchema = z.object({
@@ -24,6 +25,9 @@ export async function POST(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+  if (!hasAiConsent(user)) {
+    return aiConsentRequiredResponse();
   }
 
   const limited = await enforceRateLimit(await getSupabaseSessionClient(), "messages");

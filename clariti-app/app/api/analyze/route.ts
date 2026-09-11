@@ -5,6 +5,7 @@ import { enforceFreeLimit, ensureClaritiProfile, FREE_DOCUMENT_LIMIT } from "@/l
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 import { inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 export const maxDuration = 120;
@@ -40,6 +41,9 @@ export async function POST(request: NextRequest) {
     const user = await getSessionUser();
     if (!user) {
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
+    if (!hasAiConsent(user)) {
+      return aiConsentRequiredResponse();
     }
 
     const limited = await enforceRateLimit(await getSupabaseSessionClient(), "analyze");

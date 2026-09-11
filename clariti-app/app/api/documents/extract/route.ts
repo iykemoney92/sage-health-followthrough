@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { MAX_UPLOAD_BYTES, uploadSizeLimitError } from "@/lib/domain/clariti-uploads";
+import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 export const runtime = "nodejs";
@@ -30,6 +31,9 @@ export async function POST(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+  if (!hasAiConsent(user)) {
+    return aiConsentRequiredResponse();
   }
 
   const limited = await enforceRateLimit(await getSupabaseSessionClient(), "extract");

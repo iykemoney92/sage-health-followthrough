@@ -8,6 +8,7 @@ import {
   formatCheckInWhenForCopy,
 } from "@/lib/domain/journey-create";
 import { ensureJourney } from "@/lib/domain/plan-journey";
+import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { isValidTimeZone } from "@/lib/timezone";
 // Trial starts on the post-onboarding paywall (card 14-day or soft 7-day), not here.
@@ -89,6 +90,10 @@ export async function POST(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+
+  if (!hasAiConsent(user)) {
+    return aiConsentRequiredResponse();
   }
 
   const body = await request.json().catch(() => null);

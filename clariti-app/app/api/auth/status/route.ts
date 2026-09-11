@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasAiConsent } from "@/lib/ai-consent";
 import { ensureClaritiProfile } from "@/lib/billing/subscription";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
 
@@ -15,6 +16,9 @@ export async function GET() {
     ok: true,
     configured,
     authenticated: Boolean(user),
+    // Lets the upload screen route a signed-in user to the consent gate instead
+    // of posting their document to the extractor and collecting a 403.
+    aiConsent: hasAiConsent(user),
     user: user ? { id: user.id, email: user.email, name: user.user_metadata?.display_name } : null,
   });
 }
