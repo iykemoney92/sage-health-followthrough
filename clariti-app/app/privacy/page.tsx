@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 };
 
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@useclariti.app";
-const LAST_UPDATED = "August 29, 2026";
+const LAST_UPDATED = "September 13, 2026";
 
 type Section = {
   title: string;
@@ -46,8 +46,9 @@ const sections: Section[] = [
     points: [
       "Supabase — the database, sign-in, and file storage that hold your account, documents, and generated media.",
       "Anthropic, reached either directly or through the Vercel AI Gateway — the model that reads your document text and writes the plain-English explanation.",
-      "Google's video and image models, reached through the Vercel AI Gateway — used only when you ask for an explainer video or illustration, and only on the analysis Clariti already wrote, not the original file.",
-      "Shotstack — stitches generated video scenes into one explainer. It receives short-lived links to those clips, never your document.",
+      "Black Forest Labs' FLUX video model, reached through the Vercel AI Gateway — used only when you ask for an explainer video, and only on the analysis Clariti already wrote, not the original file.",
+      "Google's image model, reached through the Vercel AI Gateway — used only when you ask for an illustration, and only on the analysis Clariti already wrote, not the original file.",
+      "Shotstack — the older way an explainer was joined together from several short clips. It is switched off, so nothing reaches Shotstack while it stays off. If it returns, this policy will say so first.",
       "Resend — sends account emails and the check-in emails you schedule.",
       "RevenueCat, with Apple's App Store or Stripe behind it — records whether Clariti Plus is active. Payment details stay with Apple or Stripe.",
       "ElevenLabs — the voice explanation call. This is switched off today, so no phone number and no document context reach ElevenLabs while it stays off. If it returns, this policy will say so first.",

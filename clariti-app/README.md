@@ -19,7 +19,7 @@ coverage or legal determinations. `docs/ARCHITECTURE.md` has the full safety bou
 - Anthropic Claude, via the Vercel AI Gateway — extraction, explanation, storyboarding
 - Resend — auth email and follow-up check-in email
 - RevenueCat — Clariti Plus on the web and through StoreKit inside the native shell
-- Shotstack — stitches the generated clips into the explainer video
+- FLUX 3, via the Vercel AI Gateway — the explainer video, rendered in one call
 
 ## What it does
 
@@ -52,10 +52,11 @@ pnpm test
 pnpm build
 ```
 
-Copy `.env.example` to `.env.local` and fill in your own keys. Document upload and explanation
-need only a Supabase project and an AI Gateway (or Anthropic) key. Video generation
-additionally needs a funded Shotstack account; without it the rest of the app works and video
-degrades to an in-app error rather than a crash.
+Copy `.env.example` to `.env.local` and fill in your own keys. Document upload, explanation,
+and the explainer video all need only a Supabase project and an AI Gateway (or Anthropic) key —
+FLUX 3 renders the whole video in a single call. Shotstack is a legacy path kept for the Veo
+models it was built for and is off unless `SHOTSTACK_API_KEY` is set; without any gateway key
+the rest of the app works and video degrades to an in-app error rather than a crash.
 
 `scripts/configure-supabase-auth.mjs` writes Clariti's Supabase Auth settings — site URL, the
 redirect allow-list (including the native `app.useclariti.mobile://auth/callback` the shell

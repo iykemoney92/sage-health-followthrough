@@ -37,7 +37,7 @@ import {
   X,
 } from "lucide-react";
 import { claritiAnalysisSchema, type ClaritiAnalysis, type ClaritiAnalysisKind } from "@/lib/ai/clariti-analysis";
-import { formatHumanVideoError } from "@/lib/ai/clariti-video";
+import { FLUX_MAX_CLIP_SECONDS, formatHumanVideoError } from "@/lib/ai/clariti-video";
 import { getClaritiKindMeta, inferKindFromTitleText, isClaritiAnalysisKind } from "@/lib/domain/clariti-document-kinds";
 import type { ProgressionComparison } from "@/lib/domain/clariti-progression";
 import { trendToSeverityToken } from "@/lib/domain/clariti-severity";
@@ -202,9 +202,15 @@ function WorkspaceContent() {
   const [videoGenerating, setVideoGenerating] = useState(false);
   const [videoStatus, setVideoStatus] = useState<string | null>(null);
   const [videoProgress, setVideoProgress] = useState(0);
-  // Which pipeline the job actually runs. Production falls back to a single clip whenever
-  // the stitch key is missing, and the progress copy used to narrate five scenes regardless.
+  // Which pipeline the job actually ran. Four are possible and they produce visibly
+  // different things, so every line of progress copy is derived from this rather than
+  // assumed — the copy used to narrate five stitched scenes whatever was really running.
   const [videoPipeline, setVideoPipeline] = useState<string | null>(null);
+  // The segments the job has finished. A chained run can render every segment
+  // and still be unable to offer one file, and the copy for that tells the reader
+  // their segments are saved — so the workspace has to be able to show them.
+  const [videoSegments, setVideoSegments] = useState<VideoSegment[]>([]);
+  const [videoSegmentCount, setVideoSegmentCount] = useState(0);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [generatedIllustrations, setGeneratedIllustrations] = useState<Record<number, GeneratedIllustration>>({});
   const [expandedIllustration, setExpandedIllustration] = useState<GeneratedIllustration | null>(null);
@@ -377,6 +383,8 @@ function WorkspaceContent() {
     setVideoStatus(null);
     setVideoProgress(0);
     setVideoPipeline(null);
+    setVideoSegments([]);
+    setVideoSegmentCount(0);
     setVideoError(null);
     setVideoScene(0);
     setGeneratedIllustrations({});
@@ -416,15 +424,19 @@ function WorkspaceContent() {
     setVideoStatus(job.status);
     setVideoProgress(job.progress ?? 0);
     setVideoPipeline(job.pipeline ?? null);
+    setVideoSegments(videoSegmentsOf(job));
+    setVideoSegmentCount(videoSegmentCountOf(job));
     setVideoError(job.status === "failed" ? formatHumanVideoError(job.error ?? "The video job failed.") : null);
 
     if (inFlight && !videoGeneratingRef.current) {
       videoGeneratingRef.current = true;
       setVideoGenerating(true);
-      void pollSceneVideoJob(job.id, (status, progress) => {
+      void pollSceneVideoJob(job.id, (status, progress, latest) => {
         if (dbSessionIdRef.current !== sessionId) return;
         setVideoStatus(status);
         setVideoProgress(progress);
+        setVideoSegments(videoSegmentsOf(latest));
+        setVideoSegmentCount(videoSegmentCountOf(latest));
       })
         .then((completed) => {
           if (dbSessionIdRef.current !== sessionId) return;
@@ -923,15 +935,20 @@ function WorkspaceContent() {
     setVideoStatus("queued");
     setVideoProgress(5);
     setVideoPipeline(null);
+    setVideoSegments([]);
+    setVideoSegmentCount(0);
     setCanvasOpen(false);
     try {
       const job = await createSceneVideoJob(analysis, durationSeconds, sessionId);
       setVideoStatus(job.status);
       setVideoProgress(job.progress ?? 5);
       setVideoPipeline(job.pipeline ?? null);
-      const completed = await pollSceneVideoJob(job.id, (status, progress) => {
+      setVideoSegmentCount(videoSegmentCountOf(job));
+      const completed = await pollSceneVideoJob(job.id, (status, progress, latest) => {
         setVideoStatus(status);
         setVideoProgress(progress);
+        setVideoSegments(videoSegmentsOf(latest));
+        setVideoSegmentCount(videoSegmentCountOf(latest));
       });
       if (!completed.videoUrl) throw new Error("The video job completed without a video URL.");
       handleVideoGenerated(completed.videoUrl, completed.id, videoJobCreatedAt(completed));
@@ -1787,7 +1804,7 @@ function WorkspaceContent() {
               <button className={canvasTab === "detail" ? "active" : ""} onClick={() => setCanvasTab("detail")}>{getClaritiKindMeta(active).detailTab}</button>
               <button className={canvasTab === "actions" ? "active" : ""} onClick={() => setCanvasTab("actions")}>Next steps</button>
             </div>
-            <AnalysisCanvas analysis={analysis} tab={canvasTab} videoScene={videoScene} generatedVideoUrl={generatedVideo?.url ?? null} generatedIllustration={generatedIllustrations[videoScene] ?? null} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} videoGenerating={videoGenerating} videoStatus={videoStatus} videoProgress={videoProgress} videoPipeline={videoPipeline} videoError={videoError} onSceneChange={setVideoScene} onGenerateVideo={generateHumanVideo} onGenerateIllustration={generateIllustration} onOpenIllustration={setExpandedIllustration} onCreateQuestionList={createQuestionList} onOpenSource={() => openSheet("source")} />
+            <AnalysisCanvas analysis={analysis} tab={canvasTab} videoScene={videoScene} generatedVideoUrl={generatedVideo?.url ?? null} generatedIllustration={generatedIllustrations[videoScene] ?? null} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} videoGenerating={videoGenerating} videoStatus={videoStatus} videoProgress={videoProgress} videoPipeline={videoPipeline} videoSegments={videoSegments} videoSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={setVideoScene} onGenerateVideo={generateHumanVideo} onGenerateIllustration={generateIllustration} onOpenIllustration={setExpandedIllustration} onCreateQuestionList={createQuestionList} onOpenSource={() => openSheet("source")} />
             <section className="canvas-continuity">
               <div><p className="canvas-kicker">CONTINUE WITH CLARITI</p><h3>Don’t stop at understanding.</h3><p>Schedule an email check-in so Clariti can ask if anything changed.</p></div>
               <div className="continuity-actions"><button onClick={() => void beginFollowUpConversation()}><Bell />Set email check-in</button></div>
@@ -1861,6 +1878,8 @@ function AnalysisCanvas({
   videoStatus,
   videoProgress,
   videoPipeline,
+  videoSegments,
+  videoSegmentCount,
   videoError,
   onSceneChange,
   onGenerateVideo,
@@ -1881,6 +1900,8 @@ function AnalysisCanvas({
   videoStatus: string | null;
   videoProgress: number;
   videoPipeline: string | null;
+  videoSegments: VideoSegment[];
+  videoSegmentCount: number;
   videoError: string | null;
   onSceneChange: (scene: number) => void;
   onGenerateVideo: (durationSeconds: number) => Promise<void>;
@@ -1914,7 +1935,7 @@ function AnalysisCanvas({
             <div><strong>{concernMetric?.value ?? "Ask"}</strong><span>{concernMetric?.label ?? "Ask your clinician"}</span></div>
           </section>
           <KeyPointList points={analysis.keyPoints} variant="list" />
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : family === "lab" ? (
         <>
@@ -1929,7 +1950,7 @@ function AnalysisCanvas({
             {analysis.metrics.slice(0, 3).map((metric) => <MetricChip {...metric} key={metric.label} />)}
           </section>
           <KeyPointList points={analysis.keyPoints} variant="list" heading="Markers to understand" />
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : family === "care_plan" ? (
         <>
@@ -1942,7 +1963,7 @@ function AnalysisCanvas({
           </section>
           <KeyPointList points={analysis.keyPoints} variant="timeline" limit={3} />
           <section className="canvas-card"><h3>In plain English</h3><p>{analysis.plainEnglish}</p></section>
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : family === "medication" ? (
         <>
@@ -1954,7 +1975,7 @@ function AnalysisCanvas({
             </div>
           </section>
           <KeyPointList points={analysis.keyPoints} variant="pills" />
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : (
         <>
@@ -1963,7 +1984,7 @@ function AnalysisCanvas({
           </section>
           <section className="canvas-card"><h3>In plain English</h3><p>{analysis.plainEnglish}</p></section>
           <KeyPointList points={analysis.keyPoints} variant="list" />
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       )}
       {analysis.flags.map((flag) => <FlagCard flag={flag} key={flag.label} />)}
@@ -2172,6 +2193,8 @@ function VideoStoryboard({
   jobStatus,
   jobProgress,
   jobPipeline,
+  jobSegments,
+  jobSegmentCount,
   videoError,
   onSceneChange,
   onGenerateVideo,
@@ -2189,6 +2212,8 @@ function VideoStoryboard({
   jobStatus: string | null;
   jobProgress: number;
   jobPipeline: string | null;
+  jobSegments: VideoSegment[];
+  jobSegmentCount: number;
   videoError: string | null;
   onSceneChange: (scene: number) => void;
   onGenerateVideo: (durationSeconds: number) => Promise<void>;
@@ -2197,10 +2222,15 @@ function VideoStoryboard({
 }) {
   const scenes = getVideoStoryboardScenes(analysis);
   const meta = getVideoExplainerMeta(analysis);
-  // Only the Shotstack pipeline renders and stitches five clips. The single-render fallback
-  // produces one, and until the job says which is running neither claim is safe to make.
-  const multiScene = jobPipeline === "ai-video-scenes-shotstack";
-  const durationSeconds = 30;
+  const pipelineShape = videoPipelineShape(jobPipeline);
+  // Shown only while there is no single finished file to play. In the shape the
+  // chained path saves, the last segment is the whole explainer, so repeating the
+  // segments under a finished video would just be the same footage twice.
+  const showSegments = !generatedVideoUrl && jobSegments.length > 0;
+  // Twenty seconds is what Flux renders in one call, so asking for exactly that keeps the
+  // default explainer a single clip. The route clamps this down for models that cannot
+  // reach it, and the legacy stitched cut sets its own length.
+  const durationSeconds = FLUX_MAX_CLIP_SECONDS;
   const videoRef = useRef<HTMLVideoElement>(null);
   const generatedSceneIndexes = Object.keys(generatedIllustrations)
     .map((key) => Number(key))
@@ -2227,16 +2257,12 @@ function VideoStoryboard({
       ) : (
         <div className="video-explainer-media video-empty-state" aria-hidden={generating ? undefined : true}>
           <div className="video-preview-copy">
-            <span>{generating ? `${formatVideoJobStatus(jobStatus, jobPipeline)} · ${jobProgress}%` : "No video yet"}</span>
+            <span>{generating ? `${formatVideoJobStatus(jobStatus, jobPipeline, jobSegmentCount)} · ${jobProgress}%` : "No video yet"}</span>
             <b>{generating ? "Creating your explainer…" : meta.title}</b>
             <small>
               {generating
-                ? multiScene
-                  ? "Clariti is generating five short scenes in parallel, then stitching them into one explainer."
-                  : jobPipeline
-                    ? "Clariti is rendering one short explainer clip."
-                    : "Clariti is putting your explainer together."
-                : "This box is a preview card, not a video player. Use the button below to generate a short explainer."}
+                ? describeVideoPipeline(pipelineShape, jobSegmentCount)
+                : "This box is a preview card, not a video player. Use the button below to generate a short narrated explainer. Rendering usually takes a few minutes, and you can keep reading while it runs."}
             </small>
           </div>
         </div>
@@ -2277,6 +2303,17 @@ function VideoStoryboard({
           )}
         </div>
       </div>
+      {showSegments && (
+        <div className="video-segment-list">
+          <span>{jobSegments.length === 1 ? "Segment saved so far" : `${jobSegments.length} segments saved so far`}</span>
+          {jobSegments.map((segment) => (
+            <figure key={segment.sceneIndex}>
+              <video className="clariti-generated-video" src={segment.videoUrl} controls playsInline preload="metadata" />
+              <figcaption>{`${segment.sceneIndex + 1}. ${segment.title}`}</figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
       <div className="video-explainer-foot">
         <span><Sparkles />Source: {scene.sourceAnchor}</span>
       </div>
@@ -2361,6 +2398,7 @@ type VideoJobPayload = {
   status: string;
   progress: number;
   pipeline?: string | null;
+  scenes?: unknown;
   videoUrl?: string | null;
   error?: string | null;
   createdAt?: string | null;
@@ -2416,7 +2454,7 @@ async function createIllustration(analysis: ClaritiAnalysis, sceneIndex: number,
 
 async function pollSceneVideoJob(
   jobId: string,
-  onProgress: (status: string, progress: number) => void,
+  onProgress: (status: string, progress: number, job: VideoJobPayload) => void,
 ) {
   let processPromise: Promise<VideoJobPayload | null> | null = null;
   // A worker that turns the claim down for quota puts the row back to "queued", which is
@@ -2436,7 +2474,7 @@ async function pollSceneVideoJob(
         }
         if (!response.ok || !payload?.ok || !payload.job) return null;
         const job = payload.job as VideoJobPayload;
-        onProgress(job.status, job.progress ?? 0);
+        onProgress(job.status, job.progress ?? 0, job);
         return job;
       })
       .catch(() => null)
@@ -2454,7 +2492,7 @@ async function pollSceneVideoJob(
       throw new Error(formatHumanVideoError(payload.error ?? "Clariti could not check the video job."));
     }
     const job = payload.job as VideoJobPayload;
-    onProgress(job.status, job.progress ?? 0);
+    onProgress(job.status, job.progress ?? 0, job);
     if (job.status === "completed") return job;
     if (job.status === "failed") throw new Error(formatHumanVideoError(job.error ?? "The video job failed."));
     if (refusal) throw new Error(refusal);
@@ -2466,6 +2504,33 @@ async function pollSceneVideoJob(
     await new Promise((resolve) => setTimeout(resolve, 4000));
   }
   throw new Error("The video job is still running. Leave this chat open or try checking again in a moment.");
+}
+
+/**
+ * The clips a job has finished so far. A chained explainer can render every
+ * segment and still have no single file to offer — the message for that says the
+ * segments are saved, so they have to be reachable.
+ */
+type VideoSegment = { sceneIndex: number; title: string; videoUrl: string };
+
+function videoSegmentsOf(job: VideoJobPayload | null | undefined): VideoSegment[] {
+  if (!Array.isArray(job?.scenes)) return [];
+  return job.scenes
+    .map((scene, index) => {
+      const item = scene as { sceneIndex?: number; title?: string; status?: string; videoUrl?: string };
+      if (item?.status !== "completed" || !item.videoUrl) return null;
+      return {
+        sceneIndex: Number.isFinite(item.sceneIndex) ? Number(item.sceneIndex) : index,
+        title: item.title?.trim() || `Segment ${index + 1}`,
+        videoUrl: item.videoUrl,
+      };
+    })
+    .filter((segment): segment is VideoSegment => segment !== null)
+    .sort((a, b) => a.sceneIndex - b.sceneIndex);
+}
+
+function videoSegmentCountOf(job: VideoJobPayload | null | undefined) {
+  return Array.isArray(job?.scenes) ? job.scenes.length : 0;
 }
 
 function isVideoJobStale(job: VideoJobPayload) {
@@ -2715,17 +2780,73 @@ function inferScheduledFor(value: string) {
   return date.toISOString();
 }
 
-function formatVideoJobStatus(status: string | null | undefined, pipeline: string | null | undefined) {
-  const multiScene = pipeline === "ai-video-scenes-shotstack";
+// The four pipelines the job can report, reduced to the four shapes the reader can
+// actually see: one clip, several clips continued from each other, the legacy stitched
+// cut, and the short single render Veo falls back to. A job that has not said yet is
+// "unknown", and the copy for it promises nothing.
+type VideoPipelineShape = "flux-single" | "flux-chained" | "stitched" | "single-clip" | "unknown";
+
+function videoPipelineShape(pipeline: string | null | undefined): VideoPipelineShape {
+  switch (pipeline) {
+    case "flux-single":
+      return "flux-single";
+    case "flux-chained":
+      return "flux-chained";
+    case "ai-video-scenes-shotstack":
+      return "stitched";
+    case "ai-video-job-single-render":
+      return "single-clip";
+    default:
+      return "unknown";
+  }
+}
+
+function describeVideoPipeline(shape: VideoPipelineShape, segmentCount: number) {
+  switch (shape) {
+    case "flux-single":
+      return "Clariti is rendering one continuous clip of up to twenty seconds, narration included. That usually takes a few minutes.";
+    case "flux-chained":
+      // A chained job whose explainer fits in one clip is planned as a single
+      // segment, so the copy only promises a chain once the job says there is one.
+      return segmentCount > 1
+        ? "Clariti is rendering the explainer in segments, each one carrying on from the end of the last. A longer explainer takes proportionally longer."
+        : "Clariti is rendering one continuous clip, narration included. That usually takes a few minutes.";
+    case "stitched":
+      return "Clariti is generating five short scenes in parallel, then stitching them into one explainer.";
+    case "single-clip":
+      return "Clariti is rendering one short explainer clip.";
+    default:
+      return "Clariti is putting your explainer together.";
+  }
+}
+
+function formatVideoJobStatus(status: string | null | undefined, pipeline: string | null | undefined, segmentCount: number) {
+  const rawShape = videoPipelineShape(pipeline);
+  // One segment is one clip whatever the pipeline is called, and saying
+  // "segment by segment" over a single render is a promise the job will not keep.
+  const shape = rawShape === "flux-chained" && segmentCount <= 1 ? "flux-single" : rawShape;
+  const segmented = shape === "flux-chained" || shape === "stitched";
   switch (status) {
     case "queued":
-      return multiScene ? "Queued — preparing your 5-scene explainer" : "Queued — preparing your explainer";
+      return shape === "stitched"
+        ? "Queued — preparing your 5-scene explainer"
+        : shape === "flux-chained"
+          ? "Queued — preparing your explainer segments"
+          : "Queued — preparing your explainer";
     case "scripting":
-      return multiScene ? "Writing the 5-scene explainer script" : "Writing the explainer script";
+      return shape === "stitched" ? "Writing the 5-scene explainer script" : "Writing the explainer script";
     case "generating_scenes":
-      return multiScene ? "Creating the five scene clips" : "Rendering the explainer clip";
+      return shape === "stitched"
+        ? "Creating the five scene clips"
+        : shape === "flux-chained"
+          ? "Rendering the explainer segment by segment"
+          : "Rendering the explainer clip";
     case "stitching":
-      return multiScene ? "Stitching the five scenes together" : "Finishing the explainer";
+      return shape === "stitched"
+        ? "Stitching the five scenes together"
+        : segmented
+          ? "Putting the segments together"
+          : "Finishing the explainer";
     case "completed":
       return "Video ready";
     case "failed":

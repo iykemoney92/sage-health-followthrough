@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { buildVideoScenes, claritiVideoAnalysisSchema, designExplainerStoryboard, formatHumanVideoError, normalizeHumanVideoDuration } from "@/lib/ai/clariti-video";
+import {
+  buildVideoScenes,
+  claritiVideoAnalysisSchema,
+  designExplainerStoryboard,
+  FLUX_MAX_CHAINED_SEGMENTS,
+  FLUX_MAX_CLIP_SECONDS,
+  FLUX_MIN_CLIP_SECONDS,
+  FLUX_VIDEO_MODEL,
+  formatHumanVideoError,
+  isFluxVideoModel,
+  normalizeVideoDuration,
+  planFluxSegments,
+  type ClaritiVideoPipeline,
+} from "@/lib/ai/clariti-video";
 import { enforceFreeLimit, FREE_VIDEO_LIMIT } from "@/lib/billing/subscription";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
 import { shotstackIsUsable } from "@/lib/integrations/shotstack";
@@ -13,6 +26,8 @@ const bodySchema = z.object({
   sessionId: z.string().uuid().nullish(),
   durationSeconds: z.coerce.number().optional().default(30),
 });
+
+const MAX_CHAINED_SECONDS = FLUX_MAX_CHAINED_SEGMENTS * FLUX_MAX_CLIP_SECONDS;
 
 export async function POST(request: NextRequest) {
   const user = await getSessionUser();
@@ -70,6 +85,27 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // Which pipeline a job runs is settled by the model. Flux 3 renders up to
+  // twenty seconds in one call, so one clip is the whole explainer and there is
+  // nothing left for Shotstack to stitch. Resolved here, ahead of the ceiling
+  // below, because nothing in it costs anything: the Shotstack probe is the one
+  // expensive part and it only runs on the Veo branch further down.
+  const model = (process.env.CLARITI_VIDEO_MODEL ?? FLUX_VIDEO_MODEL).trim();
+  const pipelineChoice = (process.env.CLARITI_VIDEO_PIPELINE ?? "").trim();
+  const isFlux = isFluxVideoModel(model);
+  const wantsChain = isFlux && pipelineChoice === "chained";
+
+  // Refused rather than clamped: a chained segment bills at roughly 2.4x a
+  // fresh clip, and quietly trimming a five-minute request to eighty seconds
+  // would charge someone for a video they did not ask for.
+  const chainedTotalSeconds = Math.max(FLUX_MIN_CLIP_SECONDS, Math.round(durationSeconds));
+  if (wantsChain && chainedTotalSeconds > MAX_CHAINED_SECONDS) {
+    return NextResponse.json({
+      ok: false,
+      error: `Clariti generates up to ${MAX_CHAINED_SECONDS} seconds of video. Ask for a shorter explainer and try again.`,
+    }, { status: 400 });
+  }
+
   // The free-tier gate stops at hasPlus, which left a subscriber with no ceiling
   // at all on the most expensive thing Clariti does. The duplicate-job guard
   // above is no substitute: it is scoped to one session, so the cheap loop of
@@ -84,26 +120,49 @@ export async function POST(request: NextRequest) {
   const rateLimited = await enforceRateLimit(supabase, "videosQueue", "videosQueueDaily");
   if (rateLimited) return rateLimited;
 
-  // Multi-scene Shotstack is the product default when the stitch key actually
-  // works — not merely when it is set. A dead key used to get as far as paying
-  // for five Veo scenes before failing at the stitch. Set
-  // CLARITI_VIDEO_PIPELINE=single to force the one-clip path regardless.
-  const pipeline = process.env.CLARITI_VIDEO_PIPELINE !== "single" && (await shotstackIsUsable())
-    ? "ai-video-scenes-shotstack"
-    : "ai-video-job-single-render";
-  const requestedDurationSeconds = pipeline === "ai-video-scenes-shotstack"
-    ? 30
-    : normalizeHumanVideoDuration(durationSeconds);
-  const model = (process.env.CLARITI_VIDEO_MODEL ?? "google/veo-3.1-generate-001").trim();
+  // Shotstack only ever existed to work around Veo's eight-second ceiling, so
+  // it stays reachable for the Veo models and nothing else. It now has to be
+  // asked for by name as well as have a key that answers: a dead key used to
+  // get as far as paying for five Veo scenes before failing at the stitch.
+  const plannedPipeline: ClaritiVideoPipeline = isFlux
+    ? wantsChain ? "flux-chained" : "flux-single"
+    : pipelineChoice === "shotstack" && (await shotstackIsUsable())
+      ? "ai-video-scenes-shotstack"
+      : "ai-video-job-single-render";
 
-  const storyboard = pipeline === "ai-video-scenes-shotstack"
+  // A single Flux clip is one call against one prompt, so it does not need the
+  // five-scene storyboard — and should not pay an LLM call to design one.
+  const storyboard = plannedPipeline === "flux-chained" || plannedPipeline === "ai-video-scenes-shotstack"
     ? await designExplainerStoryboard(analysis)
     : analysis.videoScenes;
   const analysisWithStoryboard = {
     ...analysis,
     videoScenes: storyboard ?? analysis.videoScenes,
   };
-  const scenes = buildVideoScenes(analysisWithStoryboard, requestedDurationSeconds);
+
+  // The client's default of thirty seconds lands on Flux's twenty-second
+  // ceiling, which is the product default for a single clip: one call in place
+  // of the five Veo renders and a stitch it replaces.
+  const legacyDurationSeconds = plannedPipeline === "ai-video-scenes-shotstack"
+    ? 30
+    : normalizeVideoDuration(model, durationSeconds);
+  const scenes = plannedPipeline === "flux-single"
+    ? planFluxSegments(analysisWithStoryboard, normalizeVideoDuration(model, durationSeconds))
+    : plannedPipeline === "flux-chained"
+      ? planFluxSegments(analysisWithStoryboard, chainedTotalSeconds)
+      : buildVideoScenes(analysisWithStoryboard, legacyDurationSeconds);
+  // `chained` is a ceiling on how long an explainer may run, not an instruction
+  // to segment one that already fits in a single clip. A plan of one segment is
+  // a single render, so the row says so — otherwise every reader of it, the
+  // worker and the progress copy included, has to explain a chain of one.
+  const pipeline: ClaritiVideoPipeline = plannedPipeline === "flux-chained" && scenes.length === 1
+    ? "flux-single"
+    : plannedPipeline;
+  // Stored from the plan rather than from the request, so the row says how long
+  // the video Clariti will actually render is.
+  const requestedDurationSeconds = isFlux
+    ? scenes.reduce((total, scene) => total + scene.durationSeconds, 0)
+    : legacyDurationSeconds;
 
   const { data: job, error: insertError } = await supabase
     .from("clariti_video_generations")
@@ -133,9 +192,11 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     job: publicJob(job),
-    message: pipeline === "ai-video-scenes-shotstack"
-      ? "Video job queued. Clariti will generate 5 explainer scenes, then stitch them."
-      : "Video job queued. Clariti will generate it and save the file to storage.",
+    message: pipeline === "flux-chained"
+      ? `Video job queued. Clariti will generate ${scenes.length} segments in order, each continuing the one before it.`
+      : pipeline === "ai-video-scenes-shotstack"
+        ? "Video job queued. Clariti will generate 5 explainer scenes, then stitch them."
+        : `Video job queued. Clariti will generate one ${requestedDurationSeconds}-second clip and save it to storage.`,
   });
 }
 

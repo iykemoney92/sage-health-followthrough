@@ -207,6 +207,69 @@ Dashboard → Authentication.
 Then redeploy — `NEXT_PUBLIC_*` values are inlined at build time, so a restart is
 not enough.
 
+Two more, already present in production and both wrong for this release:
+`CLARITI_VIDEO_MODEL` and `CLARITI_VIDEO_PIPELINE`. See **Explainer video**
+immediately below — the release does not ship until they are changed.
+
+### Explainer video
+
+**This one does need changing, and the release does not ship until it is.**
+Production still carries the two values from the Veo era. Verified 2026-09-13:
+
+```bash
+cd clariti-app && npx vercel env ls production          # both are present
+npx vercel env pull .env.review --environment=production --yes
+grep -E '^CLARITI_VIDEO_' .env.review && rm .env.review
+# CLARITI_VIDEO_MODEL="google/veo-3.1-generate-001"
+# CLARITI_VIDEO_PIPELINE="shotstack"
+```
+
+Left as they are, the enqueue route takes the non-Flux branch, finds no usable
+Shotstack key (it was revoked on 2026-09-09 and is deliberately unset), and falls
+back to `ai-video-job-single-render` — a single **8-second** Veo clip at **$0.40
+per second**. The whole migration is inert and the explainer is both shorter and
+dearer than the one it replaced. Fix it in `clariti-app` → Settings →
+Environment Variables → Production, alongside the table in section 7:
+
+| Variable | Action |
+|---|---|
+| `CLARITI_VIDEO_MODEL` | set to `bfl/flux-3-video`, or delete it — the code defaults to Flux |
+| `CLARITI_VIDEO_PIPELINE` | delete it, or set it to `single` |
+| `SHOTSTACK_API_KEY` | leave unset |
+
+A redeploy is not required — both are read per request on the server — but check
+one explainer after the change and confirm the job row says `pipeline` is
+`flux-single`.
+
+The explainer runs on FLUX 3 (`bfl/flux-3-video`) through the AI Gateway, which
+renders 5 to 20 seconds with audio in a single call. So the default,
+`CLARITI_VIDEO_PIPELINE=single`, is one clip: no storyboard fan-out, no stitch,
+nothing to fail between the model and the finished file. At roughly $0.17 per
+second for text-to-video that is about $3.40 for a full 20-second explainer.
+
+`chained` is for explainers longer than one clip. Each segment after the first is
+handed the previous mp4 so the model continues from its last frames, and that
+video-to-video call runs around $0.41 per second — near 2.4x a fresh clip. Two
+segments therefore cost far more than one, which is the reason a single clip is
+the default rather than merely the simplest option.
+
+A chain does not finish in one request: four sequential renders do not fit inside
+the worker's 300-second ceiling. It renders what its claim has time for, saves
+each finished segment to the row, and hands the job back as `queued` so the next
+poll continues from the last completed segment. Nothing is rendered twice, and a
+request that is cut off costs at most the segment that was in flight. What this
+means operationally is that a long explainer takes several polls to finish, and
+the workspace tab has to stay open for them. Nothing about `chained` has been
+exercised against the live model yet — the shape of a continued clip is still an
+open question, recorded per segment in `provider_response`.
+
+`shotstack` is the legacy path and stays reachable for the Veo models it was
+built for: five scenes at Veo's $0.40 per second plus a Shotstack render, all to
+work around a ceiling Flux does not have. It engages only when
+`CLARITI_VIDEO_PIPELINE=shotstack`, a Veo model is configured, and the Shotstack
+key is one Shotstack currently accepts. There is no reason to set it up for a
+release.
+
 ## 8. Google Play (Android)
 
 1. Play Console → **Create app** → `Clariti`, package `app.useclariti.mobile`.
@@ -294,10 +357,12 @@ human to confirm or to fill in a form.
       rm .env.review
       ```
       Add a note saying outbound phone calls are not part of this release, and
-      that the explainer-video feature renders a single Veo clip and needs no
-      Shotstack account. Shotstack is optional stitching for a five-scene cut;
-      leave `SHOTSTACK_API_KEY` unset unless you hold a key Shotstack currently
-      accepts — a dead key is probed and ignored, so there is no reason to set one.
+      that the explainer-video feature renders one short AI clip for education
+      only. It no longer depends on a funded Shotstack account: FLUX 3 produces
+      the whole explainer in a single call, so leave `SHOTSTACK_API_KEY` unset.
+      The legacy five-scene stitch is still reachable behind
+      `CLARITI_VIDEO_PIPELINE=shotstack` on a Veo model, and nothing about a
+      review needs it.
 - [ ] **Age rating**: expect 17+ / "Medical or Treatment Information".
 - [ ] **Screenshots**: 6.7" and 6.5" iPhone, plus an iPad set — the shell ships
       with `TARGETED_DEVICE_FAMILY = "1,2"`, so App Store Connect will not accept

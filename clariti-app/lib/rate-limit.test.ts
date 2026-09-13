@@ -26,7 +26,8 @@ afterEach(() => {
 
 describe("video ceilings", () => {
   // These two are the ceiling on money, so they are pinned rather than left to
-  // drift: one explainer is five Veo renders plus a stitch.
+  // drift: one explainer is a twenty-second Flux render, and several times that
+  // when it is chained.
   it("keeps the claim ceilings at the audited numbers", () => {
     expect(RATE_LIMITS.videos).toEqual({ limit: 3, windowSeconds: 3600 });
     expect(RATE_LIMITS.videosDaily).toEqual({ limit: 10, windowSeconds: 86_400 });

@@ -26,6 +26,14 @@ export type ClaritiVideoScene = {
   prompt: string;
   sourceAnchor: string;
   status: "queued" | "generating" | "completed" | "failed";
+  /**
+   * Whether this clip is the entire explainer rather than one shot of several.
+   * The planner is the only thing that knows, and the prompt needs to: a clip
+   * told to land the closing question at second twenty when three segments
+   * follow it will wrap up, and the rest then continue past an ending that has
+   * already happened. Absent on rows queued before segments were planned.
+   */
+  isWholeExplainer?: boolean;
   videoUrl?: string;
   error?: string;
 };
@@ -39,13 +47,349 @@ export function normalizeHumanVideoDuration(durationSeconds: number): ClaritiHum
   return 8;
 }
 
+export const FLUX_VIDEO_MODEL = "bfl/flux-3-video";
+export const FLUX_MIN_CLIP_SECONDS = 5;
+export const FLUX_MAX_CLIP_SECONDS = 20;
+/**
+ * How many chained clips one explainer may spend on. A continued segment bills
+ * at video-to-video rates — roughly 2.4x a fresh clip — so the chain is bounded
+ * rather than left to follow whatever length a client asks for. Four segments is
+ * eighty seconds, well past any explainer Clariti has a reason to narrate. Both
+ * the enqueue route and the renderer check it, so it lives here rather than
+ * being written down twice.
+ */
+export const FLUX_MAX_CHAINED_SEGMENTS = 4;
+
+/** The Veo id the app shipped with, and still the fallback for the legacy pipeline. */
+const LEGACY_VEO_MODEL = "google/veo-3.1-generate-001";
+
+export type ClaritiVideoPipeline =
+  | "flux-single"
+  | "flux-chained"
+  | "ai-video-scenes-shotstack"
+  | "ai-video-job-single-render";
+
+/**
+ * Matches the family rather than one exact id. The gateway has renamed video
+ * models across revisions before, and any `bfl/flux-*-video` carries the same
+ * five-to-twenty-second envelope this file plans against — so a point release
+ * must not silently fall back to Veo's 4/6/8 rounding.
+ */
+export function isFluxVideoModel(model: string): boolean {
+  const id = model.trim().toLowerCase();
+  if (!id) return false;
+  return id === FLUX_VIDEO_MODEL || /^bfl\/flux-[a-z0-9.-]*video$/.test(id);
+}
+
+/** Flux takes any whole second from 5 to 20; Veo takes only 4, 6 or 8. */
+export function normalizeVideoDuration(model: string, durationSeconds: number): number {
+  if (!isFluxVideoModel(model)) return normalizeHumanVideoDuration(durationSeconds);
+  return clampFluxClipSeconds(durationSeconds);
+}
+
+function clampFluxClipSeconds(durationSeconds: number) {
+  if (!Number.isFinite(durationSeconds)) return FLUX_MIN_CLIP_SECONDS;
+  const whole = Math.round(durationSeconds);
+  if (whole < FLUX_MIN_CLIP_SECONDS) return FLUX_MIN_CLIP_SECONDS;
+  if (whole > FLUX_MAX_CLIP_SECONDS) return FLUX_MAX_CLIP_SECONDS;
+  return whole;
+}
+
+/**
+ * The AI SDK wants pixels, the gateway publishes `hd` and `fhd`.
+ *
+ * The opt-in only applies to Flux. Veo stays pinned at 720p so switching models
+ * cannot quietly change what the legacy pipeline costs per second.
+ */
+export function videoResolutionFor(model: string): `${number}x${number}` {
+  const wantsFhd = (process.env.CLARITI_VIDEO_RESOLUTION ?? "").trim().toLowerCase() === "fhd";
+  return wantsFhd && isFluxVideoModel(model) ? "1920x1080" : "1280x720";
+}
+
+/**
+ * Splits an explainer into clips Flux will actually accept.
+ *
+ * Anything up to twenty seconds is one call — the whole point of the move off
+ * Veo is that the common case stops being five renders and a stitch. Longer
+ * explainers split evenly rather than filling twenty-second clips and leaving a
+ * remainder: `ceil(45 / 20)` is three segments of fifteen, where greedy packing
+ * would hand the model a five-second tail today and a two-second one at 42
+ * seconds, which it rejects outright.
+ */
+export function planFluxSegments(analysis: ClaritiVideoAnalysis, totalSeconds: number): ClaritiVideoScene[] {
+  const durations = planFluxSegmentDurations(totalSeconds);
+  const isWholeExplainer = durations.length === 1;
+  const beatGroups = splitExplainerBeats(getExplainerBeats(analysis), durations.length);
+
+  return durations.map((durationSeconds, index) => {
+    const beats = beatGroups[index];
+    const scene: ClaritiVideoScene = {
+      sceneIndex: index,
+      title: isWholeExplainer ? "Full explainer" : beats[0].title,
+      durationSeconds,
+      narration: joinBeatNarration(beats, durationSeconds, { keepClosing: index === durations.length - 1 }),
+      sourceAnchor: beats[0].sourceAnchor ?? analysis.sourceAnchors[0] ?? "Saved analysis",
+      status: "queued",
+      isWholeExplainer,
+      prompt: "",
+    };
+    return {
+      ...scene,
+      prompt: buildFluxSegmentPrompt(analysis, scene, { isContinuation: index > 0 }),
+    };
+  });
+}
+
+function planFluxSegmentDurations(totalSeconds: number) {
+  const total = Number.isFinite(totalSeconds) ? Math.round(totalSeconds) : FLUX_MAX_CLIP_SECONDS;
+  if (total <= FLUX_MAX_CLIP_SECONDS) return [clampFluxClipSeconds(total)];
+
+  const segmentCount = Math.ceil(total / FLUX_MAX_CLIP_SECONDS);
+  const base = Math.floor(total / segmentCount);
+  const remainder = total - base * segmentCount;
+  return Array.from({ length: segmentCount }, (_, index) =>
+    clampFluxClipSeconds(base + (index < remainder ? 1 : 0)));
+}
+
+function getExplainerBeats(analysis: ClaritiVideoAnalysis): ScenePlan[] {
+  const designed = analysis.videoScenes?.filter((scene) => scene.script.trim().length > 0);
+  if (designed?.length) {
+    return designed.map((scene) => ({
+      title: scene.title,
+      narration: scene.script,
+      sourceAnchor: scene.sourceAnchor,
+      visual: scene.visual,
+    }));
+  }
+
+  return buildDefaultFiveScenePlan({
+    analysis,
+    documentNoun: getDocumentNoun(analysis),
+    reportType: getReportType(analysis),
+    visualDirection: getVisualDirection(analysis),
+    main: analysis.keyPoints[0],
+    second: analysis.keyPoints[1],
+    third: analysis.keyPoints[2],
+    question: analysis.questions[0] ?? getDefaultQuestion(analysis),
+    nextAction: analysis.nextActions[0] ?? "Bring this document to your next conversation with the right person.",
+  });
+}
+
+function splitExplainerBeats(beats: ScenePlan[], segmentCount: number): ScenePlan[][] {
+  if (segmentCount <= 1) return [beats];
+
+  const groups: ScenePlan[][] = Array.from({ length: segmentCount }, () => []);
+  beats.forEach((beat, index) => {
+    const group = Math.min(segmentCount - 1, Math.floor((index * segmentCount) / beats.length));
+    groups[group].push(beat);
+  });
+  // More segments than beats is possible on a long explainer built from a short
+  // storyboard; an empty segment would be a clip with nothing to say.
+  return groups.map((group, index) => (group.length ? group : [beats[Math.min(index, beats.length - 1)]]));
+}
+
+/**
+ * Spoken text, so the beats need sentence breaks between them. The storyboard
+ * writes each beat as its own line and several end without punctuation, which a
+ * bare space run-ons into "...billed for a visit The key numbers are".
+ */
+function joinBeatNarration(beats: ScenePlan[], durationSeconds: number, options: { keepClosing: boolean }) {
+  const spoken = beats
+    .map((beat) => beat.narration.replace(/\s+/g, " ").trim())
+    .filter((narration) => narration.length > 0)
+    .map((narration) => (/[.!?:]$/.test(narration) ? narration : `${narration}.`));
+  return fitNarrationToDuration(spoken, durationSeconds, options);
+}
+
+/** A calm presenter speaks a little over two and a half words a second. */
+const SPOKEN_WORDS_PER_SECOND = 2.6;
+
+/**
+ * Slack before anything is cut. A clip that runs a few words long is paced
+ * slightly faster; half a beat is a script that stops mid-thought, which is the
+ * worse of the two by a distance.
+ */
+const NARRATION_OVERRUN_TOLERANCE = 1.15;
+
+/**
+ * Budgets the script by how long the clip is rather than by how many characters
+ * it runs to.
+ *
+ * The five-beat storyboard was written for a thirty-second stitched cut, so
+ * handing all of it to a twenty-second clip asks the presenter to speak at
+ * roughly twice the pace the same prompt tells them to keep. Whole beats give
+ * way first, from the middle outwards: the opening says what the document is,
+ * and the last beat of the explainer carries the question the reader is meant to
+ * leave with. Only after that does a beat lose a sentence, and a cut always
+ * lands on a sentence boundary — this text is spoken aloud, and a trailing
+ * ellipsis is something the presenter has to read out.
+ */
+function fitNarrationToDuration(beats: string[], durationSeconds: number, options: { keepClosing: boolean }) {
+  const seconds = Number.isFinite(durationSeconds) ? durationSeconds : FLUX_MAX_CLIP_SECONDS;
+  const budget = Math.round(Math.max(12, seconds * SPOKEN_WORDS_PER_SECOND) * NARRATION_OVERRUN_TOLERANCE);
+  const kept = beats.filter((beat) => beat.length > 0);
+  if (!kept.length) return "";
+
+  const isOverBudget = () => countSpokenWords(kept.join(" ")) > budget;
+  while (kept.length > 2 && isOverBudget()) {
+    kept.splice(Math.floor(kept.length / 2), 1);
+  }
+  while (kept.length > 1 && isOverBudget()) {
+    // The end this segment can spare: a closing segment shortens its opening,
+    // any other one shortens its tail.
+    const index = options.keepClosing ? 0 : kept.length - 1;
+    const shortened = dropTrailingSentence(kept[index]);
+    if (shortened === kept[index]) kept.splice(index, 1);
+    else kept[index] = shortened;
+  }
+
+  if (!isOverBudget()) return kept.join(" ");
+  return options.keepClosing
+    ? keepTrailingSentences(kept[0], budget)
+    : keepLeadingSentences(kept[0], budget);
+}
+
+function countSpokenWords(value: string) {
+  return value.split(/\s+/).filter(Boolean).length;
+}
+
+function splitSentences(value: string) {
+  return value.match(/[^.!?]+[.!?]*\s*/g)?.map((sentence) => sentence.trim()).filter(Boolean) ?? [value];
+}
+
+function dropTrailingSentence(value: string) {
+  const sentences = splitSentences(value);
+  if (sentences.length <= 1) return value;
+  return sentences.slice(0, -1).join(" ");
+}
+
+/** Last resort for one long beat, keeping at least a sentence either way. */
+function keepLeadingSentences(value: string, budget: number) {
+  const kept: string[] = [];
+  for (const sentence of splitSentences(value)) {
+    if (kept.length && countSpokenWords([...kept, sentence].join(" ")) > budget) break;
+    kept.push(sentence);
+  }
+  return kept.join(" ");
+}
+
+function keepTrailingSentences(value: string, budget: number) {
+  const kept: string[] = [];
+  for (const sentence of splitSentences(value).reverse()) {
+    if (kept.length && countSpokenWords([sentence, ...kept].join(" ")) > budget) break;
+    kept.unshift(sentence);
+  }
+  return kept.join(" ");
+}
+
+/**
+ * The prompt for one Flux clip.
+ *
+ * The base presenter prompt carries the grounding, the safety rules and the
+ * spoken script; this adds what is specific to the clip. Continuation segments
+ * are handed the previous mp4 through `inputReferences`, so the wording has to
+ * tell the model it is still inside that shot — otherwise it re-establishes the
+ * room and the finished explainer reads as several unrelated videos.
+ */
+export function buildFluxSegmentPrompt(
+  analysis: ClaritiVideoAnalysis,
+  scene: ClaritiVideoScene,
+  options: { isContinuation: boolean },
+): string {
+  const base = buildHumanPresenterPrompt(analysis, scene.durationSeconds, {
+    model: FLUX_VIDEO_MODEL,
+    script: scene.narration,
+  });
+  const segmentNumber = scene.sceneIndex + 1;
+  // Only the clip that is the entire explainer is told to close the piece out.
+  // An opener that signs off at second twenty leaves the segments after it
+  // continuing past an ending that has already happened — each of them billed at
+  // video-to-video rates.
+  const isWholeExplainer = !options.isContinuation && scene.isWholeExplainer === true;
+
+  return [
+    base,
+    "",
+    options.isContinuation
+      ? `This shot continues the video supplied as a reference. Segment ${segmentNumber}, ${scene.durationSeconds} seconds, 24 fps, with spoken audio.`
+      : isWholeExplainer
+        ? `This shot is the whole explainer. ${scene.durationSeconds} seconds, 24 fps, with spoken audio.`
+        : `This shot opens the explainer and more segments follow it. Segment ${segmentNumber}, ${scene.durationSeconds} seconds, 24 fps, with spoken audio.`,
+    options.isContinuation
+      ? "Continue the existing shot: same consultation room, same presenter, same wardrobe, same lighting and framing, continuing mid-explanation from the final frames of the reference clip. Do not restart the introduction, do not re-establish the setting, and do not open on a new scene or a new person."
+      : isWholeExplainer
+        ? `Pace the narration to fill the full ${scene.durationSeconds} seconds without rushing and without padding, and land the closing question before the end.`
+        : `Pace the narration to fill the full ${scene.durationSeconds} seconds without rushing and without padding. Do not sign off, do not summarise the whole document, and do not close on a question: the explanation carries on in the next shot.`,
+  ].join("\n");
+}
+
+/**
+ * What a returned continuation clip turned out to hold. `extended` means the
+ * model handed back the whole video so far, which is the only shape that leaves
+ * one file worth saving; `continuation` means it returned the new footage alone.
+ */
+export type ClaritiChainedSegmentShape = "fresh" | "extended" | "continuation" | "unknown";
+
+/**
+ * Reads a continued clip's length against the two lengths it could plausibly be:
+ * this segment alone, or everything up to and including it. A quarter is a
+ * generous tolerance, but the two candidates are always at least five seconds
+ * apart, so it separates them without mistaking encoder slack for a verdict.
+ */
+export function classifyContinuation(
+  measuredSeconds: number | null,
+  segmentSeconds: number,
+  cumulativeSeconds: number,
+): ClaritiChainedSegmentShape {
+  if (measuredSeconds === null || !Number.isFinite(measuredSeconds) || measuredSeconds <= 0) return "unknown";
+  const offSegment = Math.abs(measuredSeconds - segmentSeconds);
+  const offCumulative = Math.abs(measuredSeconds - cumulativeSeconds);
+  if (offCumulative < offSegment && offCumulative <= cumulativeSeconds * 0.25) return "extended";
+  if (offSegment < offCumulative && offSegment <= segmentSeconds * 0.25) return "continuation";
+  return "unknown";
+}
+
+/**
+ * The gateway publishes no schema for a video response's metadata, and the
+ * duration is the one number that would settle what a continued clip holds, so
+ * it is looked for wherever the provider chose to put it rather than at one
+ * fixed key. Null when there is nothing plausible to read.
+ */
+export function readReportedDuration(metadata: unknown, depth = 0): number | null {
+  if (!metadata || typeof metadata !== "object" || depth > 4) return null;
+  for (const [key, value] of Object.entries(metadata as Record<string, unknown>)) {
+    if (/^(video_?)?duration(_?seconds|_?secs)?$/i.test(key)) {
+      const seconds = typeof value === "number"
+        ? value
+        : typeof value === "string" ? Number.parseFloat(value) : Number.NaN;
+      if (Number.isFinite(seconds) && seconds > 0) return seconds;
+    }
+    const nested = readReportedDuration(value, depth + 1);
+    if (nested !== null) return nested;
+  }
+  return null;
+}
+
 export function formatHumanVideoError(error: unknown) {
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
   const cleaned = message.replace(/\s+/g, " ").trim();
 
   if (!cleaned) return "The video was not generated. Please try again.";
-  if (/unsupported output video duration/i.test(cleaned)) {
+  if (/unsupported output video duration|duration (is )?(not supported|out of range|unsupported)|supported[_ ]durations/i.test(cleaned)) {
     return "That video length is not supported. Please try again.";
+  }
+  // Checked ahead of the continuation branch below: a Shotstack failure payload
+  // is passed through verbatim and routinely says "invalid video asset" or
+  // "unsupported media type", which would otherwise tell a reader on the legacy
+  // stitch that Clariti could not continue from a previous clip it never had.
+  if (/shotstack/i.test(cleaned)) {
+    return "Clariti could not finish stitching the video scenes. Please try again.";
+  }
+  // Continuation clips hand the model the previous mp4. When it comes back
+  // rejected the reader should be told the join failed, not shown a provider
+  // complaint about a media type they never chose.
+  if (/input ?references?|reference video|video input|invalid video|unsupported (media|mime) type/i.test(cleaned)) {
+    return "Clariti could not continue the video from the previous clip. Please try again.";
   }
   if (/minimum balance|insufficient/i.test(cleaned)) {
     return "Video generation is not available right now. Please try again later.";
@@ -63,9 +407,6 @@ export function formatHumanVideoError(error: unknown) {
   if (/save this analysis first/i.test(cleaned)) {
     return cleaned;
   }
-  if (/shotstack/i.test(cleaned)) {
-    return "Clariti could not finish stitching the video scenes. Please try again.";
-  }
   if (cleaned.length <= 180 && !/api[_ -]?key|token|secret/i.test(cleaned)) {
     return cleaned;
   }
@@ -74,7 +415,7 @@ export function formatHumanVideoError(error: unknown) {
 
 export function buildVideoScenes(analysis: ClaritiVideoAnalysis, durationSeconds: number): ClaritiVideoScene[] {
   const isStitchedExplainer = durationSeconds >= 24;
-  const safeDuration = isStitchedExplainer ? 30 : normalizeHumanVideoDuration(durationSeconds);
+  const safeDuration = isStitchedExplainer ? 30 : normalizeVideoDuration(LEGACY_VEO_MODEL, durationSeconds);
   const reportType = getReportType(analysis);
   const documentNoun = getDocumentNoun(analysis);
   const visualDirection = getVisualDirection(analysis);
@@ -314,8 +655,12 @@ export async function designExplainerStoryboard(analysis: ClaritiVideoAnalysis) 
   }
 }
 
-export function buildHumanPresenterPrompt(analysis: ClaritiVideoAnalysis, durationSeconds: number) {
-  const safeDuration = normalizeHumanVideoDuration(durationSeconds);
+export function buildHumanPresenterPrompt(
+  analysis: ClaritiVideoAnalysis,
+  durationSeconds: number,
+  options?: { model?: string; script?: string },
+) {
+  const safeDuration = normalizeVideoDuration(options?.model ?? LEGACY_VEO_MODEL, durationSeconds);
   const findings = analysis.keyPoints
     .slice(0, 4)
     .map((point) => `- ${point.label}: ${point.detail} Source: ${point.sourceAnchor}`)
@@ -323,7 +668,11 @@ export function buildHumanPresenterPrompt(analysis: ClaritiVideoAnalysis, durati
   const questions = analysis.questions.slice(0, 3).map((question) => `- ${question}`).join("\n");
   const documentNoun = getDocumentNoun(analysis);
   const visualDirection = getVisualDirection(analysis);
-  const script = buildPresenterScript(analysis, safeDuration);
+  // A caller planning segments has already written the narration for this clip;
+  // letting the default script through as well would put two competing scripts
+  // in one prompt, and on a continuation clip they disagree about where the
+  // explainer starts.
+  const script = options?.script?.replace(/\s+/g, " ").trim() || buildPresenterScript(analysis, safeDuration);
 
   return `
 Create a realistic ${safeDuration}-second 16:9 human explainer video for a patient reviewing one ${documentNoun}.
@@ -362,9 +711,27 @@ Style: premium healthcare product demo, realistic lighting, warm and precise pre
 `.trim();
 }
 
-function buildPresenterScript(analysis: ClaritiVideoAnalysis, durationSeconds: ClaritiHumanVideoDuration) {
+function buildPresenterScript(analysis: ClaritiVideoAnalysis, durationSeconds: number) {
   const main = analysis.keyPoints[0];
   const question = analysis.questions[0] ?? getDefaultQuestion(analysis);
+
+  // Veo could never be asked for more than eight seconds, so three lines was a
+  // full script. A Flux clip runs to twenty, and the same three lines leave the
+  // presenter standing in silence for most of it — so the long form walks the
+  // whole arc the five-scene storyboard walks.
+  if (durationSeconds >= 12) {
+    const second = analysis.keyPoints[1];
+    const nextAction = analysis.nextActions[0] ?? "Bring this document to your next conversation with the right person.";
+    return [
+      `Let's walk through this ${getDocumentNoun(analysis)} together.`,
+      `In plain words: ${analysis.summary}`,
+      `The main thing it says is ${main?.detail ?? analysis.plainEnglish}`,
+      second ? `It also notes ${second.detail}` : analysis.plainEnglish,
+      getSafetyShortLine(analysis),
+      `A good next step: ${nextAction}`,
+      `Ask: ${question}`,
+    ].join(" ");
+  }
 
   if (durationSeconds >= 8) {
     return [

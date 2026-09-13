@@ -9,10 +9,14 @@ import { NextResponse } from "next/server";
  * scripting the API cannot run up an unbounded Anthropic/Shotstack bill before
  * anyone notices.
  *
- * Video generation is the exception to "generous". One explainer is five Veo
- * renders plus a Shotstack stitch — roughly the cost of a month of Plus — so it
+ * Video generation is the exception to "generous". One explainer is a single
+ * twenty-second Flux render — a few dollars, and several times that if it is
+ * ever chained, since a continued segment bills at video-to-video rates — so it
  * gets a tight hourly ceiling and a daily one on top, because an hourly window
- * alone still permits two dozen renders overnight.
+ * alone still permits two dozen renders overnight. The ceilings predate the move
+ * off Veo, where one explainer was five renders plus a Shotstack stitch; they
+ * are left where they are deliberately, because they now bound a cheaper call
+ * and loosening them is a spending decision, not a cleanup.
  *
  * Queuing and claiming get separate windows because they are separate requests,
  * usually in separate windows. Counting both against one budget only adds up for
