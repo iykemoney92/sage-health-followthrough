@@ -395,3 +395,25 @@ human to confirm or to fill in a form.
 - Nothing to do about `0006_private_artifacts_and_limits.sql` — it is applied,
   and `clariti-documents` and `clariti-videos` are both private. Left here only
   because an earlier draft of this runbook listed it as outstanding.
+
+## Explainer video: what production actually runs
+
+As of 2026-09-15 production renders the explainer with **FLUX 3** (`bfl/flux-3-video`)
+through the Vercel AI Gateway. There is no Replicate account in this path — the gateway
+serves the model and bills the Vercel AI Gateway credit balance, authenticated in
+production by `VERCEL_OIDC_TOKEN` rather than a stored key.
+
+`CLARITI_VIDEO_MODEL=bfl/flux-3-video` is set; `CLARITI_VIDEO_PIPELINE` is deliberately
+**unset**, which resolves to `flux-single` — one call of up to twenty seconds with audio.
+Its previous value was `shotstack`, which is meaningless on a Flux model and was removed
+so the dashboard does not imply a stitch that cannot run.
+
+Two things to know before anyone debugs this:
+
+- **The video path has never executed.** `clariti_video_generations` has no rows. The code
+  is reviewed and typechecked but no clip has been generated against the gateway, so the
+  first real run is also the first test. Watch that the gateway balance can cover it —
+  roughly $0.17 per second, so about $3.40 for a twenty-second clip.
+- **Env changes need a commit.** This project has an Ignored Build Step that skips builds
+  when nothing under `clariti-app/` changed, so `vercel redeploy` of the same commit is
+  cancelled and a new env value never reaches the running app.
