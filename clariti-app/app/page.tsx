@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { AppDownloadLinks } from "@/components/app-download-links";
 import { ClaritiAuthModal } from "@/components/clariti-auth-modal";
 import { ClaritiShell } from "@/components/clariti-shell";
 import { prepareDocumentForUpload, readDocumentApiResponse } from "@/components/clariti/document-upload";
@@ -430,6 +431,8 @@ function HomeContent() {
             <ShieldCheck />
             <span>One document at a time keeps Clariti honest. It explains paperwork in plain language — it does not diagnose.</span>
           </div>
+
+          <AppDownloadLinks />
         </div>
       </section>
 

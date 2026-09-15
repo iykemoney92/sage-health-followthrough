@@ -200,6 +200,7 @@ Dashboard → Authentication.
 | `NEXT_PUBLIC_CLARITI_REVENUECAT_IOS_API_KEY` | `appl_…` from step 4.6 |
 | `NEXT_PUBLIC_CLARITI_REVENUECAT_ANDROID_API_KEY` | `goog_…` from step 4.6 |
 | `NEXT_PUBLIC_IOS_APP_STORE_URL` | `https://apps.apple.com/app/id<Apple ID from step 2.2>` — **leave unset until the app is actually live** |
+| `NEXT_PUBLIC_ANDROID_PLAY_STORE_URL` | `https://play.google.com/store/apps/details?id=app.useclariti.mobile` — **set this now**; Android is live, and it is what makes the Google Play button appear on the landing page |
 | `CLARITI_MIN_NATIVE_BUILD` | `1` |
 | `NEXT_PUBLIC_CLARITI_OAUTH_PROVIDERS` | `apple,google` — **only after step 6 is done**; empty until then |
 | `CRON_SECRET` | a fresh random string; Vercel Cron sends it as `Authorization: Bearer …` |
@@ -385,8 +386,12 @@ human to confirm or to fill in a form.
 
 ## 11. After the app is live
 
-- Set `NEXT_PUBLIC_IOS_APP_STORE_URL` (step 7) and redeploy, so the in-app
-  "update available" notice can link to the listing.
+- Set `NEXT_PUBLIC_IOS_APP_STORE_URL` (step 7) and redeploy. That one value does
+  two things: it gives the in-app "update available" notice a listing to link
+  to, and it is the gate on the App Store button at the foot of the landing
+  page, which stays hidden until the URL is set. No code change is needed — the
+  button appears on the next build. Leave it unset until version 1.0 is on sale
+  in at least one territory, because until then the listing URL 404s.
 - Nothing to do about `0006_private_artifacts_and_limits.sql` — it is applied,
   and `clariti-documents` and `clariti-videos` are both private. Left here only
   because an earlier draft of this runbook listed it as outstanding.

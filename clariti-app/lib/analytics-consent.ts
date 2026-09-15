@@ -13,8 +13,12 @@ export function getGaMeasurementId() {
  * Read off the injected bridge rather than importing `@capacitor/core`, because
  * this module is also pulled into server components, where that import has no
  * business running.
+ *
+ * Exported because that dependency-free shape is the one worth reusing from
+ * plain UI components: the other two copies of this check live in modules that
+ * drag in the RevenueCat SDK or the Supabase client behind them.
  */
-function isNativeShell() {
+export function isNativeShell() {
   if (typeof window === "undefined") return false;
   const bridge = (window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
   return typeof bridge?.isNativePlatform === "function" && bridge.isNativePlatform();

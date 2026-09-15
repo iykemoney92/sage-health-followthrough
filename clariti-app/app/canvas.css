@@ -1566,3 +1566,79 @@
     box-shadow: none;
   }
 }
+
+/* Store links at the foot of the landing page. Sized and coloured off
+   .clariti-entry-trust rather than .clariti-entry-starters on purpose: the
+   page's action is the composer, and this should read as the last quiet line
+   of the page, not as a second thing to press. The row has to look right with
+   one child as well as two, because each link appears only when its own store
+   URL is configured — today that is Google Play alone. On a phone, where a
+   download prompt is the most useful, the two links split the row and drop to
+   a 44px target rather than staying at desktop's smaller pill. */
+.clariti-app-links {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.clariti-app-links-label {
+  margin: 0;
+  color: #87938e;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.clariti-app-links-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.clariti-app-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #e1e7e4;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #4c5d58;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.clariti-app-link:hover {
+  background: #fff;
+  border-color: #bfd1cb;
+}
+
+.clariti-app-link svg {
+  flex: none;
+}
+
+@media (max-width: 760px) {
+  .clariti-app-links-row {
+    width: min(360px, 100%);
+  }
+
+  .clariti-app-link {
+    flex: 1 1 148px;
+    min-height: 44px;
+  }
+
+  /* Two links share the row; a lone one keeps its own width. Letting the
+     single-store case grow into all 360px would turn the quiet closing line of
+     the page into a full-width button that reads like a second call to action,
+     which is exactly what this block is not. One store is the shipping state
+     today, not an edge case: iOS stays hidden until it is downloadable. */
+  .clariti-app-link:only-child {
+    flex: 0 1 auto;
+    padding: 0 20px;
+  }
+}
