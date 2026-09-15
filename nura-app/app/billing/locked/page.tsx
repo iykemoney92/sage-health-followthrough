@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CreditCard, FolderHeart, Lock } from "lucide-react";
 import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { NuraLogo } from "@/components/nura-logo";
@@ -71,6 +72,9 @@ export default async function BillingLockedPage() {
             View billing details
           </a>
           <SignOutButton className="skip-intake-button billing-lock-signout" source="billing_locked" />
+          <Link href="/account/delete" className="billing-lock-footnote">
+            Delete my account instead
+          </Link>
         </div>
       </div>
     </main>

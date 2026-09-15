@@ -58,10 +58,14 @@ export default async function AiConsentPage({
             Anthropic processes it only to generate your reply and may not use it to train its models or for its
             own purposes. Nura never sells your health context or uses it for advertising. Read{" "}
             <Link href="/data-use">how your data is used</Link> and our{" "}
-            <Link href="/privacy">privacy policy</Link>, or delete everything at any time from Me → Data &amp; export.
+            <Link href="/privacy">privacy policy</Link>. You can delete your account at any time from Me → Delete
+            account.
           </p>
           <AiConsentActions next={destination} />
           <SignOutButton className="skip-intake-button billing-lock-signout" source="ai_consent" />
+          <Link href="/account/delete" className="billing-lock-footnote">
+            Delete my account instead
+          </Link>
         </div>
       </div>
     </main>

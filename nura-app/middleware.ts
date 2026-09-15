@@ -17,7 +17,11 @@ const PROTECTED_PREFIXES = [
   "/billing",
   "/upload-review",
   "/thread-proposal",
+  "/account",
 ];
+// Reachable in every account state: a user must be able to delete their
+// account without first agreeing to AI data sharing or paying for a trial.
+const ACCOUNT_DELETION_PATH = "/account/delete";
 const AUTH_PAGES = ["/login", "/signup", "/welcome", "/forgot-password", "/auth/check-email"];
 /** Surfaces that redirect expired/cancelled users to the lock screen. Free tier is allowed. */
 const PLUS_LOCK_PREFIXES = [
@@ -93,7 +97,8 @@ export async function middleware(request: NextRequest) {
   // It sits ahead of the billing lock deliberately: the lock screen sends
   // nothing anywhere, whereas /summary and /plans/[id] call Anthropic during
   // their server render, so a client-side dialog could not have stopped them.
-  if (user && isProtected && !hasAiConsent(user)) {
+  const isAccountDeletion = pathname === ACCOUNT_DELETION_PATH || pathname.startsWith(`${ACCOUNT_DELETION_PATH}/`);
+  if (user && isProtected && !isAccountDeletion && !hasAiConsent(user)) {
     const url = request.nextUrl.clone();
     url.pathname = AI_CONSENT_PATH;
     url.search = "";
@@ -139,6 +144,7 @@ export const config = {
     "/plans/:path*",
     "/calendar/:path*",
     "/me/:path*",
+    "/account/:path*",
     "/workspace/:path*",
     "/check-in/:path*",
     "/summary/:path*",

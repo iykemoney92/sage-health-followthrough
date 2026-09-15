@@ -11,6 +11,7 @@ import {
   Radio,
   Settings,
   ShieldCheck,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import { NuraShell } from "@/components/nura-shell";
@@ -132,6 +133,14 @@ export default async function MePage() {
       title: "Support & safety",
       copy: "Help, boundaries and crisis resources",
       Icon: ShieldCheck,
+    },
+    // Its own row, not a section inside Data & export: App Review could not
+    // find deletion there (Guideline 5.1.1(v)).
+    {
+      href: "/account/delete",
+      title: "Delete account",
+      copy: "Permanently remove your account and all data",
+      Icon: Trash2,
     },
   ] as const;
 

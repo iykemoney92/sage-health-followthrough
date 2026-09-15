@@ -363,8 +363,8 @@ export default async function SettingsSection({
             <section>
               <h3>Privacy note</h3>
               <p className="muted">
-                Nura only uses what you’ve shared for follow-through. Export or delete everything anytime from Data &amp;
-                export.
+                Nura only uses what you’ve shared for follow-through. Export everything from Data &amp; export, or
+                delete your account from Me → Delete account.
               </p>
               <Link href="/me/data" className="secondary-cta">
                 Go to Data &amp; export

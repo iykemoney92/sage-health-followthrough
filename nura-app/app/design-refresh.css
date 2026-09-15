@@ -7541,3 +7541,6 @@ body::before {
 /* Subscription terms under the native paywall button (Guideline 3.1.2). */
 .paywall-terms{margin-top:10px;font-size:12px;line-height:1.5;color:#70736b;overflow-wrap:anywhere}
 .paywall-terms a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+
+/* Quiet last-resort link under the lock and consent cards. */
+.billing-lock-footnote{display:block;margin-top:14px;font-size:13px;color:#70736b;text-decoration:underline;text-underline-offset:2px;text-align:center}

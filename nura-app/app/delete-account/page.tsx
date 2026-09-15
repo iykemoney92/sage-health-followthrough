@@ -10,7 +10,7 @@ function buildSections(supportEmail: string) {
   return [
     {
       title: "Delete from inside the app",
-      body: "Sign in, open Me, then Data & export, and choose Delete account. Confirm once and the deletion runs immediately — there is no waiting period and no way to undo it.",
+      body: "Sign in, open Me, and tap Delete account. Type DELETE to confirm and the deletion runs immediately — there is no waiting period and no way to undo it. The same page is at usenura.app/account/delete.",
     },
     {
       title: "Delete by email",
