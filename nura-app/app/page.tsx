@@ -5,6 +5,7 @@ import { LandingSprout } from "@/components/landing-sprout";
 import { LandingReveal } from "@/components/landing-reveal";
 import { LandingReadMore } from "@/components/landing-read-more";
 import { LandingNavChrome } from "@/components/landing-nav-chrome";
+import { StoreBadges } from "@/components/store-badges";
 import { TrackedLink } from "@/components/tracked-link";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
@@ -85,6 +86,10 @@ export default async function LandingPage() {
             <a href="#how" className="secondary-cta large">
               See how it works
             </a>
+          </div>
+          <div className="landing-hero-apps">
+            <p>Also on iPhone and Android</p>
+            <StoreBadges placement="hero" />
           </div>
         </div>
         <div className="landing-hero-visual" aria-hidden="true">
@@ -170,6 +175,7 @@ export default async function LandingPage() {
         <div>
           <NuraLogo compact />
           <p>{NURA_PRODUCT.footerLine}</p>
+          <StoreBadges placement="footer" compact />
         </div>
         <nav aria-label="Legal links">
           <Link href="/privacy">Privacy</Link>

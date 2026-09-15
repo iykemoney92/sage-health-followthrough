@@ -7544,3 +7544,20 @@ body::before {
 
 /* Quiet last-resort link under the lock and consent cards. */
 .billing-lock-footnote{display:block;margin-top:14px;font-size:13px;color:#70736b;text-decoration:underline;text-underline-offset:2px;text-align:center}
+
+/* App Store / Google Play buttons (web only; hidden inside the native shells). */
+.store-badges{display:flex;flex-wrap:wrap;gap:10px}
+.store-badge{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:7px 16px 7px 12px;border-radius:12px;background:#12161c;color:#fff;text-decoration:none;line-height:1.05;border:1px solid #12161c;transition:transform .15s ease,background .15s ease}
+.store-badge:hover{background:#000;transform:translateY(-1px)}
+.store-badge svg{width:24px;height:24px;flex:none}
+.store-badge span{display:flex;flex-direction:column;text-align:left}
+.store-badge small{font-size:10px;letter-spacing:.02em;opacity:.85}
+.store-badge b{font-size:17px;font-weight:700;letter-spacing:-.01em}
+.store-badges-compact .store-badge{min-height:40px;padding:5px 12px 5px 10px;border-radius:10px}
+.store-badges-compact .store-badge svg{width:20px;height:20px}
+.store-badges-compact .store-badge small{font-size:9px}
+.store-badges-compact .store-badge b{font-size:14px}
+.landing-hero-apps{margin-top:22px;animation:landing-rise 1.05s cubic-bezier(.22,1,.36,1) .34s both}
+.landing-hero-apps p{margin:0 0 10px;font-size:13px;font-weight:600;color:#70736b}
+.mobile-welcome-actions .store-badges{justify-content:center;margin-top:18px}
+footer .store-badges,.legal-footer .store-badges{margin-top:14px}

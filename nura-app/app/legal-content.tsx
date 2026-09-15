@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { NuraLogo } from "@/components/nura-logo";
+import { StoreBadges } from "@/components/store-badges";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
 import "./legal.css";
 
@@ -65,6 +66,7 @@ export function LegalPage({ eyebrow, title, intro, sections, active }: LegalPage
         <div>
           <NuraLogo compact href="/" />
           <p>{NURA_PRODUCT.footerLine}</p>
+          <StoreBadges placement="legal_footer" compact />
         </div>
         <nav aria-label="Legal links">
           {navItems.map((item) => (

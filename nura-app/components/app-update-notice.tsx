@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { IOS_APP_STORE_URL } from "@/lib/store-links";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { RefreshCw, ArrowUpCircle } from "lucide-react";
@@ -15,7 +16,7 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000;
  * "not available" page.
  */
 const APP_STORE_URL =
-  process.env.NEXT_PUBLIC_IOS_APP_STORE_URL ?? "https://apps.apple.com/app/id6804203569";
+  IOS_APP_STORE_URL;
 
 type VersionPayload = { build: string; minNativeBuild: number };
 

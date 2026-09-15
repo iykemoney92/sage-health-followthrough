@@ -1,4 +1,5 @@
 import { NuraLogo } from "@/components/nura-logo";
+import { StoreBadges } from "@/components/store-badges";
 import { TrackedLink } from "@/components/tracked-link";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
 
@@ -53,6 +54,7 @@ export default function Welcome() {
             >
               Sign in
             </TrackedLink>
+            <StoreBadges placement="welcome" compact />
           </div>
         </div>
       </section>
