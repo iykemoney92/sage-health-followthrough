@@ -86,9 +86,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "RevenueCat webhook auth is not configured." }, { status: 503 });
   }
 
-  const incomingAuth = request.headers.get("authorization") ?? "";
-  if (!incomingAuth || !safeEqual(incomingAuth, expectedAuth)) {
-    logger.warn("revenuecat_webhook.unauthorized");
+  // RevenueCat sends the configured value verbatim. Accept it with or
+  // without a "Bearer " prefix on either side: every delivery since July had
+  // been failing with 401 while the secrets themselves matched, and the only
+  // difference a dashboard can introduce without anyone noticing is the
+  // prefix. Comparison stays constant-time on the normalised values.
+  const strip = (value: string) => value.trim().replace(/^Bearer\s+/i, "");
+  const incomingAuth = strip(request.headers.get("authorization") ?? "");
+  const expected = strip(expectedAuth);
+  if (!incomingAuth || !safeEqual(incomingAuth, expected)) {
+    logger.warn("revenuecat_webhook.unauthorized", { incomingLength: incomingAuth.length, expectedLength: expected.length });
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
