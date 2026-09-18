@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getSubscriptionAccess, type SubscriptionAccess } from "@/lib/billing/subscription";
+import { getSubscriptionAccess, isSubscriptionLockedOut, type SubscriptionAccess } from "@/lib/billing/subscription";
 import { syncPlusFromRevenueCat } from "@/lib/billing/sync-plus";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 
@@ -70,7 +70,23 @@ export async function getVerifiedSubscriptionAccess(
   email?: string | null,
 ): Promise<SubscriptionAccess> {
   const local = await getSubscriptionAccess(supabase, ownerId);
-  if (!local.hasPlus) return local;
+  if (!local.hasPlus) {
+    // A profile that says "expired" is only what the last webhook (or a trial
+    // that ended on its own) left behind. Someone who has since subscribed in
+    // the App Store or Play has an entitlement RevenueCat knows about, and if
+    // the webhook never landed nothing else would ever unlock them: a real
+    // subscriber was shown the trial-ended screen and told to renew. So the
+    // one case that leads to a lock screen asks the store of record first.
+    if (!isSubscriptionLockedOut(local)) return local;
+    try {
+      const admin = getSupabaseServerClient();
+      const synced = await syncPlusFromRevenueCat(admin, ownerId);
+      if (synced.hasPlus) return getSubscriptionAccess(admin, ownerId);
+    } catch (error) {
+      console.error("[billing] RevenueCat sync for locked profile failed", error);
+    }
+    return local;
+  }
 
   // Prefer service-role reads/writes so RLS/client tampering cannot stick.
   let admin: SupabaseClient;

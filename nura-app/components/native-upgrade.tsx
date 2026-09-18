@@ -69,6 +69,25 @@ export function NativeUpgrade({
     };
   }, [userId, onUnavailable]);
 
+  // Ask the server to read the entitlement from RevenueCat and write it to
+  // the profile, then leave the lock screen. Relying on the webhook here left
+  // a paying subscriber staring at "Your free trial has ended" after a
+  // successful restore, because the webhook had never arrived.
+  const unlock = useCallback(async () => {
+    try {
+      const res = await fetch("/api/billing/access", { cache: "no-store" });
+      const data = (await res.json().catch(() => null)) as { hasPlus?: boolean } | null;
+      if (data?.hasPlus) {
+        router.replace("/today");
+        router.refresh();
+        return;
+      }
+    } catch {
+      // Fall through to a plain refresh; the middleware sync covers the rest.
+    }
+    router.refresh();
+  }, [router]);
+
   const buy = useCallback(async () => {
     if (!offer) return;
     setMessage(null);
@@ -87,10 +106,8 @@ export function NativeUpgrade({
 
     track("checkout_success", { store: "apple" });
     setMessage({ tone: "info", text: "You’re on Plus. Thanks for supporting Nura." });
-    // The webhook writes the entitlement server-side; refresh rather than
-    // optimistically unlocking, so the UI reflects what the server actually has.
-    router.refresh();
-  }, [offer, renewing, router]);
+    await unlock();
+  }, [offer, renewing, unlock]);
 
   const restore = useCallback(async () => {
     setMessage(null);
@@ -104,11 +121,11 @@ export function NativeUpgrade({
     }
     if (result.restored) {
       setMessage({ tone: "info", text: "Your subscription is restored." });
-      router.refresh();
+      await unlock();
       return;
     }
     setMessage({ tone: "info", text: "No previous purchase found on this Apple Account." });
-  }, [router]);
+  }, [unlock]);
 
   if (!offer) return null;
 
