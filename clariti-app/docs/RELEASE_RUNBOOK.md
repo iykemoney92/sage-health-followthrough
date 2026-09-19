@@ -20,6 +20,7 @@ changing the other side too — the "used by" column says where.
 | Custom URL scheme | `app.useclariti.mobile://` | `Info.plist`, `AndroidManifest.xml`, `lib/auth/oauth.ts`, Supabase redirect list |
 | Associated domain | `applinks:useclariti.app` | `App.entitlements` |
 | Production origin | `https://useclariti.app` | `capacitor.config.ts` `server.url`, `NEXT_PUBLIC_APP_URL` |
+| Google Analytics property | `G-XSL79NR83X` ("Clariti", stream "Clariti web") | `NEXT_PUBLIC_GA_MEASUREMENT_ID`, `components/google-analytics.tsx` |
 | RevenueCat project | `proja88a3e46` | already live for web billing |
 | RevenueCat entitlement | `plus` | `lib/billing/subscription.ts`, `lib/billing/native-purchases.ts`, the webhook |
 | RevenueCat offering | `default` | packages `$rc_monthly` / `$rc_annual` |
@@ -204,6 +205,7 @@ Dashboard → Authentication.
 | `CLARITI_MIN_NATIVE_BUILD` | `1` |
 | `NEXT_PUBLIC_CLARITI_OAUTH_PROVIDERS` | `apple,google` — **only after step 6 is done**; empty until then |
 | `CRON_SECRET` | a fresh random string; Vercel Cron sends it as `Authorization: Bearer …` |
+| `NEXT_PUBLIC_GA_MEASUREMENT_ID` | `G-XSL79NR83X` — see **Analytics** below |
 
 Then redeploy — `NEXT_PUBLIC_*` values are inlined at build time, so a restart is
 not enough.
@@ -211,6 +213,24 @@ not enough.
 Two more, already present in production and both wrong for this release:
 `CLARITI_VIDEO_MODEL` and `CLARITI_VIDEO_PIPELINE`. See **Explainer video**
 immediately below — the release does not ship until they are changed.
+
+### Analytics
+
+Set on production 2026-09-19. Until then the variable was simply absent, so
+`getGaMeasurementId()` returned `""`, `<GoogleAnalytics>` rendered `null` and
+every one of the 14 `track()` calls returned on its first line — the cookie
+banner was asking consent for a tag that could never load.
+
+It is a `NEXT_PUBLIC_*`, so setting it is only half the job: the value is inlined
+at build time and this project has an Ignored Build Step that skips deploys not
+touching `clariti-app/`. An env change on its own never reaches the bundle; push
+a commit that touches this directory.
+
+Web only, by design. `getAnalyticsConsent()` returns a hard `"denied"` inside the
+Capacitor shells, so the tag never loads there and no event is sent — that is the
+guideline 5.1.2(i) remedy from the September rejection, and it is what keeps App
+Tracking Transparency from applying. Do not add a GA stream for the iOS or
+Android apps without revisiting that.
 
 ### Explainer video
 
