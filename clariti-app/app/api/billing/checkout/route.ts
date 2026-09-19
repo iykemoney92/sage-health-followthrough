@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appOriginFromRequest } from "@/lib/auth/app-origin";
 import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
-import { getRevenueCatPurchaseUrl, getStripeSecretKey } from "@/lib/billing/revenuecat";
+import { getRevenueCatPurchaseUrl, getStripeSecretKey, hasStripeCheckoutConfig } from "@/lib/billing/revenuecat";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
 import { isNativeShellRequest } from "@/lib/native-shell";
 
@@ -87,7 +87,14 @@ export async function GET(request: NextRequest) {
     return markCheckoutPending(NextResponse.redirect(checkoutUrl));
   }
 
-  const stripeCheckout = await createStripeCheckout(request, user);
+  // Stripe is gated on STRIPE_WEBHOOK_SECRET (hasStripeCheckoutConfig): with no
+  // endpoint receiving Stripe events, checkout-success writes a 7-day "trialing"
+  // profile that nothing ever writes again, so on day 8 the subscription expires
+  // into /billing/locked while Stripe keeps charging the card every month. The
+  // paywall already degrades to "cannot be purchased on the web" when this is
+  // false; refusing here is the other half, for anyone who reaches the route
+  // directly.
+  const stripeCheckout = hasStripeCheckoutConfig() ? await createStripeCheckout(request, user) : null;
   if (stripeCheckout) return stripeCheckout;
 
   const billingPage = appUrl("/billing", request);

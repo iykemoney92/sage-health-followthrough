@@ -20,6 +20,13 @@ export function getAuthEmailFrom() {
   return process.env.AUTH_EMAIL_FROM || "Clariti <hello@usenura.app>";
 }
 
+/**
+ * The address users are told to write to. Kept here, and imported everywhere it
+ * is printed, so moving support off a dead mailbox is one env var and not four
+ * hardcoded copies.
+ */
+export const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@useclariti.app";
+
 export async function sendAuthEmail({ to, subject, html, text, idempotencyKey }: SendEmailInput) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -37,6 +44,9 @@ export async function sendAuthEmail({ to, subject, html, text, idempotencyKey }:
     headers,
     body: JSON.stringify({
       from: getAuthEmailFrom(),
+      // From is on Nura's verified domain, so without this a plain Reply lands
+      // in another product's mailbox.
+      reply_to: SUPPORT_EMAIL,
       to: [to],
       subject,
       html,

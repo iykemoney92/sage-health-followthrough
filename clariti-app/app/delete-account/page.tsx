@@ -1,34 +1,41 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { SUPPORT_EMAIL } from "@/lib/integrations/resend";
 import "../legal.css";
 
 export const dynamic = "force-static";
 
 export const metadata: Metadata = {
   title: "Delete your account",
-  description: "How to permanently delete your Clariti account and every document it holds, from inside the app or by email.",
+  description: "How to permanently delete your Clariti account and every document it holds, in about a minute from inside the app.",
 };
 
-const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@useclariti.app";
-const LAST_UPDATED = "September 9, 2026";
+const LAST_UPDATED = "September 19, 2026";
 
 type Section = {
   title: string;
   body: string[];
   points?: string[];
   callout?: string;
+  /** A link out of the page, rendered in the callout box so it reads as the route to take. */
+  action?: { href: string; label: string };
 };
 
 const sections: Section[] = [
   {
-    title: "Delete from inside the app",
-    body: ["Sign in, open Settings, scroll to Your data, and choose Delete account. Confirm once and the deletion runs immediately — there is no waiting period and no way to undo it."],
+    title: "Delete it yourself, in about a minute",
+    body: [
+      "Open Clariti, go to Settings, scroll to Your data and choose Delete account. Type DELETE to confirm and the deletion runs there and then — no waiting period, no request to file, and no way to undo it.",
+      "The link below takes you straight there, and asks you to sign in first if you are signed out.",
+    ],
+    action: { href: "/settings", label: "Open Settings → Your data" },
   },
   {
-    title: "Delete by email",
+    title: "If you cannot sign in",
     body: [
-      `If you can no longer sign in, email ${SUPPORT_EMAIL} from the address on the account with the subject "Delete my account". We verify that the request comes from the account holder and delete the account within 30 days.`,
+      "Reset your password rather than writing to us: the sign-in screen emails a reset link to the address on the account, and once you are back in, the deletion above is immediate and in your own hands.",
+      `If you have lost that mailbox too, write to ${SUPPORT_EMAIL} with the subject "Delete my account" and enough detail to identify the account. We check that the request comes from the account holder before deleting anything, so this is slower than doing it yourself — use it only when the two routes above are closed to you.`,
     ],
   },
   {
@@ -51,7 +58,10 @@ const sections: Section[] = [
   },
   {
     title: "Delete some data without deleting the account",
-    body: ["Individual documents and their analyses can be deleted at any time from History, and Export all data in Settings gives you a copy first."],
+    body: [
+      "Individual documents and their analyses can be deleted at any time from History, and Export all data in Settings gives you a copy first.",
+      "If what you want is to stop Clariti sending documents to the AI model, withdraw that consent in Settings under Privacy & support. Nothing further is analysed until you agree again, and your account and everything in it stays.",
+    ],
   },
 ];
 
@@ -71,8 +81,9 @@ export default function DeleteAccountPage() {
         <span className="clariti-kicker">YOUR ACCOUNT</span>
         <h1>Delete your Clariti account.</h1>
         <p>
-          Deleting your account removes every document Clariti holds for you, immediately and permanently. Here is how
-          to do it, and exactly what happens when you do.
+          Deleting your account removes every document Clariti holds for you, immediately and permanently. You do it
+          yourself, from inside the app, without asking anyone. Here is where the control is, and exactly what happens
+          when you use it.
         </p>
         <small>Last updated {LAST_UPDATED}</small>
       </section>
@@ -82,6 +93,11 @@ export default function DeleteAccountPage() {
           <article key={section.title}>
             <h2>{section.title}</h2>
             {section.body.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+            {section.action ? (
+              <p className="legal-callout">
+                <Link href={section.action.href}>{section.action.label}</Link>
+              </p>
+            ) : null}
             {section.points ? (
               <ul>
                 {section.points.map((point) => <li key={point}>{point}</li>)}

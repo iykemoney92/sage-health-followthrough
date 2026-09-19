@@ -27,6 +27,15 @@ type ProfileSubscriptionRow = {
   subscription_current_period_ends_at?: string | null;
 };
 
+/** Only the part of a clariti_video_generations row the free-tier count reads. */
+type VideoSpendRow = {
+  scenes?: ({ videoUrl?: string | null } | null)[] | null;
+  provider_response?: unknown;
+};
+
+/** Statuses a video job sits in before it has either finished or failed. */
+const UNFINISHED_VIDEO_STATUSES = ["queued", "scripting", "generating_scenes", "stitching"];
+
 /** Actual analyzed-document count for this owner — derived from real rows, not a client-writable counter. */
 export async function getDocumentAnalysisCount(supabase: SupabaseClient, ownerId: string) {
   const { count } = await supabase
@@ -41,17 +50,44 @@ export async function getDocumentAnalysisCount(supabase: SupabaseClient, ownerId
  * Actual generated-video count for this owner — derived from real rows, not a
  * client-writable counter.
  *
- * 'failed' counts too. A job usually fails after the scenes have already been
- * rendered and billed, so leaving it out meant a free-tier account could keep
- * spending provider money by generating videos that die at the stitch.
+ * What spends the free explainer is provider money, not a finished file. A job
+ * usually dies after the render has been paid for — at the upload, the storage
+ * check, or the stitch — so a failed row still counts whenever anything on it
+ * says the job reached the provider: a scene with a clip, or a
+ * `provider_response`, which nothing but processJob writes and which it only
+ * writes once it is rendering. A row that failed before any of that cost nothing
+ * and must not burn the one explainer a free account gets.
+ *
+ * Unfinished rows count unconditionally. enforceFreeLimit runs before the queued
+ * row is inserted, so jobs that counted only once they had a clip let a free
+ * account start several renders at once — each one real money.
  */
 export async function getVideoGenerationCount(supabase: SupabaseClient, ownerId: string) {
-  const { count } = await supabase
-    .from("clariti_video_generations")
-    .select("id", { count: "exact", head: true })
-    .eq("owner_id", ownerId)
-    .in("status", ["queued", "scripting", "generating_scenes", "stitching", "completed", "failed"]);
-  return count ?? 0;
+  const [completed, unfinished, failed] = await Promise.all([
+    supabase
+      .from("clariti_video_generations")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_id", ownerId)
+      .eq("status", "completed"),
+    supabase
+      .from("clariti_video_generations")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_id", ownerId)
+      .in("status", UNFINISHED_VIDEO_STATUSES),
+    supabase
+      .from("clariti_video_generations")
+      .select("scenes, provider_response")
+      .eq("owner_id", ownerId)
+      .eq("status", "failed"),
+  ]);
+
+  const paidFailures = ((failed.data ?? []) as VideoSpendRow[]).filter(
+    (row) =>
+      row.provider_response != null
+      || (Array.isArray(row.scenes) && row.scenes.some((scene) => Boolean(scene?.videoUrl))),
+  ).length;
+
+  return (completed.count ?? 0) + (unfinished.count ?? 0) + paidFailures;
 }
 
 function isFuture(value: string | null | undefined) {

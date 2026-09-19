@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { claritiIllustrationAnalysisSchema, generateClaritiIllustration } from "@/lib/ai/clariti-illustration";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 const bodySchema = z.object({
@@ -14,6 +15,9 @@ export async function POST(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ ok: false, error: "Sign in before generating illustrations." }, { status: 401 });
+  }
+  if (!hasAiConsent(user)) {
+    return aiConsentRequiredResponse();
   }
 
   const limited = await enforceRateLimit(await getSupabaseSessionClient(), "illustrations");

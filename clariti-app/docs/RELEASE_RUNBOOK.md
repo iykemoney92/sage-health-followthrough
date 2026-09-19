@@ -210,10 +210,6 @@ Dashboard → Authentication.
 Then redeploy — `NEXT_PUBLIC_*` values are inlined at build time, so a restart is
 not enough.
 
-Two more, already present in production and both wrong for this release:
-`CLARITI_VIDEO_MODEL` and `CLARITI_VIDEO_PIPELINE`. See **Explainer video**
-immediately below — the release does not ship until they are changed.
-
 ### Analytics
 
 Set on production 2026-09-19. Until then the variable was simply absent, so
@@ -233,34 +229,6 @@ Tracking Transparency from applying. Do not add a GA stream for the iOS or
 Android apps without revisiting that.
 
 ### Explainer video
-
-**This one does need changing, and the release does not ship until it is.**
-Production still carries the two values from the Veo era. Verified 2026-09-13:
-
-```bash
-cd clariti-app && npx vercel env ls production          # both are present
-npx vercel env pull .env.review --environment=production --yes
-grep -E '^CLARITI_VIDEO_' .env.review && rm .env.review
-# CLARITI_VIDEO_MODEL="google/veo-3.1-generate-001"
-# CLARITI_VIDEO_PIPELINE="shotstack"
-```
-
-Left as they are, the enqueue route takes the non-Flux branch, finds no usable
-Shotstack key (it was revoked on 2026-09-09 and is deliberately unset), and falls
-back to `ai-video-job-single-render` — a single **8-second** Veo clip at **$0.40
-per second**. The whole migration is inert and the explainer is both shorter and
-dearer than the one it replaced. Fix it in `clariti-app` → Settings →
-Environment Variables → Production, alongside the table in section 7:
-
-| Variable | Action |
-|---|---|
-| `CLARITI_VIDEO_MODEL` | set to `bfl/flux-3-video`, or delete it — the code defaults to Flux |
-| `CLARITI_VIDEO_PIPELINE` | delete it, or set it to `single` |
-| `SHOTSTACK_API_KEY` | leave unset |
-
-A redeploy is not required — both are read per request on the server — but check
-one explainer after the change and confirm the job row says `pipeline` is
-`flux-single`.
 
 The explainer runs on FLUX 3 (`bfl/flux-3-video`) through the AI Gateway, which
 renders 5 to 20 seconds with audio in a single call. So the default,
@@ -290,6 +258,22 @@ work around a ceiling Flux does not have. It engages only when
 `CLARITI_VIDEO_PIPELINE=shotstack`, a Veo model is configured, and the Shotstack
 key is one Shotstack currently accepts. There is no reason to set it up for a
 release.
+
+### Web checkout and support mail
+
+Both changed on 2026-09-19, and neither is visible from the Vercel dashboard:
+
+- `/api/billing/checkout` will not open a Stripe session without
+  `STRIPE_WEBHOOK_SECRET`. Nothing in this repo receives Stripe events, so a
+  Stripe subscription is written once as a 7-day trial and never written again —
+  on day 8 it expires into `/billing/locked` while Stripe goes on charging the
+  card. Until either that secret or `CLARITI_REVENUECAT_WEB_PURCHASE_URL` is set,
+  the web paywall says Plus cannot be bought on the web and points people at the
+  iPhone app, which is where it is actually on sale.
+- `support@useclariti.app` cannot receive mail: `useclariti.app` has no MX
+  record. That address is what `/privacy`, `/terms` and `/delete-account` tell
+  people to write to, including the sign-in-less deletion request Guideline
+  5.1.1(v) expects to work. Fix the DNS before a reviewer tests it.
 
 ## 8. Google Play (Android)
 

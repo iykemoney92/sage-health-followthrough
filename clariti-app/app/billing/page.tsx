@@ -11,8 +11,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { ClaritiShell } from "@/components/clariti-shell";
-import { UpgradeCta } from "@/components/upgrade-cta";
+import { billingSurface, UpgradeCta } from "@/components/upgrade-cta";
 import "./billing.css";
 import "./billing-plans.css";
 
@@ -150,6 +151,12 @@ function BillingPageContent() {
   return (
     <ClaritiShell>
       <main className="clariti-billing-page">
+        {/* Held back until the access fetch lands. Firing on mount would report
+            every viewer as a free one, including the Plus holders who come here
+            only to manage the subscription. */}
+        {!loading && (
+          <AnalyticsBeacon event="paywall_view" params={{ surface: billingSurface(), has_plus: access.hasPlus }} />
+        )}
         <header className="billing-hero">
           <p className="clariti-kicker">CLARITI PLUS</p>
           <h1>Understand every document, not just the first few</h1>

@@ -2,29 +2,52 @@
 
 import { LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
+import { AnalyticsBeacon } from "@/components/analytics-beacon";
 
 /**
- * Instant handoff after hosted checkout. `/api/billing/enter` syncs RevenueCat
+ * Handoff after hosted checkout. `/api/billing/enter` syncs RevenueCat
  * entitlements (or Stripe checkout-success already granted a trial) and redirects
  * into the workspace or the paywall.
  */
 export default function BillingReturnPage() {
   const [failed, setFailed] = useState(false);
+  const [purchased, setPurchased] = useState(false);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      window.location.replace("/api/billing/enter");
-    }, 50);
+    let alive = true;
+    let handoff = 0;
     const failSafe = window.setTimeout(() => setFailed(true), 8000);
 
+    void (async () => {
+      // Nothing stops a reload, a back-navigation or a pasted URL landing here,
+      // so the purchase is only real if the entitlement is. /api/billing/access
+      // syncs RevenueCat before answering, the same sync /api/billing/enter runs
+      // a moment later.
+      const payload = await fetch("/api/billing/access", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (!alive) return;
+      if (payload?.ok && payload.hasPlus) setPurchased(true);
+      // A tick so the beacon mounts and sends before the handoff leaves the page.
+      handoff = window.setTimeout(() => window.location.replace("/api/billing/enter"), 50);
+    })();
+
     return () => {
-      window.clearTimeout(timer);
+      alive = false;
+      window.clearTimeout(handoff);
       window.clearTimeout(failSafe);
     };
   }, []);
 
   return (
     <main className="billing-return-page">
+      {/* Held until the access fetch above confirms Plus is really on — landing
+          on this URL is not a purchase. Only the hosted web checkout lands here
+          — a StoreKit purchase never leaves the app — so the surface is "web" by
+          construction. No plan: neither the RevenueCat purchase link nor the
+          Stripe fallback passes the package back through
+          /api/billing/checkout-success. */}
+      {purchased && <AnalyticsBeacon event="purchase_completed" params={{ surface: "web" }} />}
       <div className="billing-return-card">
         <LoaderCircle className="billing-return-spin" size={28} aria-hidden />
         <h1>You&apos;re all set</h1>

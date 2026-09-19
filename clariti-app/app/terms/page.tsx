@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { SUPPORT_EMAIL } from "@/lib/integrations/resend";
 import "../legal.css";
 
 export const dynamic = "force-static";
@@ -10,7 +11,6 @@ export const metadata: Metadata = {
   description: "How Clariti is meant to be used, what it will not do, and the terms that apply to Clariti Plus.",
 };
 
-const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@useclariti.app";
 const LAST_UPDATED = "August 29, 2026";
 
 type Section = {

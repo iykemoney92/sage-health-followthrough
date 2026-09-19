@@ -4,8 +4,10 @@ import { CreditCard, FileHeart, Lock } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { SignOutButton } from "@/components/sign-out-button";
-import { UpgradeCta } from "@/components/upgrade-cta";
+import { billingSurface, UpgradeCta } from "@/components/upgrade-cta";
+import "../../billing-lock.css";
 import "../billing-plans.css";
 
 function formatDate(value: string | null) {
@@ -18,6 +20,13 @@ export default function BillingLockedPage() {
   const [trialEndedLabel, setTrialEndedLabel] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [webCheckoutAvailable, setWebCheckoutAvailable] = useState(true);
+  // Null until /api/billing/access answers, and the beacon below only mounts on
+  // false: a Plus holder who lands here is redirected straight out and never
+  // sees the wall, so counting them — labelled or not — would inflate every
+  // paywall the funnel is measured against. /billing is the other way round and
+  // keeps them, because a Plus holder there really is using the page; has_plus
+  // stays on both events so the two sources group the same way.
+  const [hasPlus, setHasPlus] = useState<boolean | null>(null);
 
   /** Also the post-purchase refetch: once Plus is on, this screen is over. */
   const loadAccess = useCallback(async () => {
@@ -26,6 +35,7 @@ export default function BillingLockedPage() {
       .catch(() => null);
     if (!payload?.ok) return;
     setTrialEndedLabel(formatDate(payload.trialEndsAt ?? null));
+    setHasPlus(Boolean(payload.hasPlus));
     setWebCheckoutAvailable(payload.webCheckoutAvailable !== false);
     if (payload.hasPlus) router.replace("/workspace");
   }, [router]);
@@ -46,6 +56,9 @@ export default function BillingLockedPage() {
 
   return (
     <main className="billing-lock-page">
+      {hasPlus === false && (
+        <AnalyticsBeacon event="paywall_view" params={{ surface: billingSurface(), has_plus: hasPlus }} />
+      )}
       <div className="billing-lock-shell">
         <span className="clariti-brand"><span className="clariti-mark">C</span><strong>Clariti</strong></span>
         <div className="billing-lock-card" role="dialog" aria-labelledby="billing-lock-title" aria-modal="true">
@@ -76,20 +89,6 @@ export default function BillingLockedPage() {
           <SignOutButton className="billing-lock-signout">Sign out</SignOutButton>
         </div>
       </div>
-
-      <style jsx global>{`
-        .billing-lock-page{min-height:100vh;display:grid;place-items:center;background:#f7f8f7;padding:32px}
-        .billing-lock-shell{display:grid;gap:22px;justify-items:center;width:min(420px,100%)}
-        .billing-lock-card{width:100%;background:#fff;border:1px solid #e1e8e4;border-radius:24px;padding:30px;display:grid;gap:12px;box-shadow:0 24px 60px rgba(31,52,45,.1)}
-        .billing-lock-icon{width:46px;height:46px;border-radius:14px;background:#fbf3e7;color:#8a5a1f;display:grid;place-items:center}
-        .billing-lock-card h1{margin:2px 0 0;font:500 24px/1.2 Georgia,"Times New Roman",serif;color:#21332f;letter-spacing:-.02em}
-        .billing-lock-card>p{margin:0;color:#61726d;font-size:13px;line-height:1.6}
-        .billing-lock-benefits{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:8px}
-        .billing-lock-benefits li{display:flex;align-items:center;gap:9px;color:#3d4f49;font-size:12.5px;font-weight:600}
-        .billing-lock-cta{margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:#4d8d83;color:#fff;border-radius:13px;padding:13px;font-size:13px;font-weight:800}
-        .billing-lock-secondary{text-align:center;text-decoration:none;color:#426f67;font-size:12px;font-weight:700}
-        .billing-lock-signout{margin-top:4px;width:100%;border:1px solid #e2e7e5;border-radius:13px;background:#fff;color:#68756f;padding:11px;font-size:12px;font-weight:700}
-      `}</style>
     </main>
   );
 }

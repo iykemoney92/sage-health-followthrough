@@ -9,10 +9,17 @@ import { AI_CONSENT_PATH, hasAiConsent } from "@/lib/ai-consent";
 const PROTECTED_PREFIXES = ["/workspace", "/documents", "/history", "/settings", "/follow-ups"];
 const AUTH_PAGES = ["/login", "/signup"];
 
+// Account deletion and data export live on /settings, so the consent redirect
+// has to stop short of it. Bouncing a decliner off /settings left the emailed
+// fallback on /delete-account as their only way out of the product, and a
+// website-only deletion path is what guideline 5.1.1(v) rejects.
+const CONSENT_EXEMPT_PREFIXES = ["/settings"];
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isProtected = PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
   const isAuthPage = AUTH_PAGES.some((prefix) => pathname.startsWith(prefix));
+  const isConsentExempt = CONSENT_EXEMPT_PREFIXES.some((prefix) => pathname.startsWith(prefix));
   const redirectAuthPageToHome = () => {
     const url = request.nextUrl.clone();
     url.pathname = "/";
@@ -71,7 +78,7 @@ export async function proxy(request: NextRequest) {
   // Signed in but no AI consent yet → the gate. The upload screen on "/" makes
   // its own check rather than being matched here, so the marketing page keeps
   // serving anonymous visitors without a Supabase round-trip.
-  if (user && isProtected && !hasAiConsent(user)) {
+  if (user && isProtected && !isConsentExempt && !hasAiConsent(user)) {
     const url = request.nextUrl.clone();
     url.pathname = AI_CONSENT_PATH;
     url.search = "";

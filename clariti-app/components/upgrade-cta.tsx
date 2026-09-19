@@ -2,9 +2,28 @@
 
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
+import { Capacitor } from "@capacitor/core";
 import { CreditCard, Sparkles } from "lucide-react";
+import { track } from "@/lib/analytics";
 import { isNativeShell } from "@/lib/billing/native-purchases";
+import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { NativeUpgrade } from "@/components/native-upgrade";
+
+export type BillingSurface = "web" | "ios" | "android";
+
+/**
+ * Which store is selling Plus on this device — the label every funnel event
+ * carries.
+ *
+ * It lives next to the decision it describes so a reported surface can never
+ * disagree with the checkout the person was actually shown. Safe to call while
+ * rendering on the server: there is no bridge to read there and `getPlatform()`
+ * answers "web".
+ */
+export function billingSurface(): BillingSurface {
+  const platform = Capacitor.getPlatform();
+  return platform === "ios" || platform === "android" ? platform : "web";
+}
 
 /**
  * The one place Clariti decides how Plus is sold on the current surface.
@@ -76,14 +95,24 @@ export function UpgradeCta({
   // honest sentence.
   if (!webCheckoutAvailable) {
     return (
-      <p className="billing-notice" role="status">
-        Clariti Plus cannot be purchased on the web right now. You can subscribe in the Clariti app on iPhone.
-      </p>
+      <>
+        {/* A buyer with nowhere to check out is a broken funnel, not an absent
+            one, and without this it reads in GA4 exactly like nobody wanting to
+            buy: a paywall view that never becomes a checkout_start. */}
+        <AnalyticsBeacon event="checkout_unavailable" params={{ surface: "web" }} />
+        <p className="billing-notice" role="status">
+          Clariti Plus cannot be purchased on the web right now. You can subscribe in the Clariti app on iPhone.
+        </p>
+      </>
     );
   }
 
   return (
-    <a href="/api/billing/checkout" className={className ?? "billing-primary-cta"}>
+    <a
+      href="/api/billing/checkout"
+      className={className ?? "billing-primary-cta"}
+      onClick={() => track("checkout_start", { surface: "web" })}
+    >
       <Sparkles /> {label}
     </a>
   );

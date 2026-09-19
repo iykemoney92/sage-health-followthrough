@@ -6,20 +6,30 @@ const DAY = 24 * 60 * 60 * 1000;
 const OWNER_ID = "00000000-0000-0000-0000-000000000001";
 
 /**
- * getSubscriptionAccess issues three queries against one client: a profile read
- * ending in maybeSingle, and two head-only counts that are awaited on the query
- * builder itself. The fake is therefore both chainable and thenable — awaiting
- * it yields a count, calling maybeSingle yields the row.
+ * getSubscriptionAccess issues a profile read ending in maybeSingle plus the
+ * count queries, which are awaited on the query builder itself. The fake is
+ * therefore both chainable and thenable — awaiting it yields a count and a row
+ * list, calling maybeSingle yields the profile. The video count runs three
+ * queries over one table, so `videos` is attributed to the completed one.
  */
 function fakeSupabase(profileRow: Record<string, unknown> | null, counts = { documents: 0, videos: 0 }) {
   const from = (table: string) => {
-    const count = table === "clariti_documents" ? counts.documents : counts.videos;
+    const filters: Record<string, string> = {};
     const builder: Record<string, unknown> = {
       select: () => builder,
-      eq: () => builder,
+      eq: (column: string, value: string) => {
+        filters[column] = value;
+        return builder;
+      },
       in: () => builder,
       maybeSingle: async () => ({ data: profileRow, error: null }),
-      then: (resolve: (value: { count: number; error: null }) => unknown) => resolve({ count, error: null }),
+      then: (resolve: (value: { data: unknown[]; count: number; error: null }) => unknown) => resolve({
+        data: [],
+        count: table === "clariti_documents"
+          ? counts.documents
+          : filters.status === "completed" ? counts.videos : 0,
+        error: null,
+      }),
     };
     return builder;
   };
@@ -165,25 +175,80 @@ describe("getSubscriptionAccess", () => {
   });
 });
 
-describe("getVideoGenerationCount", () => {
-  // A job that dies at the stitch has already had its scenes rendered and
-  // billed, so it has to count against the free allowance like any other.
-  it("counts failed jobs alongside running and completed ones", async () => {
-    const statuses: string[][] = [];
+type VideoRow = { status: string; scenes?: unknown; provider_response?: unknown };
+
+/**
+ * getVideoGenerationCount asks the one table three questions — the completed
+ * count, the unfinished count, and the failed rows themselves. The fake answers
+ * all three from the same set of rows, so a test only has to describe the jobs.
+ */
+function fakeVideoSupabase(rows: VideoRow[]) {
+  const from = () => {
+    let matches: (row: VideoRow) => boolean = () => true;
     const builder: Record<string, unknown> = {
       select: () => builder,
-      eq: () => builder,
-      in: (_column: string, values: string[]) => {
-        statuses.push(values);
+      eq: (column: string, value: string) => {
+        if (column === "status") {
+          const previous = matches;
+          matches = (row) => previous(row) && row.status === value;
+        }
         return builder;
       },
-      then: (resolve: (value: { count: number; error: null }) => unknown) => resolve({ count: 2, error: null }),
+      in: (column: string, values: string[]) => {
+        if (column === "status") {
+          const previous = matches;
+          matches = (row) => previous(row) && values.includes(row.status);
+        }
+        return builder;
+      },
+      then: (resolve: (value: { data: VideoRow[]; count: number; error: null }) => unknown) => {
+        const matched = rows.filter(matches);
+        return resolve({ data: matched, count: matched.length, error: null });
+      },
     };
-    const supabase = { from: () => builder } as unknown as SupabaseClient;
+    return builder;
+  };
+  return { from } as unknown as SupabaseClient;
+}
 
+const RENDERED_SCENES = [{ sceneIndex: 0, videoUrl: "/api/media/owner/job/segment-0.mp4" }];
+
+describe("getVideoGenerationCount", () => {
+  it("counts a finished explainer", async () => {
+    const supabase = fakeVideoSupabase([{ status: "completed", scenes: RENDERED_SCENES }]);
+    await expect(getVideoGenerationCount(supabase, OWNER_ID)).resolves.toBe(1);
+  });
+
+  // enforceFreeLimit runs before the queued row is inserted, so a job that only
+  // counted once it had a clip let a free account start several renders at once.
+  it("holds the slot for a job that is still in flight", async () => {
+    const supabase = fakeVideoSupabase([
+      { status: "queued", scenes: [] },
+      { status: "generating_scenes", scenes: [] },
+    ]);
     await expect(getVideoGenerationCount(supabase, OWNER_ID)).resolves.toBe(2);
-    expect(statuses[0]).toContain("failed");
-    expect(statuses[0]).toContain("completed");
+  });
+
+  // flux-single is what production runs: one call, and the scene URL is written
+  // on the success path only. The failed row carries the provider_response
+  // processJob wrote, which is the evidence the render was paid for.
+  it("counts a failed job that reached the provider", async () => {
+    const supabase = fakeVideoSupabase([
+      { status: "failed", scenes: [], provider_response: { rawError: "the video model returned no file" } },
+    ]);
+    await expect(getVideoGenerationCount(supabase, OWNER_ID)).resolves.toBe(1);
+  });
+
+  it("counts a failed job that kept the clips it already rendered", async () => {
+    const supabase = fakeVideoSupabase([{ status: "failed", scenes: RENDERED_SCENES }]);
+    await expect(getVideoGenerationCount(supabase, OWNER_ID)).resolves.toBe(1);
+  });
+
+  // Nothing but processJob writes provider_response, so a failed row without one
+  // never got as far as a render and cost nothing to refuse.
+  it("does not charge for a job that failed before any render", async () => {
+    const supabase = fakeVideoSupabase([{ status: "failed", scenes: [], provider_response: null }]);
+    await expect(getVideoGenerationCount(supabase, OWNER_ID)).resolves.toBe(0);
   });
 });
 

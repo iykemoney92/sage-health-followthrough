@@ -53,13 +53,32 @@ export function getStripeSecretKey() {
 }
 
 /**
+ * Stripe Checkout only counts as configured when a Stripe webhook can keep alive
+ * what it opens. Nothing in this repo receives Stripe events —
+ * app/api/revenuecat/webhook is the only endpoint — so a Stripe subscription is
+ * written once, by checkout-success, as a 7-day "trialing" profile and then never
+ * written again: on day 8 getSubscriptionAccess expires it and
+ * isSubscriptionLockedOut sends the customer to /billing/locked while Stripe goes
+ * on charging their card every month. Requiring STRIPE_WEBHOOK_SECRET keeps the
+ * fallback dark until that endpoint exists, and turns it back on by itself once
+ * it does.
+ */
+export function hasStripeCheckoutConfig() {
+  return Boolean(
+    getStripeSecretKey()
+      && process.env.STRIPE_PLUS_PRICE_ID?.trim()
+      && process.env.STRIPE_WEBHOOK_SECRET?.trim(),
+  );
+}
+
+/**
  * True when /api/billing/checkout has somewhere to send a web buyer. The paywall
  * reads this so it can say so plainly instead of rendering a button that lands
  * on an error page.
  */
 export function hasWebCheckoutConfig() {
   if (getRevenueCatPurchaseUrl()) return true;
-  return Boolean(getStripeSecretKey() && process.env.STRIPE_PLUS_PRICE_ID?.trim());
+  return hasStripeCheckoutConfig();
 }
 
 /** Secret REST API key for server-side subscriber lookups (sync-plus). Not required for the webhook path. */

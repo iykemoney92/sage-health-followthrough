@@ -41,6 +41,11 @@ import { FLUX_MAX_CLIP_SECONDS, formatHumanVideoError } from "@/lib/ai/clariti-v
 import { getClaritiKindMeta, inferKindFromTitleText, isClaritiAnalysisKind } from "@/lib/domain/clariti-document-kinds";
 import type { ProgressionComparison } from "@/lib/domain/clariti-progression";
 import { trendToSeverityToken } from "@/lib/domain/clariti-severity";
+// Event names and non-clinical params only. The document kind is a health category, and
+// sending it to GA against an identifiable visitor makes it Art. 9 special-category data,
+// which needs explicit consent for that purpose — the cookie banner's generic Accept is
+// not that, and /privacy describes analytics as screens and features. The event names on
+// their own still give the funnel its counts.
 import { track } from "@/lib/analytics";
 import { FlagCard } from "@/components/clariti/flag-card";
 import { MetricChip } from "@/components/clariti/metric-chip";
@@ -85,6 +90,11 @@ type FollowUpDraft = {
 };
 function isPlusRequiredPayload(payload: unknown): payload is { error: "plus_required"; message?: string; upgradeUrl?: string } {
   return Boolean(payload) && typeof payload === "object" && (payload as { error?: unknown }).error === "plus_required";
+}
+
+/** The 403 from lib/ai-consent.ts, which withdrawing consent in Settings turns on. */
+function isConsentRequiredPayload(payload: unknown): payload is { error: "consent_required" } {
+  return Boolean(payload) && typeof payload === "object" && (payload as { error?: unknown }).error === "consent_required";
 }
 
 type ClaritiRequest = {
@@ -376,6 +386,14 @@ function WorkspaceContent() {
     window.setTimeout(() => router.push("/billing"), 900);
   }, [router, showToast]);
 
+  // Someone who withdrew consent in Settings gets the gate again rather than the
+  // refusal token. The sessionId lands in the URL through replaceState, so the
+  // return path comes from the address bar and not from searchParams.
+  const redirectToConsent = useCallback(() => {
+    const next = `${window.location.pathname}${window.location.search}`;
+    router.push(`/ai-consent?next=${encodeURIComponent(next)}`);
+  }, [router]);
+
   const resetVideoState = useCallback(() => {
     videoGeneratingRef.current = false;
     setGeneratedVideo(null);
@@ -460,6 +478,8 @@ function WorkspaceContent() {
     const fingerprint = requestFingerprint(request);
     if (analyzeInFlightRef.current === fingerprint) return;
     analyzeInFlightRef.current = fingerprint;
+    // Below the guard on purpose: a re-entrant call is the same analysis, not a new one.
+    track("analysis_started");
 
     setLoading(true);
     const pendingKey = pendingSessionKey(request);
@@ -507,7 +527,7 @@ function WorkspaceContent() {
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Analysis failed");
       const analysis = payload.analysis as ClaritiAnalysis;
       const savedSessionId = payload.persisted?.session?.id as string | undefined;
-      track("analysis_completed", { kind: analysis.kind, reused: Boolean(payload.reused) });
+      track("analysis_completed", { reused: Boolean(payload.reused) });
       setPendingSessions((current) => current.filter((item) => item.id !== pendingKey));
       if (savedSessionId) {
         setRecentSessions((current) => {
@@ -888,7 +908,7 @@ function WorkspaceContent() {
     setVideoError(null);
     setCanvasOpen(false);
     showToast("Video explanation saved and added to the chat.");
-    track("video_generated", { kind: activeRequestRef.current?.kind });
+    track("video_generated");
   };
 
   useEffect(() => {
@@ -953,7 +973,10 @@ function WorkspaceContent() {
       if (!completed.videoUrl) throw new Error("The video job completed without a video URL.");
       handleVideoGenerated(completed.videoUrl, completed.id, videoJobCreatedAt(completed));
     } catch (error) {
-      if (error instanceof Error && "plusRequired" in error) {
+      if (error instanceof Error && "consentRequired" in error) {
+        setCanvasOpen(false);
+        redirectToConsent();
+      } else if (error instanceof Error && "plusRequired" in error) {
         setCanvasOpen(false);
         redirectToUpgrade(error.message);
       } else {
@@ -982,8 +1005,12 @@ function WorkspaceContent() {
         },
       }));
       showToast("Illustration generated for this scene.");
-      track("illustration_generated", { kind: analysis.kind });
+      track("illustration_generated");
     } catch (error) {
+      if (error instanceof Error && "consentRequired" in error) {
+        redirectToConsent();
+        return;
+      }
       const message = error instanceof Error ? error.message : "Clariti could not generate the illustration.";
       setIllustrationError(message);
       showToast(message);
@@ -1228,7 +1255,7 @@ function WorkspaceContent() {
 
       const nextAnalysis = analyzePayload.analysis as ClaritiAnalysis;
       const savedSessionId = analyzePayload.persisted?.session?.id as string | undefined;
-      track("follow_up_report_added", { kind: nextAnalysis.kind });
+      track("follow_up_report_added");
       const nextRequest: ClaritiRequest = {
         kind: nextAnalysis.kind,
         question,
@@ -1279,7 +1306,7 @@ function WorkspaceContent() {
           redirectToUpgrade(comparePayload.message);
         } else if (compareResponse.ok && comparePayload?.ok && comparePayload.comparison) {
           comparison = comparePayload.comparison as ProgressionComparison;
-          track("compare_documents", { kind: nextAnalysis.kind, trend: comparison.trend });
+          track("compare_documents", { trend: comparison.trend });
         }
       }
 
@@ -1512,7 +1539,7 @@ function WorkspaceContent() {
           createdAt: createLocalTimestamp(),
         },
       ]);
-      track("email_checkin_scheduled", { kind: analysis.kind });
+      track("email_checkin_scheduled");
       return "scheduled";
     } catch (caught) {
       setFollowUpDraft({ ...draft, email, timingText });
@@ -2423,6 +2450,9 @@ async function createSceneVideoJob(analysis: ClaritiAnalysis, durationSeconds: n
   if (response.status === 402 && isPlusRequiredPayload(payload)) {
     throw Object.assign(new Error(payload.message ?? "Explainer videos are a Clariti Plus feature."), { plusRequired: true });
   }
+  if (response.status === 403 && isConsentRequiredPayload(payload)) {
+    throw Object.assign(new Error("Clariti needs your permission before it can send this analysis to the video model."), { consentRequired: true });
+  }
   if (!response.ok || !payload.ok || !payload.job?.id) {
     throw new Error(formatHumanVideoError(payload.error ?? "Clariti could not create the video job."));
   }
@@ -2446,6 +2476,9 @@ async function createIllustration(analysis: ClaritiAnalysis, sceneIndex: number,
     body: JSON.stringify({ analysis, sceneIndex, sessionId }),
   });
   const payload = await response.json();
+  if (response.status === 403 && isConsentRequiredPayload(payload)) {
+    throw Object.assign(new Error("Clariti needs your permission before it can send this analysis to the image model."), { consentRequired: true });
+  }
   if (!response.ok || !payload.ok || !payload.illustration?.url) {
     throw new Error(payload.error ?? "Clariti could not generate the illustration.");
   }
@@ -2461,7 +2494,12 @@ async function pollSceneVideoJob(
   // exactly the state this loop re-kicks. Left unchecked that is a kick every four
   // seconds against a ceiling the caller has already met — spending more of the very
   // budget it is waiting on. The refusal is the answer, so stop and say so.
+  //
+  // Withdrawn AI consent is the same shape of answer: the worker will keep refusing the
+  // claim, and polling it ninety times ends in "still running", which is not what
+  // happened. It carries the flag the callers use to send the reader to /ai-consent.
   let refusal: string | null = null;
+  let refusalNeedsConsent = false;
 
   const kickProcess = () => {
     if (processPromise) return;
@@ -2470,6 +2508,11 @@ async function pollSceneVideoJob(
         const payload = await response.json().catch(() => null);
         if (response.status === 429) {
           refusal = String(payload?.error ?? "You have made a lot of requests in a short time. Try again shortly.");
+          return null;
+        }
+        if (response.status === 403 && isConsentRequiredPayload(payload)) {
+          refusal = "Clariti needs your permission before it can send this analysis to the video model.";
+          refusalNeedsConsent = true;
           return null;
         }
         if (!response.ok || !payload?.ok || !payload.job) return null;
@@ -2495,7 +2538,11 @@ async function pollSceneVideoJob(
     onProgress(job.status, job.progress ?? 0, job);
     if (job.status === "completed") return job;
     if (job.status === "failed") throw new Error(formatHumanVideoError(job.error ?? "The video job failed."));
-    if (refusal) throw new Error(refusal);
+    if (refusal) {
+      throw refusalNeedsConsent
+        ? Object.assign(new Error(refusal), { consentRequired: true })
+        : new Error(refusal);
+    }
 
     if (job.status === "queued" || isVideoJobStale(job)) {
       kickProcess();

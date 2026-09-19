@@ -1,0 +1,19 @@
+/* The single-card gate shell, shared by /billing/locked and /ai-consent. It
+   lived in a <style jsx global> block inside the paywall, which meant the rules
+   only existed while that component was mounted — the consent gate, including
+   the guideline 5.1.1(v) export and deletion links on it, rendered as bare
+   default markup. */
+
+.billing-lock-page{min-height:100vh;display:grid;place-items:center;background:#f7f8f7;padding:32px}
+.billing-lock-shell{display:grid;gap:22px;justify-items:center;width:min(420px,100%)}
+.billing-lock-card{width:100%;background:#fff;border:1px solid #e1e8e4;border-radius:24px;padding:30px;display:grid;gap:12px;box-shadow:0 24px 60px rgba(31,52,45,.1)}
+.billing-lock-icon{width:46px;height:46px;border-radius:14px;background:#fbf3e7;color:#8a5a1f;display:grid;place-items:center}
+.billing-lock-card h1{margin:2px 0 0;font:500 24px/1.2 Georgia,"Times New Roman",serif;color:#21332f;letter-spacing:-.02em}
+.billing-lock-card>p{margin:0;color:#61726d;font-size:13px;line-height:1.6}
+.billing-lock-benefits{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:8px}
+.billing-lock-benefits li{display:flex;align-items:center;gap:9px;color:#3d4f49;font-size:12.5px;font-weight:600}
+/* border:0 and the cursor are for /ai-consent, where this hangs on a <button>.
+   The paywall only ever puts it on an <a>, which has neither by default. */
+.billing-lock-cta{margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:#4d8d83;color:#fff;border-radius:13px;padding:13px;font-size:13px;font-weight:800;border:0;cursor:pointer}
+.billing-lock-secondary{text-align:center;text-decoration:none;color:#426f67;font-size:12px;font-weight:700}
+.billing-lock-signout{margin-top:4px;width:100%;border:1px solid #e2e7e5;border-radius:13px;background:#fff;color:#68756f;padding:11px;font-size:12px;font-weight:700;cursor:pointer}

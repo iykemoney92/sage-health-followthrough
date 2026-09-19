@@ -19,6 +19,7 @@ import {
 } from "@/lib/ai/clariti-video";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 
 export const dynamic = "force-dynamic";
 // Enough for a single clip with room to spare. A chained run is sequential by
@@ -146,6 +147,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const shouldProcess = request.nextUrl.searchParams.get("process") === "1";
   if (!shouldProcess) {
     return NextResponse.json({ ok: true, job: publicJob(job) });
+  }
+
+  // This claim, not the enqueue, is the request that sends the analysis to Black
+  // Forest Labs, so guideline 5.1.2(i) applies here too. Scoped to the process
+  // branch: a reader who withdraws consent mid-render can still poll the job and
+  // see what happened to it.
+  if (!hasAiConsent(user)) {
+    return aiConsentRequiredResponse();
   }
 
   const claimed = await claimJob(job);

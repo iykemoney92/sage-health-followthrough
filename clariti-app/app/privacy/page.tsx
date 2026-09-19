@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { SUPPORT_EMAIL } from "@/lib/integrations/resend";
 import "../legal.css";
 
 export const dynamic = "force-static";
@@ -10,7 +11,6 @@ export const metadata: Metadata = {
   description: "What Clariti collects when you upload a health document, who else processes it, and how to export or delete it.",
 };
 
-const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@useclariti.app";
 const LAST_UPDATED = "September 13, 2026";
 
 type Section = {
@@ -30,7 +30,7 @@ const sections: Section[] = [
       "What Clariti produces from a document: the plain-English analysis, key points, questions for your clinician, suggested next steps, any illustrations or explainer video you generate, and the chat that goes with them.",
       "Check-ins you schedule: the email address and time you pick, and which document the check-in is about. Accounts created earlier may still hold a phone number from when check-ins could be called instead of emailed.",
       "Your Clariti Plus status: plan, trial dates, and the subscription identifiers needed to keep it accurate. Clariti never receives your card number.",
-      "Optional product analytics: which screens and features get used — and only if you choose Accept on the cookie notice.",
+      "Optional product analytics: which screens and features get used — and only while you leave analytics switched on.",
     ],
   },
   {
@@ -53,7 +53,7 @@ const sections: Section[] = [
       "RevenueCat, with Apple's App Store or Stripe behind it — records whether Clariti Plus is active. Payment details stay with Apple or Stripe.",
       "ElevenLabs — the voice explanation call. This is switched off today, so no phone number and no document context reach ElevenLabs while it stays off. If it returns, this policy will say so first.",
       "Vercel — hosting and the ordinary request logs that come with it.",
-      "Google Analytics — aggregated product usage, and only after you choose Accept on the cookie notice. Never document contents.",
+      "Google Analytics — aggregated product usage: an event name for each action you take, the page paths you open, and the device and browser type Google reads off the request. Never document contents, and only while analytics is switched on.",
     ],
   },
   {
@@ -82,7 +82,7 @@ const sections: Section[] = [
     title: "Cookies",
     body: [
       "Clariti sets essential cookies to keep you signed in and your session secure. Those cannot be turned off without breaking sign-in.",
-      "With your consent it also sets Google Analytics cookies to understand how the product is used — pages opened, device type, and similar signals. These are never used for advertising and never carry your document contents. Choose Essential only or Accept when the cookie notice appears.",
+      "With your consent it also sets Google Analytics cookies to understand how the product is used. What leaves your browser is the name of what happened — a sign-in, an analysis finishing, a video being generated — the page path it happened on, and the device and browser type. Never the contents of a document, its file name, or anything Clariti wrote about it, and never anything used for advertising. Choose Essential only or Accept when the cookie notice appears, and change that choice whenever you like in Settings.",
     ],
   },
   {

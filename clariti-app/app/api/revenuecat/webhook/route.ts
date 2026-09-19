@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { subscriptionUpdateFor, type RevenueCatEvent } from "@/lib/billing/revenuecat-webhook";
 import { getOptionalSupabaseServiceClient } from "@/lib/integrations/supabase";
+import { reportError } from "@/lib/observability/report-error";
 
 export const runtime = "nodejs";
 
@@ -58,6 +59,19 @@ export async function POST(request: NextRequest) {
 
   const incomingAuth = request.headers.get("authorization") ?? "";
   if (!incomingAuth || !safeEqual(incomingAuth, expectedAuth)) {
+    // A drift between this secret and the one RevenueCat sends rejects every
+    // delivery, and it is silent at both ends: RevenueCat retries and eventually
+    // gives up, Clariti grants nothing, and the first sign is a paying user with
+    // no access. Neither header goes into the record, only the fact of a reject.
+    // Anyone can reach this line, so the alerting hop is throttled under its own
+    // key — the log line is still written on every reject, and the failures
+    // below, which only a caller holding the secret can reach, forward as usual.
+    reportError(
+      "revenuecat/webhook",
+      "webhook rejected as unauthorized",
+      { stage: "auth", hasAuthHeader: incomingAuth.length > 0 },
+      { throttleKey: "revenuecat/webhook:unauthorized" },
+    );
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
@@ -96,6 +110,12 @@ export async function POST(request: NextRequest) {
     if (eventInsertError.code === "23505") {
       return NextResponse.json({ ok: true, duplicate: true });
     }
+    reportError("revenuecat/webhook", eventInsertError, {
+      stage: "event_insert",
+      type: event.type,
+      appUserId: event.app_user_id,
+      eventId,
+    });
     return NextResponse.json({ ok: false, error: eventInsertError.message }, { status: 500 });
   }
 
@@ -106,6 +126,12 @@ export async function POST(request: NextRequest) {
 
   const { error: updateError, profileId } = await applyProfileUpdate(supabase, event, appliedUpdate);
   if (updateError) {
+    reportError("revenuecat/webhook", updateError, {
+      stage: "profile_update",
+      type: event.type,
+      appUserId: event.app_user_id,
+      eventId,
+    });
     return NextResponse.json({ ok: false, error: updateError }, { status: 500 });
   }
   if (!profileId) {
@@ -113,10 +139,13 @@ export async function POST(request: NextRequest) {
     // the billing path and it used to be a silent 200 — the App Store keeps the
     // money, the account stays on free, and nobody finds out until they complain.
     // No PHI here: an app user id and an event type are all that is logged.
-    console.error(
-      "[revenuecat] paid event matched no Clariti profile —",
-      `type=${event.type} app_user_id=${event.app_user_id} store=${event.store ?? "unknown"} eventId=${eventId}`,
-    );
+    reportError("revenuecat/webhook", "paid event matched no Clariti profile", {
+      stage: "profile_match",
+      type: event.type,
+      appUserId: event.app_user_id,
+      store: event.store ?? "unknown",
+      eventId,
+    });
     return NextResponse.json({ ok: true, eventId, processed: false, reason: "profile_not_found" });
   }
 

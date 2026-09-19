@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readAppleRefreshToken, revokeAppleRefreshToken } from "@/lib/auth/apple-revoke";
 import { getSupabaseAdminClient, hasSupabaseServiceRole } from "@/lib/auth/supabase-admin";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
 
@@ -38,6 +39,10 @@ export async function POST() {
     .select("revenuecat_app_user_id, revenuecat_original_app_user_id")
     .eq("id", ownerId)
     .maybeSingle();
+
+  // Read before the profile row goes, revoked after everything else has: Apple
+  // is the one party that keeps something when Clariti is finished.
+  const appleRefreshToken = await readAppleRefreshToken(admin, ownerId);
 
   const { data: sessionRows, error: sessionsError } = await admin
     .from("clariti_sessions")
@@ -131,6 +136,20 @@ export async function POST() {
   deleted.clariti_revenuecat_webhook_events = billingEvents.count;
 
   const { error: authError } = await admin.auth.admin.deleteUser(ownerId);
+
+  // Guideline 5.1.1(v): an app offering Sign in with Apple has to revoke the
+  // token on deletion, or it stays listed under the person's Apple ID holding
+  // nothing. Last, and deliberately not fatal. The token was read at the top, so
+  // nothing here needs the account to still exist — and a 5s round trip to Apple
+  // in a route with no maxDuration, run before deleteUser, risks timing out with
+  // the data gone and the sign-in record left behind, which is the orphan this
+  // is meant to prevent.
+  if (appleRefreshToken) {
+    const revoked = await revokeAppleRefreshToken(appleRefreshToken);
+    if (!revoked.ok) {
+      console.error(`[account/delete] Apple token not revoked: ${revoked.reason}`);
+    }
+  }
 
   return NextResponse.json({
     ok: true,

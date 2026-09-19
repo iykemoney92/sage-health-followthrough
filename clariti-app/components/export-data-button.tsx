@@ -1,11 +1,13 @@
 "use client";
 
 import { Capacitor } from "@capacitor/core";
-import { Download } from "lucide-react";
-import { useState } from "react";
+import { ClipboardCopy, Download, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { track } from "@/lib/analytics";
 
 type ExportStatus = { tone: "ok" | "error"; message: string } | null;
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 async function copyToClipboard(text: string) {
   try {
@@ -19,6 +21,7 @@ async function copyToClipboard(text: string) {
 export function ExportDataButton() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<ExportStatus>(null);
+  const [preview, setPreview] = useState<string | null>(null);
 
   async function exportData() {
     if (busy) return;
@@ -50,7 +53,11 @@ export function ExportDataButton() {
         if (await copyToClipboard(json)) {
           setStatus({ tone: "ok", message: "Copied to your clipboard. Paste it into Notes or an email to keep it." });
         } else {
-          window.location.assign("/api/account/export");
+          // Shown here rather than by navigating to /api/account/export: the iOS shell has
+          // no back control, so that page was a dead end force-quitting the app was the
+          // only way out of — on the one surface both stores expect a privacy request to
+          // work on.
+          setPreview(json);
         }
         return;
       }
@@ -81,6 +88,79 @@ export function ExportDataButton() {
           {status.message}
         </p>
       ) : null}
+      {preview ? <ExportPreviewDialog json={preview} onClose={() => setPreview(null)} /> : null}
+    </div>
+  );
+}
+
+function ExportPreviewDialog({ json, onClose }: { json: string; onClose: () => void }) {
+  const [notice, setNotice] = useState("");
+  const cardRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    cardRef.current?.focus();
+    return () => opener?.focus?.();
+  }, []);
+
+  async function copyAgain() {
+    const copied = await copyToClipboard(json);
+    setNotice(copied
+      ? "Copied to your clipboard. Paste it into Notes or an email to keep it."
+      : "Clariti still cannot reach the clipboard. Select the text above to copy it yourself.");
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    const focusable = Array.from(cardRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === cardRef.current)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  return (
+    <div className="settings-modal-backdrop" onMouseDown={onClose}>
+      <section
+        ref={cardRef}
+        className="settings-modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="export-data-title"
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button className="settings-modal-close" type="button" aria-label="Close export" onClick={onClose}><X /></button>
+        <p className="clariti-kicker">EXPORT</p>
+        <h2 id="export-data-title">Your data export</h2>
+        <p>This is every row Clariti holds for your account. Copy it out, or read it here and close when you are done.</p>
+
+        <pre className="source-document-preview">{json}</pre>
+
+        {notice ? <p role="status">{notice}</p> : null}
+
+        <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
+          {/* Worth offering again: the first attempt ran after an await, and WebKit only
+              honours a clipboard write while the gesture behind it is still live. */}
+          <button type="button" className="settings-signout" onClick={() => void copyAgain()}>
+            <ClipboardCopy /> Copy to clipboard
+          </button>
+          <button type="button" className="settings-signout" onClick={onClose}>Done</button>
+        </div>
+      </section>
     </div>
   );
 }

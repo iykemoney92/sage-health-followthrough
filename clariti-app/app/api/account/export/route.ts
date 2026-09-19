@@ -8,6 +8,29 @@ type SessionClient = Awaited<ReturnType<typeof getSupabaseSessionClient>>;
 /** PostgREST puts `in` filters in the query string, so a heavy account's session list would blow the URL length limit in one request. */
 const IN_FILTER_CHUNK = 100;
 
+/**
+ * Every clariti_profiles column except apple_refresh_token, which is a live Apple
+ * OAuth credential rather than the person's data. 0008 revokes SELECT on it from
+ * `authenticated`, so a `*` here would fail the whole export with "permission
+ * denied for column" — and before that migration it would have put a working
+ * token in a file people are told to save.
+ */
+const PROFILE_COLUMNS = [
+  "id",
+  "display_name",
+  "subscription_tier",
+  "subscription_status",
+  "trial_started_at",
+  "trial_ends_at",
+  "subscription_current_period_ends_at",
+  "subscription_updated_at",
+  "revenuecat_app_user_id",
+  "revenuecat_original_app_user_id",
+  "stripe_customer_id",
+  "created_at",
+  "updated_at",
+].join(", ");
+
 export async function GET() {
   const user = await getSessionUser();
   if (!user) {
@@ -21,7 +44,7 @@ export async function GET() {
   const ownerId = user.id;
 
   const [profile, documents, sessions, followUps, videos] = await Promise.all([
-    supabase.from("clariti_profiles").select("*").eq("id", ownerId).maybeSingle(),
+    supabase.from("clariti_profiles").select(PROFILE_COLUMNS).eq("id", ownerId).maybeSingle(),
     supabase.from("clariti_documents").select("*").eq("owner_id", ownerId),
     supabase.from("clariti_sessions").select("*").eq("owner_id", ownerId),
     supabase.from("clariti_follow_ups").select("*").eq("owner_id", ownerId),

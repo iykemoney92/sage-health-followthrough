@@ -73,6 +73,26 @@ export function NativeDeepLinks() {
       // whether Supabase returns a provider_refresh_token has to be asked here too.
       recordProviderTokenPresence(data.session);
 
+      // Guideline 5.1.1(v) revocation needs that token when the account is
+      // deleted, and this exchange happens in the WebView rather than on
+      // /auth/callback, so the server never sees it. Posted rather than kept
+      // anywhere here: it is a credential, and it has to outlive this WebView by
+      // as long as the account lasts. Best effort — a failed store only costs a
+      // revoke that Apple may never be asked for.
+      //
+      // Only Apple's. Clariti signs in with Google too, and nothing will ever
+      // revoke a Google refresh token, so putting one on the wire buys nothing.
+      // lib/auth/apple-revoke.ts is server-only, hence the check inline.
+      const providerRefreshToken = data.session?.provider_refresh_token;
+      const provider = data.session?.user?.app_metadata?.provider;
+      if (providerRefreshToken && provider === "apple") {
+        void fetch("/auth/callback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provider_refresh_token: providerRefreshToken }),
+        }).catch(() => {});
+      }
+
       const stored = window.sessionStorage.getItem(OAUTH_NEXT_KEY);
       window.sessionStorage.removeItem(OAUTH_NEXT_KEY);
       router.replace(safeNextPath(stored, "/"));

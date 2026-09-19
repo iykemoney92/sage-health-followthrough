@@ -6,6 +6,7 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import { MAX_UPLOAD_BYTES, uploadSizeLimitError } from "@/lib/domain/clariti-uploads";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { reportError } from "@/lib/observability/report-error";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -94,13 +95,10 @@ export async function POST(request: NextRequest) {
       error: "Clariti can read text files, PDFs, and photos or scans (PNG, JPG, WEBP, HEIC).",
     }, { status: 400 });
   } catch (error) {
-    // Only the error's own message, never the caught object: a provider error can
-    // carry echoed request content, and the request content here is somebody's
-    // medical document.
-    console.error(
-      "[clariti] document extraction failed:",
-      error instanceof Error ? error.message : "unknown error",
-    );
+    // Only the error's own name, message and stack, never the caught object and
+    // never the file: a provider error can carry echoed request content in its
+    // fields, and the request content here is somebody's medical document.
+    reportError("documents/extract", error, { userId: user.id });
     return NextResponse.json({
       ok: false,
       error: friendlyExtractionError(error),

@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { CreditCard, RefreshCw, RotateCcw, Settings2 } from "lucide-react";
+import { track } from "@/lib/analytics";
+import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import {
   configureNativePurchases,
   getNativeManagementUrl,
@@ -12,6 +15,14 @@ import {
   restorePlus,
   type PlusOffer,
 } from "@/lib/billing/native-purchases";
+
+/**
+ * Which store this build is buying from. Only ever "ios" or "android":
+ * UpgradeCta renders this component on a native platform and nowhere else.
+ */
+function storeSurface() {
+  return Capacitor.getPlatform() === "android" ? "android" : "ios";
+}
 
 /**
  * The upgrade control inside the iOS/Android app.
@@ -103,6 +114,7 @@ export function NativeUpgrade({
 
     setMessage(null);
     setBusy("purchase");
+    track("checkout_start", { surface: storeSurface(), plan: offer.identifier });
     const result = await purchasePlus(offer.package);
     setBusy(null);
 
@@ -112,6 +124,7 @@ export function NativeUpgrade({
       return;
     }
 
+    track("purchase_completed", { surface: storeSurface(), plan: offer.identifier });
     setMessage({ tone: "info", text: "You’re on Clariti Plus. Thanks for supporting the work." });
     // The entitlement is written server-side, so the paywall has to re-read it
     // rather than optimistically unlock. router.refresh() cannot do that here:
@@ -175,6 +188,11 @@ export function NativeUpgrade({
 
       {!hasPlus && storeState === "unavailable" && (
         <>
+          {/* An offering the store will not return is indistinguishable from
+              nobody wanting to buy unless it reports itself. Mounted alongside
+              the notice rather than fired from the effect, so a "Check again"
+              that fails again reports again. */}
+          <AnalyticsBeacon event="checkout_unavailable" params={{ surface: storeSurface() }} />
           <BillingNotice
             tone="info"
             text="The App Store did not return the Clariti Plus subscription on this device. If you have already subscribed, Restore purchases will bring it back."

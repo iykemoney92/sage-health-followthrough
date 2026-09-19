@@ -1,8 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { appOriginFromRequest } from "@/lib/auth/app-origin";
+import { appleRefreshTokenFromSession, isAppleAccount, storeAppleRefreshToken } from "@/lib/auth/apple-revoke";
 import { recordProviderTokenPresence } from "@/lib/auth/provider-tokens";
 import { safeNextPath } from "@/lib/auth/safe-path";
+import { getSessionUser } from "@/lib/integrations/supabase-server";
 
 /**
  * Cookie-aware PKCE code exchange for email confirmation links.
@@ -101,7 +103,15 @@ export async function GET(request: NextRequest) {
   );
 
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-  if (!error) recordProviderTokenPresence(data.session);
+  if (!error) {
+    recordProviderTokenPresence(data.session);
+    // The exchange is the only moment Apple's refresh token exists: Supabase
+    // hands it back with the session and keeps no copy, so a deletion months
+    // later has nothing to revoke unless it is captured here.
+    const session = data.session;
+    const appleRefreshToken = appleRefreshTokenFromSession(session);
+    if (session && appleRefreshToken) await storeAppleRefreshToken(session.user.id, appleRefreshToken);
+  }
   if (!error && !carriedType.type && isRecoverySession(data.session?.access_token)) {
     // Supabase's own verify hop does not always pass the type on, so the session
     // it just handed back is asked instead. Without this a reset link that
@@ -126,4 +136,33 @@ export async function GET(request: NextRequest) {
   }
 
   return response;
+}
+
+/**
+ * Where the native shell reports the Apple refresh token it was handed.
+ *
+ * The app exchanges its own code inside the WebView and never reaches the GET
+ * above (components/native-deep-links.tsx), so the token that guideline
+ * 5.1.1(v) revocation needs would otherwise die in the browser. The body says
+ * only what the token is: whose profile it lands on comes from the session
+ * cookie, and whether Apple is involved at all from Supabase's record of the
+ * account.
+ */
+export async function POST(request: NextRequest) {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+
+  if (!isAppleAccount(user.app_metadata)) {
+    return NextResponse.json({ ok: true, stored: false });
+  }
+
+  const body = (await request.json().catch(() => null)) as { provider_refresh_token?: unknown } | null;
+  const token = typeof body?.provider_refresh_token === "string" ? body.provider_refresh_token.trim() : "";
+  if (!token) {
+    return NextResponse.json({ ok: true, stored: false });
+  }
+
+  return NextResponse.json({ ok: true, stored: await storeAppleRefreshToken(user.id, token) });
 }

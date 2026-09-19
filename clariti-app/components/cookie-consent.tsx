@@ -28,7 +28,8 @@ export function CookieConsent() {
     <div className="cookie-notice" role="dialog" aria-label="Cookie notice">
       <p>
         Clariti uses essential cookies to keep you signed in, and optional analytics cookies (Google Analytics) to
-        understand how the product is used — never for ads, and never on your document contents.
+        understand how the product is used — never for ads, and never on your document contents. This notice does not
+        come back once you choose, so the switch that changes your answer is in Settings, under Privacy & support.
       </p>
       <div className="cookie-notice-actions">
         <button type="button" className="cookie-notice-essential" onClick={() => choose("denied")}>

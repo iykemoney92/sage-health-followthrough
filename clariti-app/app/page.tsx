@@ -16,11 +16,13 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { AppDownloadLinks } from "@/components/app-download-links";
 import { ClaritiAuthModal } from "@/components/clariti-auth-modal";
 import { ClaritiShell } from "@/components/clariti-shell";
 import { prepareDocumentForUpload, readDocumentApiResponse } from "@/components/clariti/document-upload";
 import type { ClaritiAnalysisKind } from "@/lib/ai/clariti-analysis";
+import { track } from "@/lib/analytics";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 import { inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
 
@@ -194,6 +196,11 @@ function HomeContent() {
       return;
     }
 
+    // The funnel's missing denominator: nothing fires between the landing view and a
+    // finished analysis, so a document that never reads is invisible. Mime and a size
+    // bucket only — the document's own category is health data and stays out of GA.
+    track("document_selected", { mime: file.type || "unknown", size_bucket: fileSizeBucket(file.size) });
+
     setError(null);
     setSelectedFile(file);
     setDocumentText("");
@@ -205,6 +212,10 @@ function HomeContent() {
     extractionAbortRef.current = controller;
     const timeout = window.setTimeout(() => controller.abort(), 60000);
 
+    // Which half failed is the point of the event below: "prepare" is this browser
+    // refusing the file, "extract" is the server finding no readable text in it.
+    let stage: "prepare" | "extract" = "prepare";
+
     try {
       // runJourney uploads this same file again, so the prepared copy replaces the picked
       // one in state: sending the original bytes to /upload and the shrunk bytes to
@@ -212,6 +223,7 @@ function HomeContent() {
       const prepared = await prepareDocumentForUpload(file);
       if (!prepared.ok) throw new Error(prepared.error);
       setSelectedFile(prepared.file);
+      stage = "extract";
 
       const formData = new FormData();
       formData.set("file", prepared.file);
@@ -231,10 +243,12 @@ function HomeContent() {
       setExtractionMethod(String(payload.extractionMethod ?? "text"));
       setExtractionProgress(100);
     } catch (caught) {
+      const timedOut = caught instanceof DOMException && caught.name === "AbortError";
+      track("extract_failed", { mime: file.type || "unknown", reason: timedOut ? "timeout" : stage });
       setDocumentText("");
       setExtractionProgress(0);
       setError(
-        caught instanceof DOMException && caught.name === "AbortError"
+        timedOut
           ? "Document reading took too long. Try a clearer PDF/image, a smaller file, or paste the report text."
           : caught instanceof Error ? caught.message : "Could not read this document.",
       );
@@ -357,6 +371,7 @@ function HomeContent() {
 
   return (
     <ClaritiShell>
+      <AnalyticsBeacon event="landing_view" />
       <section className="clariti-entry-page" data-ui-version="clariti-preview-latest">
         <div className="clariti-entry-inner">
           <div className="clariti-entry-mark">C</div>
@@ -458,4 +473,16 @@ function isEmptyOrStarterPrompt(value: string) {
 
 function promptForKind(kind: StarterKind) {
   return getClaritiKindMeta(kind).starterPrompt;
+}
+
+/**
+ * A bucket, never the byte count: an exact size fingerprints the person's own document,
+ * and the only question worth asking is whether picks pile up against the 4MB upload cap.
+ */
+function fileSizeBucket(bytes: number) {
+  if (bytes < 256 * 1024) return "lt_256kb";
+  if (bytes < 1024 * 1024) return "lt_1mb";
+  if (bytes < 2 * 1024 * 1024) return "lt_2mb";
+  if (bytes < 4 * 1024 * 1024) return "lt_4mb";
+  return "gte_4mb";
 }

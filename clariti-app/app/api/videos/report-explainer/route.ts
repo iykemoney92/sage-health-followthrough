@@ -18,6 +18,7 @@ import { enforceFreeLimit, FREE_VIDEO_LIMIT } from "@/lib/billing/subscription";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
 import { shotstackIsUsable } from "@/lib/integrations/shotstack";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 
 export const maxDuration = 60;
 
@@ -36,6 +37,9 @@ export async function POST(request: NextRequest) {
   }
   if (!user) {
     return NextResponse.json({ ok: false, error: "Supabase auth is required for video generation jobs." }, { status: 503 });
+  }
+  if (!hasAiConsent(user)) {
+    return aiConsentRequiredResponse();
   }
 
   const body = await request.json().catch(() => null);

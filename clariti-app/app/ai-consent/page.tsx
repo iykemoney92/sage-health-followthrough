@@ -6,6 +6,7 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { hasAiConsent } from "@/lib/ai-consent";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
 import { safeNextPath } from "@/lib/auth/safe-path";
+import "../billing-lock.css";
 
 /**
  * The consent gate. `proxy.ts` sends every signed-in user here until they agree,
@@ -40,7 +41,10 @@ export default async function AiConsentPage({
           <p>
             To explain a bill or a lab result in plain English, Clariti sends that document and your questions to{" "}
             <strong>Anthropic</strong>, whose Claude models write the explanation, reached either directly or
-            through the <strong>Vercel AI Gateway</strong>. Nothing is sent until you agree here.
+            through the <strong>Vercel AI Gateway</strong>. If you ask for an illustration or an explainer video,
+            the analysis Clariti already wrote — not the original file — also goes through that gateway to{" "}
+            <strong>Google</strong>’s image model and <strong>Black Forest Labs</strong>’ FLUX video model.
+            Nothing is sent until you agree here.
           </p>
           <ul className="billing-lock-benefits">
             <li>
@@ -56,7 +60,13 @@ export default async function AiConsentPage({
             <Link href="/privacy">privacy policy</Link>, or delete everything at any time from Settings.
           </p>
           <AiConsentActions next={destination} />
-          <SignOutButton className="skip-intake-button billing-lock-signout" />
+          {/* Declining must not cost someone the way out: guideline 5.1.1(v)
+              rejects an app whose only deletion route is a website. Both
+              controls live in Settings, which proxy.ts leaves reachable without
+              consent for exactly this reason. */}
+          <Link href="/settings" className="billing-lock-secondary">Export your data</Link>
+          <Link href="/settings" className="billing-lock-secondary">Delete your account</Link>
+          <SignOutButton className="billing-lock-signout">Sign out</SignOutButton>
         </div>
       </div>
     </main>

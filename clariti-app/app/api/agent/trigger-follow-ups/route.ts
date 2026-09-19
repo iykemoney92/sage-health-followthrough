@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkInEmailHtml, checkInEmailText, sendAuthEmail } from "@/lib/integrations/resend";
 import { getOptionalSupabaseServiceClient } from "@/lib/integrations/supabase";
+import { reportError } from "@/lib/observability/report-error";
 
 export const runtime = "nodejs";
 
@@ -75,7 +76,12 @@ async function triggerDueFollowUps(request: NextRequest, mode: "agent" | "cron")
     .order("scheduled_for", { ascending: true })
     .limit(25);
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error) {
+    // Nothing downstream runs when the batch cannot even be selected, so an
+    // outage here is the whole check-in schedule silently stopping.
+    reportError("agent/trigger-follow-ups", error, { stage: "select_due", mode });
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
 
   const selected = (data ?? []) as DueFollowUp[];
   if (selected.length === 0) return NextResponse.json({ ok: true, mode, triggered: [] });
@@ -94,7 +100,7 @@ async function triggerDueFollowUps(request: NextRequest, mode: "agent" | "cron")
     .select("id");
 
   if (claimError) {
-    console.error("[agent/trigger-follow-ups] claim failed", { mode, error: claimError.message });
+    reportError("agent/trigger-follow-ups", claimError, { stage: "claim", mode });
     return NextResponse.json({ ok: false, error: claimError.message }, { status: 500 });
   }
 
@@ -134,11 +140,11 @@ async function triggerDueFollowUps(request: NextRequest, mode: "agent" | "cron")
         .from("clariti_follow_ups")
         .update({ triggered_at: null, call_status: "failed", call_error: owner.error })
         .eq("id", followUp.id);
-      console.error("[agent/trigger-follow-ups] owner lookup failed", {
+      reportError("agent/trigger-follow-ups", owner.error, {
+        stage: "owner_lookup",
         mode,
         followUpId: followUp.id,
         ownerId: followUp.owner_id,
-        error: owner.error,
       });
       results.push({ followUpId: followUp.id, status: "failed", error: owner.error });
       continue;
@@ -210,13 +216,15 @@ async function triggerDueFollowUps(request: NextRequest, mode: "agent" | "cron")
         .from("clariti_follow_ups")
         .update({ triggered_at: null, call_status: "failed", call_error: message })
         .eq("id", followUp.id);
-      console.error("[agent/trigger-follow-ups] check-in email failed", {
+      // The row identifiers only: document_title is the user's own document and
+      // never goes to a log.
+      reportError("agent/trigger-follow-ups", sendError, {
+        stage: "check_in_email",
         mode,
         followUpId: followUp.id,
         ownerId: followUp.owner_id,
         sessionId: followUp.session_id,
         scheduledFor: followUp.scheduled_for,
-        error: message,
       });
       results.push({ followUpId: followUp.id, status: "failed", error: message });
     }

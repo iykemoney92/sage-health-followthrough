@@ -3,6 +3,7 @@
 import {
   Bell,
   BrainCircuit,
+  ChartColumn,
   ChevronRight,
   CircleHelp,
   CreditCard,
@@ -15,20 +16,28 @@ import {
   Video,
   X,
   ShieldCheck,
+  ShieldOff,
   SlidersHorizontal,
   UserRound,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ClaritiShell } from "@/components/clariti-shell";
 import { DeleteAccountButton } from "@/components/delete-account-button";
 import { ExportDataButton } from "@/components/export-data-button";
+import {
+  ANALYTICS_CONSENT_EVENT,
+  getAnalyticsConsent,
+  isNativeShell,
+  setAnalyticsConsent,
+} from "@/lib/analytics-consent";
 import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
 import "./settings.css";
 
 type AccountState = {
   configured: boolean;
   authenticated: boolean;
+  aiConsent: boolean;
   user: { id: string; email?: string; name?: string } | null;
 };
 
@@ -71,9 +80,131 @@ function SettingsRow({ row }: { row: SettingsRowData }) {
   );
 }
 
+type AnalyticsControlState = "unknown" | "native" | "granted" | "denied";
+
+function subscribeAnalyticsConsent(onChange: () => void) {
+  window.addEventListener(ANALYTICS_CONSENT_EVENT, onChange);
+  return () => window.removeEventListener(ANALYTICS_CONSENT_EVENT, onChange);
+}
+
+function readAnalyticsConsentState(): AnalyticsControlState {
+  // The shells hard-deny analytics so the ATT requirement never applies (see
+  // lib/analytics-consent.ts), which would make this a switch that cannot move.
+  if (isNativeShell()) return "native";
+  return getAnalyticsConsent() === "granted" ? "granted" : "denied";
+}
+
+/**
+ * Turning analytics back off, which the cookie banner cannot do: it only appears
+ * while no choice is stored, so the first tap was final.
+ */
+function AnalyticsConsentControl() {
+  // Neither the stored choice nor the Capacitor bridge is readable during the
+  // server render, so this takes UpgradeCta's approach: the server snapshot
+  // renders nothing and the client's first pass renders the true state instead
+  // of flashing the wrong label. Unlike there the subscription is real — the
+  // cookie banner writes the same key and fires this event.
+  const state = useSyncExternalStore<AnalyticsControlState>(
+    subscribeAnalyticsConsent,
+    readAnalyticsConsentState,
+    () => "unknown",
+  );
+
+  if (state === "unknown" || state === "native") return null;
+
+  const granted = state === "granted";
+
+  return (
+    <div>
+      <button
+        type="button"
+        className="settings-signout"
+        onClick={() => setAnalyticsConsent(granted ? "denied" : "granted")}
+      >
+        <ChartColumn /> {granted ? "Turn off usage analytics" : "Turn on usage analytics"}
+      </button>
+      <p className="settings-footnote" style={{ textAlign: "left", marginTop: 8 }} role="status">
+        {granted
+          ? "Analytics are on. Google Analytics sees which screens you open — never your documents or anything written in them."
+          : "Analytics are off. Only the cookies that keep you signed in are loaded."}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Withdrawing the consent recorded at /ai-consent. Until this existed the only
+ * way to take it back was deleting the whole account.
+ */
+function AiConsentControl({ granted, onWithdrawn }: { granted: boolean; onWithdrawn: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
+
+  async function revoke() {
+    if (busy) return;
+    setBusy(true);
+    setStatus(null);
+
+    try {
+      const response = await fetch("/api/ai-consent", { method: "DELETE" });
+      const payload = await response.json().catch(() => null);
+
+      // A 204 carries no body, so only an explicit `ok: false` counts as a refusal.
+      if (!response.ok || payload?.ok === false) {
+        setStatus({
+          tone: "error",
+          // The 401 body is a machine token here as it is everywhere else in the app.
+          message: response.status === 401
+            ? "Your session has expired. Sign in again, then withdraw your consent."
+            : "Clariti could not withdraw your consent. Please try again.",
+        });
+        return;
+      }
+
+      setStatus({
+        tone: "ok",
+        message: "Withdrawn. Clariti will not send any of your documents to the AI model, and no new analysis will run, until you agree again. It will ask the next time you open Clariti.",
+      });
+      onWithdrawn();
+    } catch {
+      setStatus({ tone: "error", message: "Clariti could not reach the server. Check your connection and try again." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // proxy.ts leaves /settings reachable without consent so a decliner can still export
+  // and delete, which makes this the first screen they see — it must not tell them they
+  // agreed to something they refused.
+  if (!granted) {
+    return (
+      <p className="settings-footnote" style={{ textAlign: "left" }} role="status">
+        {status?.message
+          ?? "You have not agreed to let Clariti send your documents to the AI model, so no analysis will run. Clariti will ask before it sends anything."}
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <button type="button" className="settings-signout" onClick={() => void revoke()} disabled={busy}>
+        <ShieldOff /> {busy ? "Withdrawing consent..." : "Withdraw AI consent"}
+      </button>
+      <p
+        className={status?.tone === "error" ? "auth-error" : "settings-footnote"}
+        style={{ textAlign: "left", marginTop: 8 }}
+        role="status"
+      >
+        {status?.message
+          ?? "You agreed to let Clariti send your documents to the AI model that writes your explanations. Withdrawing stops that: no further analysis of your documents until you agree again. Everything already saved stays where it is."}
+      </p>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const router = useRouter();
-  const [account, setAccount] = useState<AccountState>({ configured: false, authenticated: false, user: null });
+  const [account, setAccount] = useState<AccountState>({ configured: false, authenticated: false, aiConsent: false, user: null });
   const [counts, setCounts] = useState<CountsState>({ documents: 0, conversations: 0, followUps: 0 });
   const [billing, setBilling] = useState<{ hasPlus: boolean; status: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,6 +235,7 @@ export default function SettingsPage() {
         setAccount({
           configured: Boolean(authPayload?.configured),
           authenticated: Boolean(authPayload?.authenticated),
+          aiConsent: Boolean(authPayload?.aiConsent),
           user: authPayload?.user ?? null,
         });
         setCounts({
@@ -242,6 +374,19 @@ export default function SettingsPage() {
           <h2 className="settings-section-title">Privacy & support</h2>
           <div className="settings-list settings-privacy">
             {trustRows.map((row) => <SettingsRow key={row.title} row={row} />)}
+          </div>
+          {/* Both consents have to be withdrawable from here. The cookie banner only shows
+              while no analytics choice is stored and the gate only shows while AI consent is
+              missing, so neither could be taken back once given — and GDPR Art. 7(3) requires
+              withdrawal to be as easy as granting. Clariti sells in the EU. */}
+          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+            <AnalyticsConsentControl />
+            {account.authenticated ? (
+              <AiConsentControl
+                granted={account.aiConsent}
+                onWithdrawn={() => setAccount((current) => ({ ...current, aiConsent: false }))}
+              />
+            ) : null}
           </div>
         </section>
 
