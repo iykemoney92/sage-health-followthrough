@@ -20,7 +20,7 @@ changing the other side too — the "used by" column says where.
 | Custom URL scheme | `app.useclariti.mobile://` | `Info.plist`, `AndroidManifest.xml`, `lib/auth/oauth.ts`, Supabase redirect list |
 | Associated domain | `applinks:useclariti.app` | `App.entitlements` |
 | Production origin | `https://useclariti.app` | `capacitor.config.ts` `server.url`, `NEXT_PUBLIC_APP_URL` |
-| Google Analytics property | `G-XSL79NR83X` ("Clariti", stream "Clariti web") | `NEXT_PUBLIC_GA_MEASUREMENT_ID`, `components/google-analytics.tsx` |
+| Google Analytics property | `G-XSL79NR83X` — property "Clariti" `555031958`, stream "Clariti web" `15807148476`, under GA account `360570050` | `NEXT_PUBLIC_GA_MEASUREMENT_ID`, `components/google-analytics.tsx` |
 | RevenueCat project | `proja88a3e46` | already live for web billing |
 | RevenueCat entitlement | `plus` | `lib/billing/subscription.ts`, `lib/billing/native-purchases.ts`, the webhook |
 | RevenueCat offering | `default` | packages `$rc_monthly` / `$rc_annual` |
