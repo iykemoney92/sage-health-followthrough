@@ -11,6 +11,7 @@ import "./native.css";
 import { AppUpdateNotice } from "@/components/app-update-notice";
 import { CookieConsent } from "@/components/cookie-consent";
 import { GoogleAnalytics } from "@/components/google-analytics";
+import { KeyboardInset } from "@/components/keyboard-inset";
 import { NativeDeepLinks } from "@/components/native-deep-links";
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "https://useclariti.app";
@@ -63,6 +64,7 @@ export default function RootLayout({
       <body data-ui-version="mobile-nav-v2">
         {children}
         <NativeDeepLinks />
+        <KeyboardInset />
         <AppUpdateNotice />
         <CookieConsent />
         <GoogleAnalytics />

@@ -77,3 +77,27 @@
     bottom: calc(24px + env(safe-area-inset-bottom));
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Keyboard open, inside the app only. components/keyboard-inset.tsx sets
+   `.kb-open` from visualViewport; CSS cannot detect this on its own because the
+   layout viewport does not change when iOS raises the keyboard.
+
+   Everything pinned to the bottom is unreachable while the keyboard covers it,
+   and worse, iOS has dragged it into the middle of the page where it reads as a
+   rendering bug rather than as furniture. Taking it out is both the honest and
+   the tidier answer, and it comes straight back on blur.
+   --------------------------------------------------------------------------- */
+
+.kb-open .clariti-shell-mobile-nav,
+.kb-open .clariti-mobile-dock,
+.kb-open .app-update-notice {
+  display: none !important;
+}
+
+/* The workspace composer is the one piece that must stay: it is what the person
+   is typing into. It sits above the dock normally, so with the dock gone it
+   drops to the keyboard's edge. */
+.kb-open .clariti-workspace-composer {
+  bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+}
