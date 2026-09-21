@@ -1,0 +1,415 @@
+/* /example — a finished analysis a visitor can read before handing Clariti
+   anything of their own, plus the one quiet link on "/" that points at it.
+
+   The page sits inside ClaritiShell like /connections, so the topbar and the
+   fixed mobile nav are inherited and only the page body is here. The analysis
+   itself is drawn by the workspace's own components and styled by globals.css
+   and canvas.css — nothing in this file restyles it, with the one exception
+   noted under "Borrowed back from the mobile canvas" below.
+
+   Text is in rem and nothing this file sets goes below 0.8125rem. Someone reads
+   this page while deciding whether to trust the product with a diagnosis; it is
+   not the 9px metadata a list screen gets away with. */
+
+.example-page {
+  width: min(860px, 100%);
+  margin: 0 auto;
+  /* Side padding clears the notch in landscape, where the inset is non-zero and
+     a flat 24px would put the first word under the curve. */
+  padding: 34px max(24px, env(safe-area-inset-left)) 72px max(24px, env(safe-area-inset-right));
+}
+
+/* ---------------------------------------------------------------------------
+   The label. Warm rather than alarming — it borrows the same tokens as the
+   inline safety note in the chat — but placed first and sized like copy, not
+   like a footnote. A health product showing a fabricated report that looks like
+   a live one is its own kind of dishonesty, and this is the sentence that stops
+   it being one.
+   --------------------------------------------------------------------------- */
+
+.example-banner {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid #ead9bb;
+  border-radius: 18px;
+  background: var(--warning-soft);
+}
+
+.example-banner-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #a3762f;
+}
+
+.example-banner-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.example-banner-body {
+  min-width: 0;
+}
+
+.example-banner-label {
+  margin: 2px 0 0;
+  color: #7a5b16;
+  font-size: 0.9375rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.example-banner-body p + p {
+  margin: 9px 0 0;
+}
+
+.example-banner-body p:not(.example-banner-label) {
+  max-width: 62ch;
+  color: #6f5a31;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+/* ---------------------------------------------------------------------------
+   The document's own header, in the same shape the canvas uses: kicker, title,
+   and the question this analysis is an answer to.
+   --------------------------------------------------------------------------- */
+
+.example-head {
+  margin: 30px 0 22px;
+}
+
+.example-head .clariti-kicker {
+  display: block;
+  margin: 0 0 10px;
+}
+
+.example-head h1 {
+  margin: 0;
+  font: 500 clamp(30px, 5vw, 38px) / 1.1 Georgia, "Times New Roman", serif;
+  letter-spacing: -0.03em;
+  color: #21332f;
+}
+
+.example-asked {
+  max-width: 62ch;
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  font-style: italic;
+  line-height: 1.6;
+}
+
+/* ---------------------------------------------------------------------------
+   The three canvas tabs, stacked and labelled. Headings rather than a tab strip:
+   a control that looks pressable and is not would be worse than no control.
+   --------------------------------------------------------------------------- */
+
+.example-section + .example-section {
+  margin-top: 26px;
+}
+
+.example-section-label {
+  margin: 0 0 12px;
+  color: #718f87;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* The questions the analysis suggests. The workspace turns these into a chat
+   message on request; with no session to send one, they are simply printed. */
+.example-questions {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.example-questions li {
+  padding-left: 16px;
+  position: relative;
+  color: #45564f;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.example-questions li::before {
+  content: "";
+  position: absolute;
+  top: 0.55em;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* .meta-link-btn is styled for a <button> in a 430px canvas column; here it is a
+   link to the document printed further down this page, so it takes the two
+   properties a link brings with it and the same 0.8125rem floor as everything
+   else on this page. Scoped through .example-page so it outranks the globals
+   rule whatever order the two stylesheets land in. */
+.example-page .example-meta-link {
+  min-height: 44px;
+  font-size: 0.8125rem;
+  text-decoration: none;
+}
+
+/* The analysis's own safety note, in the place the canvas puts it: last, under
+   everything it qualifies. */
+.example-page .canvas-footer {
+  max-width: 62ch;
+  margin-top: 20px;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+/* ---------------------------------------------------------------------------
+   The source document. Printed in full and on the same page rather than behind
+   a sheet, because the point of the source lines above is that a reader can
+   check them — and here, for once, they can.
+   --------------------------------------------------------------------------- */
+
+.example-document {
+  margin-top: 26px;
+}
+
+.example-document-note {
+  max-width: 62ch;
+  margin: 0 0 12px !important;
+  font-size: 0.875rem !important;
+}
+
+.example-document-text {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fbfcfb;
+  color: #3e4f49;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  /* Wrapped rather than side-scrolled. The report's line breaks are cosmetic —
+     it is wrapped prose, not a table — so keeping them while letting long lines
+     fold costs nothing and keeps the page off a horizontal scrollbar at 375px. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.example-document-name {
+  margin: 10px 0 0 !important;
+  color: #8a9692;
+  font-size: 0.8125rem !important;
+}
+
+/* ---------------------------------------------------------------------------
+   What the page does not show, said plainly. An omission nobody mentions reads
+   as a claim once the visitor signs up and finds the screen is different.
+   --------------------------------------------------------------------------- */
+
+.example-omissions {
+  margin-top: 30px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--panel);
+}
+
+.example-omissions h2 {
+  margin: 0;
+  font: 500 20px/1.25 Georgia, "Times New Roman", serif;
+  letter-spacing: -0.02em;
+  color: #21332f;
+}
+
+.example-omissions p {
+  max-width: 62ch;
+  margin: 10px 0 0;
+  color: #4c605a;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+/* ---------------------------------------------------------------------------
+   The way back into the real flow. Loud here, because by this point the visitor
+   has read the thing they came for and the next move is theirs.
+   --------------------------------------------------------------------------- */
+
+.example-outro {
+  margin-top: 30px;
+  padding: 22px;
+  border: 1px solid #d5e6e0;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #f5faf8, #ecf5f2);
+  box-shadow: 0 10px 30px rgba(35, 63, 55, 0.045);
+}
+
+.example-outro h2 {
+  margin: 0;
+  font: 500 24px/1.2 Georgia, "Times New Roman", serif;
+  letter-spacing: -0.02em;
+  color: #21332f;
+}
+
+.example-outro p {
+  max-width: 60ch;
+  margin: 10px 0 0;
+  color: #45564f;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.example-outro-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  /* 44pt: the primary control on the page. */
+  min-height: 44px;
+  margin-top: 18px;
+  padding: 0 18px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 8px 22px rgba(47, 110, 102, 0.16);
+}
+
+.example-outro-cta:hover {
+  background: var(--accent-dark);
+}
+
+.example-outro-cta svg {
+  width: 17px;
+  height: 17px;
+}
+
+.example-outro-note {
+  margin-top: 14px !important;
+  color: #7c8b86 !important;
+  font-size: 0.8125rem !important;
+}
+
+.example-outro-note a {
+  color: var(--accent-dark);
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------------
+   Borrowed back from the mobile canvas.
+
+   The phone-sized rules for these elements live in app/mobile.css under
+   .mobile-canvas-open, which is set by the workspace when its canvas sheet is
+   open — so on any other surface they simply do not apply, and the hero falls
+   back to the globals.css rule written for the old 82px spine illustration:
+   a two-column grid that squeezes the summary into 82px. These three rules
+   restate what .mobile-canvas-open gives the same markup, nothing more, and are
+   scoped to this page so they cannot reach the workspace.
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 760px) {
+  .example-page {
+    /* The fixed mobile nav is 68px plus the home indicator, and the update
+       notice floats above it — the last section has to clear both. */
+    padding: 22px max(16px, env(safe-area-inset-left)) calc(104px + env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-right));
+  }
+
+  .example-page .report-hero.radiology-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .example-page .risk-pill {
+    justify-self: start;
+    min-height: 30px;
+  }
+
+  .example-page .impression-stats > div {
+    min-height: 62px;
+    padding: 11px 6px;
+  }
+
+  .example-banner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 15px;
+    border-radius: 16px;
+  }
+
+  .example-head {
+    margin: 26px 0 20px;
+  }
+
+  .example-omissions,
+  .example-outro {
+    padding: 17px;
+    border-radius: 18px;
+  }
+
+  .example-outro-cta {
+    /* Full width at 375px: it is the only thing on this page anyone is meant to
+       press, and a thumb should not have to find it. */
+    display: flex;
+    width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The way in, on the landing page.
+
+   This one rule styles the link on "/" that points here. It lives in this file
+   because the link and the page it opens are one change, and app/clariti-entry.css
+   belongs to the composer; app/page.tsx imports this stylesheet for it.
+
+   Deliberately quiet: a line of text under the composer, no card and no fill. It
+   is for the person who is hesitating, and it must not compete with send for the
+   person who already knows what they want.
+   --------------------------------------------------------------------------- */
+
+.entry-example-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  /* 44pt, even though it reads as a line of text. */
+  min-height: 44px;
+  width: min(780px, 100%);
+  margin: 10px auto 0;
+  padding: 4px 12px;
+  border-radius: 12px;
+  color: #6c7f79;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  text-align: center;
+  text-decoration: none;
+}
+
+.entry-example-link svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: #7ea79c;
+}
+
+.entry-example-link b {
+  color: var(--accent-dark);
+  font-weight: 800;
+}
+
+.entry-example-link:hover {
+  background: rgba(255, 255, 255, 0.72);
+  color: #4c605a;
+}

@@ -16,6 +16,7 @@ import {
   ScanText,
   ShieldCheck,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChangeEvent, Suspense, useEffect, useRef, useState } from "react";
 import { AnalyticsBeacon } from "@/components/analytics-beacon";
@@ -28,6 +29,10 @@ import { track } from "@/lib/analytics";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 import { inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
 import { formatHumanError } from "@/lib/domain/human-errors";
+// Styles the one link below the composer that points at /example. Every other
+// stylesheet is imported by app/layout.tsx; this one belongs to that page and is
+// pulled in here so the link is styled on the landing screen too.
+import "./example.css";
 
 type StarterKind = ClaritiAnalysisKind;
 
@@ -587,6 +592,18 @@ function HomeContent() {
               </button>
             </div>
           </div>
+
+          {/* Every starter below asks for an upload, and so does the composer above:
+              until now the only way to find out what Clariti does with a health
+              document was to hand it one carrying your name and your diagnosis.
+              This is the way through that screen for someone who is hesitating, so
+              it sits with the attach controls rather than in a footer — and stays a
+              line of text, because the person who already knows what they want is
+              reaching for send. */}
+          <Link className="entry-example-link" href="/example">
+            <FileText />
+            <span>Rather see it work first? <b>Read an example analysis</b> — an invented report.</span>
+          </Link>
 
           <div className="clariti-entry-starters" aria-label="Quick starts">
             {starters.map(({ kind: starterKind, title, meta, prompt, Icon }) => (

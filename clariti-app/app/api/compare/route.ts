@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { claritiAnalysisSchema } from "@/lib/ai/clariti-analysis";
-import { requirePlusAccess } from "@/lib/billing/subscription";
+import { getSubscriptionAccess, type PlusFeature } from "@/lib/billing/subscription";
 import {
   findComparisonCandidates,
   getSessionThreadId,
@@ -39,6 +40,111 @@ const requestSchema = z.object({
    */
   confirmedRelated: z.boolean().optional(),
 });
+
+/**
+ * How many comparisons a free reader gets in one 30-day window.
+ *
+ * THIS IS THE PRICING DECISION FOR THIS ROUTE. Change the number, change
+ * nothing else.
+ *
+ * Comparison used to be behind a hard Plus gate, which was backwards: it is the
+ * cheapest thing Clariti does — buildProgressionComparison is arithmetic over
+ * two analyses that are already saved, and no model is called — and it is one of
+ * only two features that give a reader a reason to open Clariti a second time.
+ * Gating it meant that in practice nobody ever used it.
+ *
+ * Five is sized off what a free account can actually hold: FREE_DOCUMENT_LIMIT
+ * in lib/billing/subscription.ts is 3 documents, which is three distinct pairs,
+ * so five covers every pair with room to re-run one when a newer result lands.
+ * It is not sized off cost, because there is no per-comparison cost to size
+ * against. Raising it spends nothing; lowering it only buys a worse first month.
+ * The ceiling that stops a scripted client is the per-hour one in
+ * lib/rate-limit.ts ("compare": 30/hour), which runs on every request above.
+ */
+const FREE_COMPARISON_LIMIT = 5;
+
+/**
+ * The window the allowance refreshes on. Thirty days rather than a lifetime on
+ * purpose: a reader who comes back next month with a new result should find the
+ * feature working, because that returning visit is the whole reason this route
+ * was opened up.
+ */
+const FREE_COMPARISON_WINDOW_SECONDS = 30 * 24 * 60 * 60;
+
+/**
+ * Ledger key for the free allowance. It is deliberately not one of
+ * lib/rate-limit.ts's RATE_LIMITS routes — those are per-hour abuse ceilings
+ * charged on every request, this is a per-reader entitlement charged only when a
+ * comparison is actually produced.
+ */
+const FREE_COMPARISON_LEDGER_ROUTE = "compareFree";
+
+/**
+ * Charge one comparison against a free reader's allowance, and report whether
+ * that put them over it.
+ *
+ * This rides on clariti_increment_rate_limit — the same SECURITY DEFINER counter
+ * lib/rate-limit.ts uses — rather than a column of its own, because nobody can
+ * apply a migration to this project and the tally has to be one a client cannot
+ * wind back. The function reads its owner from auth.uid() and clariti_rate_limits
+ * has no RLS policy for `authenticated`, so a session can inflate its own count
+ * and nothing else. The window start is computed here, server-side, so a client
+ * calling the RPC with a window of its own buys itself nothing: this is the
+ * window that gets read.
+ *
+ * Charged only where the old Plus gate sat — after the "nothing worth comparing"
+ * branch above — so a reader whose documents do not match is told so without
+ * spending anything. A refused attempt does still increment, the same way the
+ * rate limiter's does; it costs nothing beyond this window, which expires.
+ *
+ * A counter that could not run lets the comparison through. A comparison spends
+ * no provider money, so a bookkeeping outage should cost the ceiling and not the
+ * reader — the same asymmetry lib/rate-limit.ts draws with its FAIL_CLOSED set,
+ * where only the routes that spend real money fail closed.
+ */
+async function chargeFreeComparison(supabase: SupabaseClient) {
+  const windowMs = FREE_COMPARISON_WINDOW_SECONDS * 1000;
+  const windowStart = new Date(Math.floor(Date.now() / windowMs) * windowMs);
+
+  const { data, error } = await supabase.rpc("clariti_increment_rate_limit", {
+    p_route: FREE_COMPARISON_LEDGER_ROUTE,
+    p_window_start: windowStart.toISOString(),
+  });
+
+  if (error) {
+    console.error("[compare] free allowance check failed:", error.message);
+    return false;
+  }
+
+  return Number(data) > FREE_COMPARISON_LIMIT;
+}
+
+/**
+ * The refusal a free reader who has used the feature five times should get.
+ *
+ * The body is deliberately the one plusRequiredResponse sends — error
+ * "plus_required", feature, upgradeUrl, message — because app/workspace/page.tsx
+ * matches on exactly that shape, and that match is what fires
+ * track("plus_upgrade_redirect"). Changing the shape would silently drop the
+ * funnel event. Only the words differ: someone who has just used comparison five
+ * times has earned a pitch for what Plus adds, not a notice that the thing they
+ * were using was never theirs.
+ */
+function freeComparisonLimitResponse() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "plus_required",
+      feature: "compare" satisfies PlusFeature,
+      upgradeUrl: "/billing",
+      message:
+        `You have used your ${FREE_COMPARISON_LIMIT} free comparisons — they refresh every 30 days. `
+        + "Clariti Plus compares without a ceiling: every new result against the one before it, so you can "
+        + "see what actually moved instead of reading two documents side by side.",
+    },
+    { status: 402 },
+  );
+}
 
 /**
  * Structured document-vs-document progression/regression comparison.
@@ -98,8 +204,13 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const plusResponse = await requirePlusAccess(supabase, user.id, "compare");
-  if (plusResponse) return plusResponse;
+  // Plus is unchanged: no allowance, no ledger write, straight through. Only a
+  // free reader is metered, and only here — at the point a comparison is about
+  // to be produced — so the branches above that decline to compare cost nothing.
+  const access = await getSubscriptionAccess(supabase, user.id);
+  if (!access.hasPlus && (await chargeFreeComparison(supabase))) {
+    return freeComparisonLimitResponse();
+  }
 
   const comparison = buildProgressionComparison({
     current: analysis,

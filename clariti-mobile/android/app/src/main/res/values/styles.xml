@@ -9,10 +9,28 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
+    <!-- The theme MainActivity actually runs under: BridgeActivity.onCreate calls
+         setTheme(AppTheme_NoActionBar) once the splash window is up, so this is what
+         governs the status bar for the whole time the WebView is on screen. -->
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- Dark status-bar icons, whatever the phone's appearance is set to. Clariti's
+             page is forced white on phones (clariti-app/app/mobile.css pins the
+             background variable to #fff) and the app has no dark theme at all, so the
+             system setting is the wrong thing to follow: the parent here is DayNight,
+             and in dark mode it otherwise gives the window light icons. On targetSdk
+             36, Android 15+ forces edge-to-edge and the bar is transparent over the
+             page — white icons on a white page, and the clock, signal and battery
+             disappear. The iOS half of this is UIStatusBarStyle in ios/App/App/Info.plist. -->
+        <item name="android:windowLightStatusBar">true</item>
+        <!-- Only reaches API 24-34, where the status bar is still an opaque strip above
+             the WebView rather than transparent behind it; Android 15+ ignores it. Those
+             releases would otherwise keep AppCompat's near-black default and the dark
+             icons above would be invisible on THAT instead. #fff is the colour
+             mobile.css paints, so the strip and the page read as one surface. -->
+        <item name="android:statusBarColor">#ffffff</item>
     </style>
 
 

@@ -210,9 +210,13 @@ export type PlusFeature = "documents" | "videos" | "follow_ups" | "calls" | "com
 const FEATURE_MESSAGES: Record<PlusFeature, string> = {
   documents: `You have used your ${FREE_DOCUMENT_LIMIT} free document analyses. Upgrade to Clariti Plus for unlimited analyses.`,
   videos: `You have used your ${FREE_VIDEO_LIMIT} free explainer video. Upgrade to Clariti Plus for unlimited videos.`,
-  follow_ups: "Email check-ins are a Clariti Plus feature. Clariti emails you later to ask whether anything changed.",
+  // Both of these are free with a ceiling now, not Plus-only — the routes meter them
+  // and write their own copy naming what the reader has already used. These strings
+  // are the fallback for any caller that has not been updated, so they say "used up"
+  // rather than "not for you", which is what is actually true.
+  follow_ups: "You have used your free email check-ins. Upgrade to Clariti Plus for unlimited check-ins.",
   calls: "Live calls with Clariti are a Clariti Plus feature.",
-  compare: "Comparing documents over time is a Clariti Plus feature.",
+  compare: "You have used your free document comparisons. Upgrade to Clariti Plus for unlimited comparisons.",
 };
 
 export function plusRequiredResponse(feature: PlusFeature) {

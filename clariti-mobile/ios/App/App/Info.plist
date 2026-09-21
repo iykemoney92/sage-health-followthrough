@@ -70,6 +70,21 @@
 	<array>
 		<string>armv7</string>
 	</array>
+	<!-- Dark status-bar content, whatever the phone's appearance is set to.
+	     Clariti's page is forced white on phones (clariti-app/app/mobile.css pins
+	     the background variable to #fff) and the app has no dark theme at all, so
+	     the system appearance is the wrong thing to follow: without this key
+	     Capacitor's statusBarStyle stays .default, which resolves to LIGHT content on a
+	     dark-mode phone and paints the clock, signal and battery white onto a white
+	     page — the whole status bar disappears.
+	     UIViewControllerBasedStatusBarAppearance stays true on purpose:
+	     CAPBridgeViewController.setStatusBarDefaults() reads this key and returns it
+	     from preferredStatusBarStyle, so Clariti's own screen gets dark content while
+	     view controllers presented over it — the camera picker, the OAuth Custom Tab —
+	     keep choosing the style their own (dark) UI needs. The Android half of this is
+	     android:windowLightStatusBar in android/app/src/main/res/values/styles.xml. -->
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleDarkContent</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

@@ -3,7 +3,6 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 import { z } from "zod";
 import { claritiAnalysisSchema, type ClaritiAnalysisKind } from "@/lib/ai/clariti-analysis";
-import { requirePlusAccess } from "@/lib/billing/subscription";
 import { getClaritiKindMeta, isClaritiAnalysisKind } from "@/lib/domain/clariti-document-kinds";
 import {
   findComparisonCandidates,
@@ -77,12 +76,14 @@ export async function POST(request: NextRequest) {
       }),
       sessionId,
     );
-    // Only a real comparison is Plus work. A guess Clariti will not act on is not one,
-    // so it does not put the paywall in front of an answer that says "I cannot tell".
-    if (compareCandidates.some(isComparableCandidate)) {
-      const plusResponse = await requirePlusAccess(supabase, user.id, "compare");
-      if (plusResponse) return plusResponse;
-    }
+    // Comparison is no longer Plus work: /api/compare now meters free readers against
+    // a bounded allowance instead of refusing them outright, because comparing two
+    // already-saved analyses calls no model and costs nothing to run — and it is one
+    // of only two features that could ever bring somebody back a second time.
+    //
+    // Leaving the hard gate here would have made that half a change: the dedicated
+    // route would serve a free reader while asking Clariti the same question in chat
+    // still answered "that is a Clariti Plus feature".
   }
 
   const assistantContent = await generateGroundedFollowUp(

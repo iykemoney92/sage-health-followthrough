@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { claritiAnalysisSchema } from "@/lib/ai/clariti-analysis";
-import { requirePlusAccess } from "@/lib/billing/subscription";
+import { getSubscriptionAccess, type PlusFeature } from "@/lib/billing/subscription";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
 
 const requestSchema = z.object({
@@ -12,6 +14,82 @@ const requestSchema = z.object({
   email: z.string().trim().email().optional(),
   analysis: claritiAnalysisSchema,
 });
+
+/**
+ * How many check-ins a free reader gets, for the life of the account.
+ *
+ * THIS IS THE PRICING DECISION FOR THIS ROUTE. Change the number, change
+ * nothing else.
+ *
+ * Check-ins used to be behind a hard Plus gate. That was backwards: one check-in
+ * is one Resend email — fractions of a cent — and a check-in is one of only two
+ * things in Clariti that bring a reader back at all. Gating it meant nobody ever
+ * received one.
+ *
+ * Three matches FREE_DOCUMENT_LIMIT in lib/billing/subscription.ts on purpose:
+ * a free reader gets one check-in per free document, so every document they can
+ * hold can have a reminder attached to it. Lifetime rather than per-period,
+ * which is the shape the free document and video limits already use — the point
+ * of the ceiling is that a reader who has felt three of these has felt the thing
+ * that is worth paying for.
+ */
+const FREE_CHECK_IN_LIMIT = 3;
+
+/**
+ * Check-ins this account has ever scheduled.
+ *
+ * Derived from the rows themselves, the way lib/billing/subscription.ts counts
+ * documents and videos, rather than from a counter a client could write.
+ * clariti_follow_ups has no DELETE policy — app/api/account/delete/route.ts
+ * needs the service role to clear it — so this tally cannot be wound back from a
+ * browser.
+ *
+ * `known` is false when the count could not be read. A check-in spends no
+ * provider money worth protecting, so an unreadable count lets the request
+ * through rather than locking a reader out of a free feature over a database
+ * hiccup — the same asymmetry lib/rate-limit.ts draws, where only the routes
+ * that spend real money fail closed. The per-window ceiling below still applies
+ * either way.
+ */
+async function countScheduledCheckIns(supabase: SupabaseClient, ownerId: string) {
+  const { count, error } = await supabase
+    .from("clariti_follow_ups")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_id", ownerId);
+
+  if (error) {
+    console.error("[follow-ups] free allowance count failed:", error.message);
+    return { known: false, used: 0 };
+  }
+
+  return { known: true, used: count ?? 0 };
+}
+
+/**
+ * The refusal a free reader who has already set three check-ins should get.
+ *
+ * The body is deliberately the one plusRequiredResponse sends — error
+ * "plus_required", feature, upgradeUrl, message — because app/workspace/page.tsx
+ * matches on exactly that shape, and that match is what fires
+ * track("plus_upgrade_redirect"). Changing the shape would silently drop the
+ * funnel event. Only the words differ, and they name what the reader has already
+ * had rather than telling them the feature was never theirs.
+ */
+function freeCheckInLimitResponse(used: number) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "plus_required",
+      feature: "follow_ups" satisfies PlusFeature,
+      upgradeUrl: "/billing",
+      message:
+        `You have set ${used} check-ins, which is the ${FREE_CHECK_IN_LIMIT} a free account gets. `
+        + "Clariti Plus lifts the cap: a check-in for every result you are waiting on, each one arriving "
+        + "with what the document actually said, so nothing you meant to follow up on quietly slides.",
+    },
+    { status: 402 },
+  );
+}
 
 export async function GET() {
   const user = await getSessionUser();
@@ -94,8 +172,28 @@ export async function POST(request: NextRequest) {
   let persistedMessage: { id: string; role: string; content: string; created_at: string } | null = null;
 
   const supabase = await getSupabaseSessionClient();
-  const plusResponse = await requirePlusAccess(supabase, user.id, "follow_ups");
-  if (plusResponse) return plusResponse;
+
+  // This route had no per-window ceiling: the hard Plus gate was the only thing
+  // bounding it, and opening it to free readers takes that away. Every row
+  // scheduled here becomes a Clariti-branded email from Clariti's own sending
+  // domain, so a runaway client spends sender reputation even though it spends
+  // almost no money — the same reputation the destination check above exists to
+  // protect. `calls` is the window this feature already owns: phone check-ins
+  // became email check-ins (the table still says call_prompt), and
+  // app/api/calls/outbound/route.ts now returns 410, so nothing else is charged
+  // against it.
+  const limited = await enforceRateLimit(supabase, "calls");
+  if (limited) return limited;
+
+  // Plus is unchanged: no allowance, no count, straight through. Only a free
+  // reader is metered.
+  const access = await getSubscriptionAccess(supabase, user.id);
+  if (!access.hasPlus) {
+    const scheduled = await countScheduledCheckIns(supabase, user.id);
+    if (scheduled.known && scheduled.used >= FREE_CHECK_IN_LIMIT) {
+      return freeCheckInLimitResponse(scheduled.used);
+    }
+  }
 
   const { data: session, error: sessionError } = await supabase
     .from("clariti_sessions")

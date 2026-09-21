@@ -131,25 +131,35 @@ function buildRadiologyFallback(input: AnalyzeInput): ClaritiAnalysis {
   const impression = [...impressionLines, ...conclusionLines].slice(0, 5);
   const impressionSource = impressionLines.length ? "Impression" : "Conclusion";
   const findings = extractSectionLines(input.documentText, "Findings", ["Impression", "Conclusion"]).slice(0, 7);
-  const exam = extractLabel(input.documentText, ["Exam", "Study", "Procedure"]) ?? "Radiology report";
+  const examLabel = extractLabel(input.documentText, ["Procedure performed", "Examination", "Procedure", "Study", "Exam"]);
+  const exam = examLabel ?? "Radiology report";
   const primaryImpression = impression[0] ?? "Review the main conclusion section from the uploaded report.";
   const reassuringLine = impression.find((line) => /no significant|no acute|negative|normal/i.test(line))
     ?? findings.find((line) => /no significant|no acute|normal/i.test(line));
+  // claritiAnalysisSchema requires at least one anchor and every route that
+  // receives an analysis parses against it, so a report where none of Impression,
+  // Conclusion or Findings matched used to build an analysis its own schema
+  // rejects — on the degraded path, which is where it is least affordable.
+  const anchors = [...impression.map((line) => `${impressionSource}: ${line}`), ...findings.slice(0, 2).map((line) => `Findings: ${line}`)].slice(0, 5);
 
   return {
     kind: "radiology_report",
     title: "Your scan report, simply explained",
     summary: primaryImpression,
-    plainEnglish:
-      `This page explains what the report says — it is not a diagnosis. In everyday words, the report points to: ${primaryImpression.toLowerCase()} ${reassuringLine ? `It also notes: "${reassuringLine}".` : "Ask your doctor how this lines up with how you feel."}`,
-    sourceAnchors: [...impression.map((line) => `${impressionSource}: ${line}`), ...findings.slice(0, 2).map((line) => `Findings: ${line}`)].slice(0, 5),
+    // With no Impression or Conclusion section, primaryImpression is the
+    // placeholder instruction, and this sentence used to read "the report points
+    // to: review the main conclusion section from the uploaded report."
+    plainEnglish: impression.length
+      ? `This page explains what the report says — it is not a diagnosis. In everyday words, the report points to: ${primaryImpression.toLowerCase()} ${reassuringLine ? `It also notes: "${reassuringLine}".` : "Ask your doctor how this lines up with how you feel."}`
+      : "This page explains what the report says — it is not a diagnosis. Clariti could not find an Impression or Conclusion section in this copy, so it has no takeaway to pass on. Read those sections on the report itself, and ask the clinician who ordered the scan how they line up with how you feel.",
+    sourceAnchors: anchors.length ? anchors : ["Report header"],
     keyPoints: [
       { label: "Main takeaway", detail: primaryImpression, sourceAnchor: impressionSource },
       { label: "Calmer wording", detail: reassuringLine ?? "No clearly reassuring phrase stood out — review the full report with your clinician.", sourceAnchor: reassuringLine ? `${impressionSource} / Findings` : "Full report" },
       { label: "What to ask next", detail: extractSectionLines(input.documentText, "Recommendation", ["Patient question"])[0] ?? "Ask the ordering clinician how the report connects to your symptoms.", sourceAnchor: "Recommendation" },
     ],
     metrics: [
-      { label: "Scan type", value: exam, caveat: "From the report header." },
+      { label: "Scan type", value: examLabel ?? "Not named", caveat: examLabel ? "From the report header." : "Clariti could not find an exam line in this copy." },
       { label: "What Clariti can say", value: "Needs your clinician", caveat: "Only your care team can say what this means for you." },
     ],
     flags: [{ label: "Talk with your clinician", detail: "Scan reports need real clinical context — Clariti only helps with the wording.", severity: "check" }],
@@ -266,18 +276,33 @@ function buildBillFallback(input: AnalyzeInput): ClaritiAnalysis {
   };
 }
 
+const LAB_HIGH_WORD = /\bhigh\b|\babove\b|\belevated\b/i;
+const LAB_LOW_WORD = /\blow\b|\bbelow\b/i;
+/**
+ * A lab prints its out-of-range marker as a capital H or L standing on its own.
+ * These were `/\bH\b/i` and `/\bL\b/i`, which is not that: case-insensitivity
+ * matched a lone "h", and the slash in mmol/L or U/L clears \b on both sides, so
+ * every enzyme row counted as low. That fed the summary, the first "value to ask
+ * about", and a published cue count.
+ */
+const LAB_FLAG_HIGH = /(?:^|\s)H(?:\s|$)/;
+const LAB_FLAG_LOW = /(?:^|\s)L(?:\s|$)/;
+
 function buildLabFallback(input: AnalyzeInput): ClaritiAnalysis {
-  const panel = extractLabel(input.documentText, ["Panel", "Test", "Order"]) ?? "Lab results";
-  const highLines = input.documentText.split(/\r?\n/).map(cleanExtractedLine).filter((line) => /\bhigh\b|\babove\b|\bH\b|\belevated\b/i.test(line)).slice(0, 4);
-  const lowLines = input.documentText.split(/\r?\n/).map(cleanExtractedLine).filter((line) => /\blow\b|\bbelow\b|\bL\b/i.test(line)).slice(0, 3);
+  const panelLabel = extractLabel(input.documentText, ["Panel", "Test", "Order"]);
+  const panel = panelLabel ?? "Lab results";
+  const lines = input.documentText.split(/\r?\n/).map(cleanExtractedLine).filter(Boolean);
+  const highLines = lines.filter((line) => LAB_HIGH_WORD.test(line) || LAB_FLAG_HIGH.test(line)).slice(0, 4);
+  const lowLines = lines.filter((line) => LAB_LOW_WORD.test(line) || LAB_FLAG_LOW.test(line)).slice(0, 3);
+  const hasCue = highLines.length > 0 || lowLines.length > 0;
   const mainFlag = highLines[0] ?? lowLines[0] ?? "Review each marker against its reference range with your clinician.";
 
   return {
     kind: "lab_results",
     title: "Your lab results, simply explained",
-    summary: `These ${panel.toLowerCase()} results include markers to review with your clinician${highLines.length || lowLines.length ? ", including some that look outside the listed range" : ""}.`,
+    summary: `These ${panelLabel ? `${panelLabel.toLowerCase()} ` : ""}results include markers to review with your clinician${hasCue ? ", including some lines that mention a high or low value" : ""}.`,
     plainEnglish:
-      `This page turns lab numbers into everyday language. ${highLines.length || lowLines.length ? "Some values appear outside the printed range — that does not automatically mean something is wrong, but it is worth asking about." : "Many values may sit inside the listed range; still ask your clinician what matters for you."}`,
+      `This page turns lab numbers into everyday language. ${hasCue ? "Some lines mention a high or low value — that does not automatically mean something is wrong, but it is worth asking about." : "Clariti did not spot high or low wording in this copy. That is not the same as everything being in range, so ask your clinician which numbers matter for you."}`,
     sourceAnchors: [panel, ...highLines.slice(0, 2), ...lowLines.slice(0, 1)].filter(Boolean).slice(0, 5),
     keyPoints: [
       { label: "What this panel is", detail: panel, sourceAnchor: "Panel / Test" },
@@ -285,11 +310,15 @@ function buildLabFallback(input: AnalyzeInput): ClaritiAnalysis {
       { label: "What Clariti cannot decide", detail: "Only your clinician can say what these numbers mean for your health.", sourceAnchor: "Clinical context" },
     ],
     metrics: [
-      { label: "Panel", value: panel, caveat: "From the lab header when available." },
-      { label: "Out-of-range cues", value: String(highLines.length + lowLines.length || "Check report"), caveat: "Based on wording like high/low in the text." },
+      { label: "Panel", value: panelLabel ?? "Not named", caveat: panelLabel ? "From the lab header." : "Clariti could not find a panel name in this copy." },
+      // Was "Out-of-range cues: N" — a count of lines matching a keyword, printed
+      // in the row where every other value was read off the page, and double-counted
+      // for any line carrying both words. Nothing here compares a value with its
+      // range, so say that instead of publishing a number that looks measured.
+      { label: "Range check", value: "Not compared", caveat: "This degraded read only matches words like high or low. It does not compare any value with its reference range." },
       { label: "Next step", value: "Ask clinician", caveat: "Bring questions to your visit." },
     ],
-    flags: [{ label: "Ask about flagged values", detail: "Anything marked high, low, or outside range deserves a clinician conversation.", severity: highLines.length || lowLines.length ? "check" : "info" }],
+    flags: [{ label: "Ask about flagged values", detail: "Anything marked high, low, or outside range deserves a clinician conversation.", severity: hasCue ? "check" : "info" }],
     questions: [
       "Which results matter most for my symptoms?",
       "Do any of these need a repeat test?",
@@ -306,8 +335,42 @@ function buildDischargeFallback(input: AnalyzeInput): ClaritiAnalysis {
     ?? extractSectionLines(input.documentText, "Hospital course", ["Medications", "Follow-up"])[0]
     ?? "Review why you were admitted and what changed before going home.";
   const followUp = extractSectionLines(input.documentText, "Follow-up", ["Medications", "Warning", "When to seek"]).slice(0, 3);
-  const warnings = extractSectionLines(input.documentText, "Warning signs", ["Follow-up", "Medications"]).slice(0, 3);
-  const meds = extractSectionLines(input.documentText, "Medications", ["Follow-up", "Warning"]).slice(0, 4);
+  // extractSectionLines runs to the next heading it was told to stop at, so a
+  // section that is last on the page collects the signature block too. That is
+  // why the metrics below report whether a section exists rather than how many
+  // lines are in it: the old counts were the display cap (three, four) printed as
+  // if they were the length of the list, and the honest replacement is not a
+  // different number, it is no number.
+  const warningLines = extractSectionLines(input.documentText, "Warning signs", ["Follow-up", "Medications"]);
+  const medLines = extractSectionLines(input.documentText, "Medications", ["Follow-up", "Warning"]);
+  const warnings = warningLines.slice(0, 3);
+  const meds = medLines.slice(0, 4);
+
+  /**
+   * "urgent" is the highest severity Clariti has, and the pill on the analysis
+   * hero takes the worst flag it is given — so this one flag set the colour of
+   * every discharge summary. It used to be unconditional, and when the regex
+   * found no warning section the detail line said so in the same breath: "If the
+   * paper lists emergency warning signs, take them seriously." An urgent flag
+   * that turns out to be boilerplate teaches people to scroll past urgent flags,
+   * and that is the one signal that has to keep working. This module only runs
+   * when the model never read the document, so everything here is a guess by
+   * construction: urgent now requires that a warning section was actually found,
+   * and quotes it. Otherwise the flag drops to check and says what was not found
+   * rather than implying an emergency.
+   */
+  const warningFlag = warnings.length
+    ? {
+        label: "Watch warning signs",
+        detail: `Your paperwork lists signs to watch for, starting with: "${truncate(warnings[0], 180)}". Treat anything on that list as a reason to get help.`,
+        severity: "urgent" as const,
+      }
+    : {
+        label: "Find the warning signs on the paper",
+        detail:
+          "Clariti could not find a warning-signs section in this copy — that does not mean there isn't one. Look on the paperwork for wording about when to call the clinic or go to the emergency department, and ask the discharging team if you cannot find it.",
+        severity: "check" as const,
+      };
 
   return {
     kind: "discharge_summary",
@@ -323,10 +386,10 @@ function buildDischargeFallback(input: AnalyzeInput): ClaritiAnalysis {
     ],
     metrics: [
       { label: "Focus", value: "Home plan", caveat: "From discharge instructions." },
-      { label: "Warning cues", value: warnings.length ? String(warnings.length) : "Check paper", caveat: "Seek urgent care if listed signs appear." },
-      { label: "Meds listed", value: meds.length ? String(meds.length) : "Check paper", caveat: "Confirm with pharmacy if unsure." },
+      { label: "Warning signs", value: warningLines.length ? "Listed" : "Not found", caveat: warningLines.length ? "Read the whole section on the paper, not just the line quoted here." : "Clariti could not find a warning-signs section — check the paper itself." },
+      { label: "Medicines", value: medLines.length ? "Listed" : "Not found", caveat: medLines.length ? "Go through the full list with a pharmacist." : "Clariti could not find a medication section — check the paper itself." },
     ],
-    flags: [{ label: "Watch warning signs", detail: warnings[0] ?? "If the paper lists emergency warning signs, take them seriously.", severity: "urgent" }],
+    flags: [warningFlag],
     questions: [
       "Which follow-up appointments are most important?",
       "Which medicines changed, and how should I take them?",
@@ -339,17 +402,19 @@ function buildDischargeFallback(input: AnalyzeInput): ClaritiAnalysis {
 }
 
 function buildMedicationFallback(input: AnalyzeInput): ClaritiAnalysis {
-  const medLines = input.documentText
+  // The slice used to sit on the filter, so every count below topped out at six
+  // and a twenty-line list reported "6 medicine lines". Count them all, show six.
+  const doseLines = input.documentText
     .split(/\r?\n/)
     .map(cleanExtractedLine)
-    .filter((line) => /\bmg\b|\btablet\b|\bdaily\b|\bcapsule\b|\binhaler\b|\btake\b/i.test(line))
-    .slice(0, 6);
+    .filter((line) => /\bmg\b|\btablet\b|\bdaily\b|\bcapsule\b|\binhaler\b|\btake\b/i.test(line));
+  const medLines = doseLines.slice(0, 6);
   const firstMed = medLines[0] ?? "Review each medicine name, dose, and timing on the list.";
 
   return {
     kind: "medication_context",
     title: "Your medicines, simply explained",
-    summary: medLines.length ? `This list includes ${medLines.length} medicine line${medLines.length === 1 ? "" : "s"} to review carefully.` : "This looks like a medication or prescription list to review carefully.",
+    summary: doseLines.length ? `This list has ${doseLines.length} line${doseLines.length === 1 ? "" : "s"} mentioning a dose or how to take something — read each one carefully.` : "This looks like a medication or prescription list to review carefully.",
     plainEnglish:
       `This page helps you understand what is listed — not how to change anything on your own. Start with names, doses, and timing, then ask a pharmacist or clinician about anything unclear.`,
     sourceAnchors: medLines.slice(0, 5).length ? medLines.slice(0, 5) : ["Medication list"],
@@ -359,7 +424,9 @@ function buildMedicationFallback(input: AnalyzeInput): ClaritiAnalysis {
       { label: "Safety note", detail: "Do not start, stop, or change a dose based on this explanation alone.", sourceAnchor: "Clinical context" },
     ],
     metrics: [
-      { label: "Lines found", value: String(medLines.length || "Check list"), caveat: "From dosage-like lines in the text." },
+      // A line matching "take" or "mg" is not a medicine — an instruction line
+      // matches too — so the label and caveat say what was counted.
+      { label: "Lines with a dose or timing", value: doseLines.length ? String(doseLines.length) : "None matched", caveat: "A word match on this degraded read, not a count of your medicines." },
       { label: "Best next step", value: "Ask pharmacist", caveat: "Bring the list with you." },
     ],
     flags: [{ label: "Do not self-adjust", detail: "Clariti explains the list wording. Dose changes need a clinician or pharmacist.", severity: "check" }],
@@ -375,17 +442,22 @@ function buildMedicationFallback(input: AnalyzeInput): ClaritiAnalysis {
 }
 
 function buildPathologyFallback(input: AnalyzeInput): ClaritiAnalysis {
-  const diagnosis = extractLabel(input.documentText, ["Diagnosis", "Final diagnosis", "Impression"])
-    ?? extractSectionLines(input.documentText, "Diagnosis", ["Comment", "Note", "Signed"])[0]
-    ?? "Review the main diagnosis section with your clinician.";
-  const specimen = extractLabel(input.documentText, ["Specimen", "Tissue", "Site"]) ?? "Pathology sample";
+  const diagnosisLine = extractLabel(input.documentText, ["Diagnosis", "Final diagnosis", "Impression"])
+    ?? extractSectionLines(input.documentText, "Diagnosis", ["Comment", "Note", "Signed"])[0];
+  const diagnosis = diagnosisLine ?? "Review the main diagnosis section with your clinician.";
+  const specimenLabel = extractLabel(input.documentText, ["Specimen", "Tissue", "Site"]);
+  const specimen = specimenLabel ?? "Pathology sample";
 
   return {
     kind: "pathology_report",
     title: "Your pathology report, simply explained",
     summary: diagnosis,
-    plainEnglish:
-      `This report describes what was seen in a sample — it is not the whole care plan by itself. In plain words, the key line points to: ${diagnosis.toLowerCase()} Ask your clinician what that means for next steps.`,
+    // Without a diagnosis line this read "the key line points to: review the main
+    // diagnosis section with your clinician." — Clariti's own placeholder, quoted
+    // back as if it were the report's finding.
+    plainEnglish: diagnosisLine
+      ? `This report describes what was seen in a sample — it is not the whole care plan by itself. In plain words, the key line points to: ${diagnosis.toLowerCase()} Ask your clinician what that means for next steps.`
+      : "This report describes what was seen in a sample — it is not the whole care plan by itself. Clariti could not find the diagnosis line in this copy, so it has nothing to put into plain words. Read the diagnosis section on the report, and ask your clinician what it means for next steps.",
     sourceAnchors: [diagnosis, specimen].filter(Boolean),
     keyPoints: [
       { label: "Main finding", detail: diagnosis, sourceAnchor: "Diagnosis" },
@@ -393,7 +465,7 @@ function buildPathologyFallback(input: AnalyzeInput): ClaritiAnalysis {
       { label: "What this does not decide alone", detail: "Your clinician connects this result with the rest of your care.", sourceAnchor: "Clinical context" },
     ],
     metrics: [
-      { label: "Specimen", value: specimen, caveat: "From the report header when available." },
+      { label: "Specimen", value: specimenLabel ?? "Not named", caveat: specimenLabel ? "From the report header." : "Clariti could not find a specimen line in this copy." },
       { label: "What Clariti can say", value: "Needs clinician", caveat: "Ask what this means for you." },
     ],
     flags: [{ label: "Talk through results", detail: "Pathology wording can sound scary or vague. Bring questions to your clinician.", severity: "check" }],
@@ -412,14 +484,15 @@ function buildReferralFallback(input: AnalyzeInput): ClaritiAnalysis {
   const reason = extractLabel(input.documentText, ["Reason for referral", "Referral reason", "Regarding"])
     ?? findLine(input.documentText, /referr/i)
     ?? "Review why you were referred and what the specialist is being asked to do.";
-  const specialist = extractLabel(input.documentText, ["Referred to", "Specialist", "To"]) ?? "Specialist";
+  const specialistLabel = extractLabel(input.documentText, ["Referred to", "Specialist", "To"]);
+  const specialist = specialistLabel ?? "Specialist";
 
   return {
     kind: "referral_letter",
     title: "Your referral, simply explained",
     summary: reason,
     plainEnglish:
-      `This letter asks a specialist to take a closer look. ${specialist !== "Specialist" ? `It appears directed to ${specialist}. ` : ""}Use it to understand why you were sent and what to ask at the visit.`,
+      `This letter asks a specialist to take a closer look. ${specialistLabel ? `It appears directed to ${specialistLabel}. ` : ""}Use it to understand why you were sent and what to ask at the visit.`,
     sourceAnchors: [reason, specialist].filter(Boolean),
     keyPoints: [
       { label: "Why you were referred", detail: reason, sourceAnchor: "Reason for referral" },
@@ -427,7 +500,7 @@ function buildReferralFallback(input: AnalyzeInput): ClaritiAnalysis {
       { label: "How to prepare", detail: "Bring this letter, recent results, and questions about what the specialist should focus on.", sourceAnchor: "Referral letter" },
     ],
     metrics: [
-      { label: "Referral to", value: specialist, caveat: "From the letter when available." },
+      { label: "Referral to", value: specialistLabel ?? "Not named", caveat: specialistLabel ? "From the letter." : "Clariti could not find who you were referred to." },
       { label: "Focus", value: "Specialist visit", caveat: "Confirm appointment details separately." },
     ],
     flags: [{ label: "Bring the letter", detail: "Specialists often need the exact referral wording and recent records.", severity: "info" }],
@@ -443,9 +516,13 @@ function buildReferralFallback(input: AnalyzeInput): ClaritiAnalysis {
 }
 
 function buildVisitNotesFallback(input: AnalyzeInput): ClaritiAnalysis {
-  const complaint = extractLabel(input.documentText, ["Chief complaint", "Reason for visit", "CC"])
-    ?? "Review what was discussed and what the plan is.";
-  const plan = extractSectionLines(input.documentText, "Plan", ["Follow-up", "Medications", "Signed"]).slice(0, 4);
+  const complaintLabel = extractLabel(input.documentText, ["Chief complaint", "Reason for visit", "CC"]);
+  const complaint = complaintLabel ?? "Review what was discussed and what the plan is.";
+  // "Plan items: 4" was the display cap printed as a count of the plan. Unsliced
+  // it would be no better — the section runs to the next stop heading — so the
+  // metric says whether a Plan section was found and leaves the counting alone.
+  const planLines = extractSectionLines(input.documentText, "Plan", ["Follow-up", "Medications", "Signed"]);
+  const plan = planLines.slice(0, 4);
   const assessment = extractSectionLines(input.documentText, "Assessment", ["Plan", "Follow-up"]).slice(0, 3);
 
   return {
@@ -461,8 +538,8 @@ function buildVisitNotesFallback(input: AnalyzeInput): ClaritiAnalysis {
       { label: "Your next move", detail: "Confirm any tests, medicines, or follow-up dates that were mentioned.", sourceAnchor: "Follow-up" },
     ],
     metrics: [
-      { label: "Visit focus", value: truncate(complaint, 28), caveat: "From the note header when available." },
-      { label: "Plan items", value: String(plan.length || "Check note"), caveat: "From the Plan section." },
+      { label: "Visit focus", value: complaintLabel ? truncate(complaintLabel, 28) : "Not stated", caveat: complaintLabel ? "From the note header." : "Clariti could not find a reason-for-visit line in this copy." },
+      { label: "Plan section", value: planLines.length ? "Found" : "Not found", caveat: planLines.length ? "Read it in full — only the first lines are shown here." : "Clariti could not find a Plan section in this copy." },
     ],
     flags: [{ label: "Confirm the plan", detail: "If something in the notes does not match what you remember, ask the clinic to clarify.", severity: "info" }],
     questions: [
@@ -477,9 +554,9 @@ function buildVisitNotesFallback(input: AnalyzeInput): ClaritiAnalysis {
 }
 
 function buildPriorAuthFallback(input: AnalyzeInput): ClaritiAnalysis {
-  const decision = findLine(input.documentText, /\b(approved|denied|pended|more information needed|partially approved)\b/i)
-    ?? extractLabel(input.documentText, ["Determination", "Decision", "Status"])
-    ?? "Review whether the request was approved, denied, or needs more information.";
+  const decisionLine = findLine(input.documentText, /\b(approved|denied|pended|more information needed|partially approved)\b/i)
+    ?? extractLabel(input.documentText, ["Determination", "Decision", "Status"]);
+  const decision = decisionLine ?? "Review whether the request was approved, denied, or needs more information.";
   const service = extractLabel(input.documentText, ["Service", "Requested service", "Procedure", "Medication"]) ?? "Requested service";
   const authNumber = extractLabel(input.documentText, ["Authorization number", "Auth number", "Reference number"]);
 
@@ -493,10 +570,13 @@ function buildPriorAuthFallback(input: AnalyzeInput): ClaritiAnalysis {
     keyPoints: [
       { label: "The decision", detail: decision, sourceAnchor: "Determination" },
       { label: "What was requested", detail: service, sourceAnchor: "Service" },
-      { label: "What to do next", detail: /denied|more information|pended/i.test(decision) ? "Look for appeal steps or missing information deadlines." : "Confirm the approval details with your provider before the service.", sourceAnchor: "Next steps" },
+      // Tested against decision, this matched its own placeholder — which contains
+      // both "denied" and "more information" — so a letter Clariti could not read
+      // at all was told to look for appeal deadlines as though it had been denied.
+      { label: "What to do next", detail: !decisionLine ? "Clariti could not tell whether this was approved or denied. Find the decision line on the letter, then check for any appeal or response deadline." : /denied|more information|pended/i.test(decisionLine) ? "Look for appeal steps or missing information deadlines." : "Confirm the approval details with your provider before the service.", sourceAnchor: "Next steps" },
     ],
     metrics: [
-      { label: "Status", value: truncate(decision, 24), caveat: "From the determination wording." },
+      { label: "Status", value: decisionLine ? truncate(decisionLine, 24) : "Not found", caveat: decisionLine ? "From the determination wording." : "Clariti could not find a decision line — read the letter itself." },
       { label: "Reference", value: authNumber ?? "Check letter", caveat: "Use this when you call." },
     ],
     flags: [{ label: "Watch deadlines", detail: "Denials and info requests often have short response windows.", severity: "check" }],
@@ -573,7 +653,11 @@ function extractMoneyAfter(text: string, labels: string[]) {
 function extractLabel(text: string, labels: string[]) {
   for (const label of labels) {
     const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match = text.match(new RegExp(`^\\s*(?:\\*\\*)?${escaped}(?:\\*\\*)?\\s*:?\\s*(.+)$`, "im"));
+    // \b after the label: without it "To" matched the "To" in "Total charges:
+    // $412.00" and a referral letter reported a specialist called
+    // "tal charges: $412.00". Every label here ends in a word character, so the
+    // boundary only ever rejects a label that was really a longer word.
+    const match = text.match(new RegExp(`^\\s*(?:\\*\\*)?${escaped}\\b(?:\\*\\*)?\\s*:?\\s*(.+)$`, "im"));
     if (match?.[1]) return cleanExtractedLine(match[1]);
   }
   return null;
