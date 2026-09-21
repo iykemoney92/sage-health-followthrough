@@ -228,6 +228,40 @@ guideline 5.1.2(i) remedy from the September rejection, and it is what keeps App
 Tracking Transparency from applying. Do not add a GA stream for the iOS or
 Android apps without revisiting that.
 
+### Language models
+
+Set on production 2026-09-21. Everything runs through the Vercel AI Gateway;
+`ANTHROPIC_MODEL` is only reached on the direct-Anthropic paths (the PDF file
+upload in `extract`, and as the fallback when the gateway has no auth).
+
+| Variable | Value | Reaches |
+|---|---|---|
+| `AI_GATEWAY_MODEL` | `anthropic/claude-opus-5` | analysis, chat, video script |
+| `AI_GATEWAY_VISION_MODEL` | `anthropic/claude-sonnet-5` | photographed and scanned document extraction |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5` | PDF upload extraction, and the no-gateway fallback |
+
+Three things worth knowing before changing any of them.
+
+**Sonnet 5 is cheaper than the Sonnet 4.6 this replaced** — $2/$10 per million
+against $3/$15 — and a generation newer. Extraction is high volume with long
+outputs and is transcription rather than judgement, so it goes there; analysis
+and chat answer questions like "does this say cancer?" off a pathology report,
+so they get Opus 5 at $5/$25.
+
+**Thinking is billed out of `maxOutputTokens`.** Opus 5 runs adaptive thinking by
+default, so every ceiling had to be raised: chat 260 → 2000, analysis 2600 →
+8000, video script 1600 → 5000, PDF extract 2400 → 8000, vision 6000 → 12000.
+Reply length is held by the prompt, not by the ceiling, so raising them did not
+make answers longer. Had they been left alone, thinking would have consumed the
+whole allowance — and for the analysis call, which returns a schema-validated
+object, a truncated response throws and the reader silently gets the regex
+fallback instead of an explanation.
+
+**Do not reach for `anthropic/claude-fable-5.1`** even though it is the most
+capable model on the gateway. It costs double ($10/$50), and it rejects forced
+tool use with a 400 — which is exactly how `generateObject` pins the analysis
+schema.
+
 ### Explainer video
 
 The explainer runs on FLUX 3 (`bfl/flux-3-video`) through the AI Gateway, which
