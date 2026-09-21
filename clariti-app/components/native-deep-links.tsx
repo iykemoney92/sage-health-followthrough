@@ -51,10 +51,13 @@ export function NativeDeepLinks() {
 
       // Reopening the sign-in modal is the only feedback left to give — the
       // component that started the flow is long gone by the time Safari returns.
-      const backToSignIn = "/?auth=1&mode=signin";
+      // Loaded rather than routed, for the same reason as the success path below:
+      // if that modal is still mounted, a client-side navigation re-opens the one
+      // already on screen, whose button is still disabled and reading "Connecting…".
+      const backToSignIn = () => window.location.assign("/?auth=1&mode=signin");
 
       if (incoming.searchParams.get("error")) {
-        router.replace(backToSignIn);
+        backToSignIn();
         return;
       }
 
@@ -65,7 +68,7 @@ export function NativeDeepLinks() {
       if (cancelled) return;
 
       if (error) {
-        router.replace(backToSignIn);
+        backToSignIn();
         return;
       }
 
@@ -95,8 +98,18 @@ export function NativeDeepLinks() {
 
       const stored = window.sessionStorage.getItem(OAUTH_NEXT_KEY);
       window.sessionStorage.removeItem(OAUTH_NEXT_KEY);
-      router.replace(safeNextPath(stored, "/"));
-      router.refresh();
+
+      // A whole new document, not router.replace. On the web this leg is a server
+      // redirect out of /auth/callback, so the page the user comes back to is built
+      // fresh against the new session. Native exchanges the code inside the WebView
+      // instead, and the WebView never reloads — so a client-side replace left every
+      // piece of state the sign-in modal was holding exactly as it was. `authOpen`
+      // in app/page.tsx is React state that only onClose and onAuthenticated clear,
+      // and neither can be reached from out here, so a sign-in that had already
+      // succeeded sat behind a modal whose button still read "Connecting…".
+      // router.refresh() does not help: it re-renders the server components and
+      // leaves client state alone, which is the state that is wrong.
+      window.location.assign(safeNextPath(stored, "/"));
     }
 
     void CapacitorApp.addListener("appUrlOpen", ({ url }) => {
