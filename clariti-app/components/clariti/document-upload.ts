@@ -40,6 +40,15 @@ export type DocumentApiPayload = {
   error?: string;
   extractedText?: string;
   extractionMethod?: string;
+  /**
+   * Vision extraction stops at the first few pages. An itemised bill puts the
+   * total on the last page, an EOB puts patient responsibility after the line
+   * items, and a discharge summary puts the warning signs at the end — so a
+   * document read in part and explained in full is the failure worth naming.
+   */
+  pageCount?: number | null;
+  pagesRead?: number | null;
+  truncated?: boolean;
   document?: { id?: string };
 };
 

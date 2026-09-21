@@ -102,6 +102,7 @@ function HomeContent() {
   const [extracting, setExtracting] = useState(false);
   const [extractionProgress, setExtractionProgress] = useState(0);
   const [extractionMethod, setExtractionMethod] = useState<string | null>(null);
+  const [truncation, setTruncation] = useState<{ read: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -249,6 +250,7 @@ function HomeContent() {
       setSelectedFile(file);
       setExtractedText("");
       setExtractionMethod(null);
+    setTruncation(null);
       setExtractionProgress(0);
       setAuthMode("signin");
       setAuthIntent("submit");
@@ -265,6 +267,7 @@ function HomeContent() {
     setSelectedFile(file);
     setExtractedText("");
     setExtractionMethod(null);
+    setTruncation(null);
     setExtractionProgress(8);
     setExtracting(true);
     extractionAbortRef.current?.abort();
@@ -303,6 +306,14 @@ function HomeContent() {
       setMessage((current) => isEmptyOrStarterPrompt(current) ? promptForKind(inferredKind) : current);
       setExtractedText(text);
       setExtractionMethod(String(payload.extractionMethod ?? "text"));
+      // Said out loud, because the reader cannot tell. Vision extraction stops at
+      // the first few pages, and the number that matters — the total, the patient
+      // responsibility, the warning signs — is usually on the last one.
+      setTruncation(
+        payload.truncated && typeof payload.pagesRead === "number" && typeof payload.pageCount === "number"
+          ? { read: payload.pagesRead, total: payload.pageCount }
+          : null,
+      );
       setExtractionProgress(100);
     } catch (caught) {
       // Removing the attachment, or picking another file, aborts this controller on
@@ -330,6 +341,7 @@ function HomeContent() {
     setSelectedFile(null);
     setExtractedText("");
     setExtractionMethod(null);
+    setTruncation(null);
     setExtractionProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
@@ -506,7 +518,9 @@ function HomeContent() {
                   <p>{extracting
                     ? "Preparing this document before send..."
                     : hasExtractedText
-                      ? `Readable text extracted from ${extractionLabels[extractionMethod ?? ""] ?? "document"}.`
+                      ? truncation
+                        ? `Clariti read the first ${truncation.read} of ${truncation.total} pages. Anything after that — often the total or the follow-up instructions — is not included.`
+                        : `Readable text extracted from ${extractionLabels[extractionMethod ?? ""] ?? "document"}.`
                       : pendingSignIn
                         ? "Still on your device. Sign in and Clariti reads it — nothing was sent."
                         : "Clariti found no readable text in this file. Paste what it says instead."}</p>
