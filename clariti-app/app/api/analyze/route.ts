@@ -19,6 +19,15 @@ const requestSchema = z.object({
   documentId: z.string().uuid().optional(),
   /** The session the user was viewing when they attached this follow-up, used to link the new session into the same lineage. */
   previousSessionId: z.string().uuid().optional(),
+  /**
+   * Analyse this document into an existing thread instead of starting a new one.
+   * A session is already a many-to-many join over documents, so a thread is a session
+   * that was given more than one — no new table, and no migration nobody can apply.
+   * Left out, the route behaves exactly as it always has: one document, one session.
+   * It takes precedence over `previousSessionId`: a thread is a lineage already, and
+   * the two together would file the document twice under different ideas of "related".
+   */
+  threadSessionId: z.string().uuid().optional(),
   /** Skip the LLM and only persist a client-provided analysis (e.g. after timeout fallback). */
   persistOnly: z.boolean().optional(),
   /** Send with `persistOnly` when the supplied analysis is the client's own fallback, so it is stored as degraded and never reused. */
@@ -49,7 +58,8 @@ export async function POST(request: NextRequest) {
       return aiConsentRequiredResponse();
     }
 
-    const limited = await enforceRateLimit(await getSupabaseSessionClient(), "analyze");
+    const supabase = await getSupabaseSessionClient();
+    const limited = await enforceRateLimit(supabase, "analyze");
     if (limited) return limited;
 
     const resolvedRequest = {
@@ -57,8 +67,20 @@ export async function POST(request: NextRequest) {
       kind: inferClaritiKind(parsed.data),
     };
 
+    // The thread id arrives from the client, so ownership is proved here rather than
+    // left to RLS. The policies guard each parent table, but nothing in them stops a
+    // join row from pointing at one person's thread and another person's document.
+    const thread = resolvedRequest.threadSessionId
+      ? await findOwnedSession(supabase, user.id, resolvedRequest.threadSessionId)
+      : null;
+    if (resolvedRequest.threadSessionId && !thread) {
+      // One answer for "no such thread" and for "not yours", so the route never
+      // confirms that somebody else's id exists.
+      return NextResponse.json({ ok: false, error: "Clariti could not find that thread in your account." }, { status: 404 });
+    }
+
     const existing = resolvedRequest.documentId && !resolvedRequest.persistOnly
-      ? await findExistingAnalysisForDocument(user.id, resolvedRequest.documentId)
+      ? await findExistingAnalysisForDocument(user.id, resolvedRequest.documentId, supabase)
       : null;
 
     // Reuse an existing analysis for this document so reloads / double-submits
@@ -66,10 +88,28 @@ export async function POST(request: NextRequest) {
     // reused: it is the fallback text, not a reading of the document, so the next
     // load has to be allowed to replace it with a real answer.
     if (existing && !existing.degraded && !resolvedRequest.force) {
-      return NextResponse.json({ ok: true, analysis: existing.analysis, persisted: existing.persisted, degraded: false, reused: true });
+      // Reusing the reading does not reuse the membership: a document re-opened while
+      // it is being added to a thread still has to join the thread.
+      if (thread) {
+        const linkError = await linkDocumentToSession(supabase, thread.id, existing.persisted.document.id as string);
+        if (linkError) {
+          return NextResponse.json(
+            { ok: false, error: "Clariti could not add this document to that thread. Please try again." },
+            { status: 500 },
+          );
+        }
+        await touchSession(supabase, user.id, thread.id);
+      }
+      return NextResponse.json({
+        ok: true,
+        analysis: existing.analysis,
+        persisted: existing.persisted,
+        degraded: false,
+        reused: true,
+        threadSessionId: thread?.id ?? null,
+      });
     }
 
-    const supabase = await getSupabaseSessionClient();
     await ensureClaritiProfile(supabase, user.id, (user.user_metadata?.display_name as string | undefined) ?? null);
     // The free tier counts documents, and a document that already has an analysis
     // has already been counted. Charging again for the retry would sell the upgrade
@@ -97,7 +137,7 @@ export async function POST(request: NextRequest) {
           return result;
         });
 
-    const persisted = await persistAnalysis({ ...resolvedRequest, ownerId: user.id, analysis, degraded });
+    const persisted = await persistAnalysis({ ...resolvedRequest, ownerId: user.id, analysis, degraded, thread });
 
     return NextResponse.json({ ok: true, analysis, persisted, degraded });
   } catch (error) {
@@ -114,8 +154,72 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function findExistingAnalysisForDocument(ownerId: string, documentId: string) {
-  const supabase = await getSupabaseSessionClient();
+type SessionClient = Awaited<ReturnType<typeof getSupabaseSessionClient>>;
+type OwnedSession = { id: string; title: string; status: string; created_at: string; updated_at: string; parent_session_id: string | null };
+
+/**
+ * A session the caller actually owns, or null. Every threading operation takes a session
+ * id from the client and then writes a row that joins it to a document, so ownership is
+ * proved before the write rather than inferred from the insert having succeeded.
+ */
+async function findOwnedSession(supabase: SessionClient, ownerId: string, sessionId: string): Promise<OwnedSession | null> {
+  const { data } = await supabase
+    .from("clariti_sessions")
+    .select("id, title, status, created_at, updated_at, parent_session_id")
+    .eq("id", sessionId)
+    .eq("owner_id", ownerId)
+    .maybeSingle();
+
+  return (data as OwnedSession | null) ?? null;
+}
+
+/**
+ * Adds a document to a thread. Both halves must already be known to belong to the caller.
+ *
+ * (session_id, document_id) is the table's primary key, so linking the same pair twice is
+ * a conflict rather than a duplicate row — ignored here, because "add this to the thread"
+ * pressed twice should be quiet, not an error about a unique constraint. `ignoreDuplicates`
+ * matters for a second reason: it makes this DO NOTHING, and 0004 gives the join table
+ * select/insert/delete policies but no update one, so DO UPDATE would be refused by RLS.
+ */
+async function linkDocumentToSession(supabase: SessionClient, sessionId: string, documentId: string) {
+  const { error } = await supabase
+    .from("clariti_session_documents")
+    .upsert({ session_id: sessionId, document_id: documentId }, { onConflict: "session_id,document_id", ignoreDuplicates: true });
+
+  return error;
+}
+
+/** Threads are listed newest-activity first, so one that just gained a document has to move. */
+async function touchSession(supabase: SessionClient, ownerId: string, sessionId: string) {
+  await supabase
+    .from("clariti_sessions")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", sessionId)
+    .eq("owner_id", ownerId);
+}
+
+/**
+ * The analysis of one document inside a session that may now hold several.
+ *
+ * "The newest artifact in this session" stopped meaning "the reading of this document"
+ * the moment a second document could be added, and handing back a reading of somebody's
+ * knee MRI as if it were their bill is exactly the confident-but-wrong output the rest of
+ * this codebase was refactored to avoid. Artifacts written since threading carry their
+ * document id inside the payload jsonb — the same place `degraded` rides, because
+ * clariti_artifacts has no column for either. Older artifacts carry nothing, so they are
+ * only trusted in a session holding a single document, which is what every session was
+ * until now.
+ */
+function pickArtifactForDocument<T extends { payload: unknown }>(artifacts: T[], documentId: string, documentsInSession: number) {
+  const claimed = artifacts.find((artifact) => (artifact.payload as { documentId?: unknown } | null)?.documentId === documentId);
+  if (claimed) return claimed;
+  if (documentsInSession <= 1) return artifacts[0];
+  return undefined;
+}
+
+async function findExistingAnalysisForDocument(ownerId: string, documentId: string, client?: SessionClient) {
+  const supabase = client ?? await getSupabaseSessionClient();
   const { data: links, error: linksError } = await supabase
     .from("clariti_session_documents")
     .select("session_id")
@@ -133,6 +237,19 @@ async function findExistingAnalysisForDocument(ownerId: string, documentId: stri
 
   if (sessionsError || !sessions?.length) return null;
 
+  // How many documents each candidate session holds, which is what decides whether an
+  // unclaimed artifact can be read as this document's.
+  const { data: siblingLinks } = await supabase
+    .from("clariti_session_documents")
+    .select("session_id, document_id")
+    .in("session_id", sessionIds);
+
+  const documentsBySession = new Map<string, number>();
+  for (const link of siblingLinks ?? []) {
+    const key = link.session_id as string;
+    documentsBySession.set(key, (documentsBySession.get(key) ?? 0) + 1);
+  }
+
   for (const session of sessions) {
     const [{ data: artifacts }, { data: document }] = await Promise.all([
       supabase
@@ -140,7 +257,7 @@ async function findExistingAnalysisForDocument(ownerId: string, documentId: stri
         .select("id, kind, title, summary, payload, created_at")
         .eq("session_id", session.id)
         .order("created_at", { ascending: false })
-        .limit(1),
+        .limit(50),
       supabase
         .from("clariti_documents")
         .select("id, file_name, kind, status, created_at")
@@ -149,7 +266,7 @@ async function findExistingAnalysisForDocument(ownerId: string, documentId: stri
         .maybeSingle(),
     ]);
 
-    const artifact = artifacts?.[0];
+    const artifact = pickArtifactForDocument(artifacts ?? [], documentId, documentsBySession.get(session.id as string) ?? 1);
     if (!artifact?.payload || !document) continue;
     const parsedAnalysis = claritiAnalysisSchema.safeParse(artifact.payload);
     if (!parsedAnalysis.success) continue;
@@ -176,20 +293,25 @@ async function persistAnalysis({
   previousSessionId,
   analysis,
   degraded,
+  thread,
 }: z.infer<typeof requestSchema> & {
   ownerId: string;
   analysis: ClaritiAnalysis;
   degraded: boolean;
+  /** Already proved by the route to belong to `ownerId`; null means "a thread of its own". */
+  thread: OwnedSession | null;
 }) {
   const supabase = await getSupabaseSessionClient();
   const resolvedFileName = fileName ?? `${kind.replaceAll("_", "-")}.txt`;
-  // Stored with the analysis rather than beside it, so a later read can tell a
-  // real pass from the fallback without a new column.
-  const payload = { ...analysis, degraded };
+  // `degraded` is stored with the analysis rather than beside it, so a later read can
+  // tell a real pass from the fallback without a new column. The document id rides
+  // along for the same reason: a thread holds one artifact per document, and nothing
+  // else on the row says which document each artifact read.
+  const payloadFor = (analysedDocumentId: string) => ({ ...analysis, degraded, documentId: analysedDocumentId });
 
   // Prefer updating an existing session for this document (especially persistOnly / retries).
   if (documentId) {
-    const existing = await findExistingAnalysisForDocument(ownerId, documentId);
+    const existing = await findExistingAnalysisForDocument(ownerId, documentId, supabase);
     if (existing?.persisted.session?.id) {
       const sessionId = existing.persisted.session.id as string;
       const { data: document, error: documentError } = await supabase
@@ -206,11 +328,31 @@ async function persistAnalysis({
         .single();
       if (documentError || !document) throw new Error(documentError?.message ?? "Could not update document");
 
+      // A re-run renames its session after the document it just read — right for a
+      // session holding one document, wrong for a thread, where it would rename the
+      // whole story ("Knee surgery") after whichever report was re-read last.
+      const documentsInSession = await countSessionDocuments(supabase, sessionId);
       await supabase
         .from("clariti_sessions")
-        .update({ title: analysis.title, status: "active", updated_at: new Date().toISOString() })
+        .update({
+          ...(documentsInSession > 1 ? {} : { title: analysis.title }),
+          status: "active",
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", sessionId)
         .eq("owner_id", ownerId);
+
+      // The caller asked for this document to sit in a thread as well. Its analysis
+      // stays where it was made; only the membership is added.
+      if (thread && thread.id !== sessionId) {
+        const linkError = await linkDocumentToSession(supabase, thread.id, documentId);
+        if (linkError) throw new Error(linkError.message);
+        await touchSession(supabase, ownerId, thread.id);
+      }
+
+      const sessionAfterUpdate = documentsInSession > 1
+        ? existing.persisted.session
+        : { ...existing.persisted.session, title: analysis.title };
 
       if (existing.persisted.artifact?.id) {
         const { data: artifact, error: artifactError } = await supabase
@@ -219,13 +361,13 @@ async function persistAnalysis({
             kind: getClaritiKindMeta(analysis.kind).artifactKind,
             title: analysis.title,
             summary: analysis.summary,
-            payload,
+            payload: payloadFor(documentId),
           })
           .eq("id", existing.persisted.artifact.id)
           .select("id, kind, title, created_at")
           .single();
         if (artifactError || !artifact) throw new Error(artifactError?.message ?? "Could not update artifact");
-        return { document, session: { ...existing.persisted.session, title: analysis.title }, artifact };
+        return { document, session: sessionAfterUpdate, artifact, threadSessionId: thread?.id ?? null };
       }
 
       const { data: artifact, error: artifactError } = await supabase
@@ -235,12 +377,12 @@ async function persistAnalysis({
           kind: getClaritiKindMeta(analysis.kind).artifactKind,
           title: analysis.title,
           summary: analysis.summary,
-          payload,
+          payload: payloadFor(documentId),
         })
         .select("id, kind, title, created_at")
         .single();
       if (artifactError || !artifact) throw new Error(artifactError?.message ?? "Could not save artifact");
-      return { document, session: { ...existing.persisted.session, title: analysis.title }, artifact };
+      return { document, session: sessionAfterUpdate, artifact, threadSessionId: thread?.id ?? null };
     }
 
   }
@@ -273,38 +415,58 @@ async function persistAnalysis({
   const { data: document, error: documentError } = documentResult;
   if (documentError || !document) throw new Error(documentError?.message ?? "Could not save document");
 
-  let parentSessionId: string | null = null;
-  if (previousSessionId) {
-    const { data: previousSession } = await supabase
+  let session: OwnedSession;
+  if (thread) {
+    // The story already exists, so the document joins it rather than starting one of
+    // its own. The thread keeps its own title: it is named for the story, and renaming
+    // "Knee surgery" after the scan that happened to arrive last is a change nobody
+    // asked for. Only its activity time moves.
+    const { data: updatedThread } = await supabase
       .from("clariti_sessions")
-      .select("id, parent_session_id")
-      .eq("id", previousSessionId)
+      .update({ status: "active", updated_at: new Date().toISOString() })
+      .eq("id", thread.id)
       .eq("owner_id", ownerId)
+      .select("id, title, status, created_at, updated_at, parent_session_id")
       .maybeSingle();
-    // Link into the existing lineage's root, or make the previous session the root if it has none yet.
-    if (previousSession) parentSessionId = (previousSession.parent_session_id as string | null) ?? previousSession.id;
+
+    session = (updatedThread as OwnedSession | null) ?? thread;
+  } else {
+    let parentSessionId: string | null = null;
+    if (previousSessionId) {
+      const { data: previousSession } = await supabase
+        .from("clariti_sessions")
+        .select("id, parent_session_id")
+        .eq("id", previousSessionId)
+        .eq("owner_id", ownerId)
+        .maybeSingle();
+      // Link into the existing lineage's root, or make the previous session the root if it has none yet.
+      if (previousSession) parentSessionId = (previousSession.parent_session_id as string | null) ?? previousSession.id;
+    }
+
+    const { data: newSession, error: sessionError } = await supabase
+      .from("clariti_sessions")
+      .insert({
+        owner_id: ownerId,
+        title: analysis.title,
+        status: "active",
+        parent_session_id: parentSessionId,
+      })
+      .select("id, title, status, created_at, updated_at, parent_session_id")
+      .single();
+
+    if (sessionError || !newSession) throw new Error(sessionError?.message ?? "Could not save session");
+    session = newSession as OwnedSession;
   }
-
-  const { data: session, error: sessionError } = await supabase
-    .from("clariti_sessions")
-    .insert({
-      owner_id: ownerId,
-      title: analysis.title,
-      status: "active",
-      parent_session_id: parentSessionId,
-    })
-    .select("id, title, status, created_at, updated_at, parent_session_id")
-    .single();
-
-  if (sessionError || !session) throw new Error(sessionError?.message ?? "Could not save session");
 
   const sessionId = session.id as string;
   const savedDocumentId = document.id as string;
   const userMessageCreatedAt = new Date();
   const assistantMessageCreatedAt = new Date(userMessageCreatedAt.getTime() + 1);
 
-  const [{ error: linkError }, { error: messagesError }, { data: artifact, error: artifactError }] = await Promise.all([
-    supabase.from("clariti_session_documents").insert({ session_id: sessionId, document_id: savedDocumentId }),
+  const [linkError, { error: messagesError }, { data: artifact, error: artifactError }] = await Promise.all([
+    // Upsert rather than insert: into a thread this pair can already exist, and a
+    // primary-key conflict is not a reason to fail an analysis that succeeded.
+    linkDocumentToSession(supabase, sessionId, savedDocumentId),
     supabase.from("clariti_messages").insert([
       { session_id: sessionId, role: "user", content: question, created_at: userMessageCreatedAt.toISOString() },
       { session_id: sessionId, role: "assistant", content: buildInitialAnalysisReply(analysis, degraded), created_at: assistantMessageCreatedAt.toISOString() },
@@ -316,7 +478,7 @@ async function persistAnalysis({
         kind: getClaritiKindMeta(analysis.kind).artifactKind,
         title: analysis.title,
         summary: analysis.summary,
-        payload,
+        payload: payloadFor(savedDocumentId),
       })
       .select("id, kind, title, created_at")
       .single(),
@@ -325,7 +487,17 @@ async function persistAnalysis({
   const persistenceError = linkError ?? messagesError ?? artifactError;
   if (persistenceError) throw new Error(persistenceError.message);
 
-  return { document, session, artifact };
+  return { document, session, artifact, threadSessionId: thread?.id ?? null };
+}
+
+/** How many documents a session holds — one means it is still a single document, not a thread. */
+async function countSessionDocuments(supabase: SessionClient, sessionId: string) {
+  const { data } = await supabase
+    .from("clariti_session_documents")
+    .select("document_id")
+    .eq("session_id", sessionId);
+
+  return (data ?? []).length;
 }
 
 function buildInitialAnalysisReply(analysis: ClaritiAnalysis, degraded: boolean) {

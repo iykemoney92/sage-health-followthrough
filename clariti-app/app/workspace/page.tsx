@@ -21,6 +21,8 @@ import {
   History,
   Hospital,
   Image as ImageIcon,
+  Layers,
+  Link2,
   Menu,
   MessageSquareText,
   MoreHorizontal,
@@ -41,6 +43,7 @@ import { claritiAnalysisSchema, type ClaritiAnalysis, type ClaritiAnalysisKind }
 import { FLUX_MAX_CLIP_SECONDS, formatHumanVideoError } from "@/lib/ai/clariti-video";
 import { getClaritiKindMeta, inferKindFromTitleText, isClaritiAnalysisKind } from "@/lib/domain/clariti-document-kinds";
 import type { ProgressionComparison } from "@/lib/domain/clariti-progression";
+import { THREAD_EVIDENCE_RULE, type ThreadDocument } from "@/lib/domain/clariti-threads";
 import {
   flagSeverityToToken,
   trendToSeverityToken,
@@ -63,6 +66,17 @@ import { buildFallbackAnalysis, inferClaritiKind } from "@/lib/domain/clariti-fa
 type Drawer = "chats" | "documents" | "history";
 type CanvasTab = "summary" | "detail" | "actions";
 type Sheet = "followup" | "source" | null;
+/**
+ * Why a document is being attached, carried from the control the reader actually pressed.
+ *
+ * "thread" is the only value that files the document into the open story, and only the
+ * rail's labelled button sets it. The intent is threaded through rather than inferred from
+ * whichever session happens to be open: inferring it is what made the composer's paperclip
+ * and the camera silently link every attachment into the thread on screen, so a dermatology
+ * letter attached while a cardiology thread was open became part of that story without
+ * anybody saying so — and every later answer then reasoned across both.
+ */
+type AttachIntent = "standalone" | "thread";
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -88,7 +102,12 @@ type GeneratedIllustration = {
 type ChatTimelineItem =
   | { type: "message"; id: string; sortAt: number; message: ChatMessage; messageIndex: number }
   | { type: "video"; id: string; sortAt: number; video: GeneratedVideo }
-  | { type: "comparison"; id: string; sortAt: number; comparison: ProgressionComparison }
+  | { type: "comparison"; id: string; sortAt: number; comparison: ProgressionComparison; comparedBecause: string[] }
+  // /api/compare's own words for why it will not compare two documents. It belongs in the
+  // conversation and not in a toast: it is an explanation the reader may want to act on,
+  // and three seconds is not long enough to read a paragraph that says "nothing these two
+  // share came through".
+  | { type: "compare-note"; id: string; sortAt: number; message: string }
   | { type: "upgrade"; id: string; sortAt: number; message: string };
 type FollowUpDraft = {
   action: string;
@@ -171,6 +190,54 @@ type DbWorkspaceSession = {
   }>;
 };
 
+/**
+ * One row of the thread rail: a document that belongs to this session. clariti_session_documents
+ * has always been a many-to-many join, so a session is structurally a thread already — the
+ * workspace simply only ever read the first row of it.
+ */
+type ThreadDocumentRow = {
+  id: string;
+  kind: ClaritiAnalysisKind;
+  fileName: string;
+  createdAt: number | null;
+};
+
+/**
+ * A document Clariti believes belongs in this thread, and the reasons it matched. The
+ * document half is the shared ThreadDocument the scorer reads, so the two cannot drift.
+ *
+ * Reasons, never a score: "both mention claim 4471-002" is something a person can check and
+ * overrule, and 0.82 is not. Nothing here is a link until they tap Add — see ThreadPanel.
+ */
+type ThreadLinkSuggestion = {
+  document: Pick<ThreadDocument, "id" | "kind" | "title">;
+  createdAt: number | null;
+  reasons: string[];
+};
+
+/**
+ * A thread Clariti looked at and would not propose. Carried so the rail can say "this looks
+ * adjacent and Clariti will not call it" instead of an empty list, which reads as "you have
+ * nothing else about this".
+ */
+type ThreadUncertainty = {
+  id: string;
+  title: string;
+  whyNot: string;
+};
+
+/**
+ * Two documents in one thread that do not say the same thing. Two different amounts owed is
+ * the most useful thing this product can catch, so it is surfaced — but only when the API
+ * says so. The workspace does not work out for itself what disagrees.
+ */
+type ThreadDisagreement = {
+  id: string;
+  label: string;
+  note: string | null;
+  values: Array<{ documentTitle: string; value: string }>;
+};
+
 /** Said before a locally built analysis so the first thing read is not a confident one. */
 const DEGRADED_ANALYSIS_NOTE =
   "I could not finish the full explanation of this document. What follows is only wording Clariti could pick out of the text itself, so please read it as a rough index rather than an explanation.";
@@ -249,15 +316,41 @@ function WorkspaceContent() {
   const [followUpDraft, setFollowUpDraft] = useState<FollowUpDraft | null>(null);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   const [compareAvailable, setCompareAvailable] = useState(false);
-  const [comparisonCards, setComparisonCards] = useState<Array<{ id: string; createdAt: number; comparison: ProgressionComparison }>>([]);
+  const [comparisonCards, setComparisonCards] = useState<Array<{
+    id: string;
+    createdAt: number;
+    comparison: ProgressionComparison;
+    /** Why /api/compare paired these two. Empty when the route did not say. */
+    comparedBecause: string[];
+  }>>([]);
+  // What /api/compare said when it declined to compare, in its own words. Kept beside the
+  // cards rather than inside them: a refusal is not a comparison with empty fields.
+  const [comparisonNote, setComparisonNote] = useState<{ id: string; createdAt: number; message: string } | null>(null);
   const [replacingDocument, setReplacingDocument] = useState(false);
+  // The documents in this session, oldest first. Empty until a saved session is hydrated,
+  // and never longer than one for a thread nobody has added to — which is most of them.
+  const [threadDocuments, setThreadDocuments] = useState<ThreadDocumentRow[]>([]);
+  const [threadSuggestions, setThreadSuggestions] = useState<ThreadLinkSuggestion[]>([]);
+  const [threadDisagreements, setThreadDisagreements] = useState<ThreadDisagreement[]>([]);
+  const [threadUnsure, setThreadUnsure] = useState<ThreadUncertainty[]>([]);
+  // "Not related" is a local refusal, not a saved one: hiding a proposal needs no row, and
+  // nobody can apply a migration to this project right now.
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
+  const [linkingDocumentId, setLinkingDocumentId] = useState<string | null>(null);
+  const [threadOpen, setThreadOpen] = useState(true);
   const [pendingAttachment, setPendingAttachment] = useState<{
     file: File;
     name: string;
     previewUrl: string | null;
+    intent: AttachIntent;
   } | null>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
   const chatCameraInputRef = useRef<HTMLInputElement>(null);
+  // The rail's "add to this thread" has a file input of its own rather than borrowing the
+  // composer's. One input plus a remembered intent would mean a cancelled picker can leave
+  // the next paperclip pointing at the thread, and a silent link is the one failure this
+  // whole feature exists to prevent.
+  const threadFileInputRef = useRef<HTMLInputElement>(null);
   const composerInputRef = useRef<HTMLInputElement>(null);
   const pendingAttachmentUrlRef = useRef<string | null>(null);
   const activeRequestRef = useRef<ClaritiRequest | null>(null);
@@ -331,14 +424,39 @@ function WorkspaceContent() {
       // Always keep progression cards after the related chat bubbles.
       sortAt: Math.max(card.createdAt, latestMessageAt + 1 + index),
       comparison: card.comparison,
+      comparedBecause: card.comparedBecause,
     }));
-    return [...messageItems, ...videoItems, ...comparisonItems, ...upgradeItems].sort((a, b) => {
+    const compareNoteItems = comparisonNote
+      ? [{
+        type: "compare-note" as const,
+        id: comparisonNote.id,
+        sortAt: Math.max(comparisonNote.createdAt, latestMessageAt + 1),
+        message: comparisonNote.message,
+      }]
+      : [];
+    return [...messageItems, ...videoItems, ...comparisonItems, ...compareNoteItems, ...upgradeItems].sort((a, b) => {
       if (a.sortAt !== b.sortAt) return a.sortAt - b.sortAt;
-      // Stable preference: messages → videos → comparison cards → upgrade offer
-      const rank = { message: 0, video: 1, comparison: 2, upgrade: 3 } as const;
+      // Stable preference: messages → videos → comparison cards → compare note → upgrade offer
+      const rank = { message: 0, video: 1, comparison: 2, "compare-note": 3, upgrade: 4 } as const;
       return rank[a.type] - rank[b.type];
     });
-  }, [chatMessages, comparisonCards, generatedVideo, upgradePrompt]);
+  }, [chatMessages, comparisonCards, comparisonNote, generatedVideo, upgradePrompt]);
+  // A proposal the reader has refused stays refused for as long as this workspace is open.
+  // It is not written down anywhere, so reopening the thread will offer it again — which is
+  // the honest behaviour for a decision nobody recorded.
+  const visibleThreadSuggestions = useMemo(
+    () => threadSuggestions.filter((suggestion) => !dismissedSuggestions.has(suggestion.document.id)),
+    [dismissedSuggestions, threadSuggestions],
+  );
+  // `unsure` is in here deliberately. Attaching a document no longer files it into the open
+  // thread by itself, so the rail's labelled button is the only way a reader can say two
+  // documents belong together — and the moment that matters most is the one where Clariti
+  // has looked at their other paperwork and refused to call it. Showing the refusal without
+  // showing the way to overrule it would be telling somebody no with no door in the room.
+  const threadPanelVisible = threadDocuments.length > 1
+    || visibleThreadSuggestions.length > 0
+    || threadDisagreements.length > 0
+    || threadUnsure.length > 0;
 
   useEffect(() => {
     activeRequestRef.current = activeRequest;
@@ -365,9 +483,12 @@ function WorkspaceContent() {
     setPendingAttachment(null);
     if (chatFileInputRef.current) chatFileInputRef.current.value = "";
     if (chatCameraInputRef.current) chatCameraInputRef.current.value = "";
+    if (threadFileInputRef.current) threadFileInputRef.current.value = "";
   }, []);
 
-  const stageChatAttachment = useCallback((file: File) => {
+  // `intent` has no default: every caller has to say whether this document is joining the
+  // open thread, because the one that forgets is the one that links it silently.
+  const stageChatAttachment = useCallback((file: File, intent: AttachIntent) => {
     if (pendingAttachmentUrlRef.current) {
       URL.revokeObjectURL(pendingAttachmentUrlRef.current);
       pendingAttachmentUrlRef.current = null;
@@ -375,9 +496,10 @@ function WorkspaceContent() {
     const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(file.name);
     const previewUrl = isImage ? URL.createObjectURL(file) : null;
     pendingAttachmentUrlRef.current = previewUrl;
-    setPendingAttachment({ file, name: file.name, previewUrl });
+    setPendingAttachment({ file, name: file.name, previewUrl, intent });
     if (chatFileInputRef.current) chatFileInputRef.current.value = "";
     if (chatCameraInputRef.current) chatCameraInputRef.current.value = "";
+    if (threadFileInputRef.current) threadFileInputRef.current.value = "";
   }, []);
 
   const injectComposerPrompt = useCallback((prompt: string) => {
@@ -739,6 +861,8 @@ function WorkspaceContent() {
       setActive(dbRequest.kind);
       setCanvasTab("summary");
       setChatMessages(messagesFromDbSession(sessionPayload));
+      setThreadDocuments(threadRowsFromDbSession(sessionPayload));
+      setDismissedSuggestions(new Set());
       void hydrateGeneratedVideo(sessionPayload.id);
       setActiveAnalysis(dbRequest.analysis ?? null);
       setDegradedAnalysis(dbRequest.degraded === true);
@@ -799,6 +923,10 @@ function WorkspaceContent() {
       setBooting(true);
       if (alive) setLoadError(null);
       resetVideoState();
+      // Beside resetVideoState for the same reason: whatever is about to be hydrated, the
+      // thread on screen belongs to the session being left.
+      setThreadDocuments([]);
+      setDismissedSuggestions(new Set());
 
       try {
         const listResponse = await fetch("/api/sessions", { cache: "no-store" });
@@ -980,6 +1108,8 @@ function WorkspaceContent() {
 
   const selectSession = (item: RecentWorkspaceSession | WorkspaceSession) => {
     setComparisonCards([]);
+    // /api/compare's refusal was written about two other documents.
+    setComparisonNote(null);
     if ("pending" in item && item.pending && item.request) {
       dbSessionIdRef.current = null;
       setDbSessionId(null);
@@ -991,6 +1121,8 @@ function WorkspaceContent() {
       setUpgradePrompt(null);
       setPaywalled(false);
       setChatMessages(messagesFromRequest(item.request));
+      setThreadDocuments([]);
+      setDismissedSuggestions(new Set());
       resetVideoState();
       setLoading(!item.request.analysis);
       setCanvasTab("summary");
@@ -1000,6 +1132,10 @@ function WorkspaceContent() {
     }
     if (item.id !== dbSessionId) {
       bootHandledRef.current = null;
+      // Cleared before the push, not after the hydrate: otherwise the rail shows the
+      // documents of the thread that was open until the new one finishes loading.
+      setThreadDocuments([]);
+      setDismissedSuggestions(new Set());
       router.push(`/workspace?sessionId=${encodeURIComponent(item.id)}`);
     }
     setActive(item.kind);
@@ -1245,7 +1381,16 @@ function WorkspaceContent() {
         if (alive) setCompareAvailable(false);
         return;
       }
-      const params = new URLSearchParams({ kind: analysis.kind, excludeSessionId: dbSessionId, limit: "1" });
+      // A thread holding a second document already has something to compare against, and it
+      // is usually the best partner there is — the bill and the EOB for the same visit.
+      if (threadDocuments.length > 1) {
+        if (alive) setCompareAvailable(true);
+        return;
+      }
+      // No kind filter any more. Kind was the old comparison rule and it was wrong in both
+      // directions; whether two documents can be compared is /api/compare's question, and it
+      // now answers "nothing these two share" rather than comparing them anyway.
+      const params = new URLSearchParams({ excludeSessionId: dbSessionId, limit: "1" });
       try {
         const response = await fetch(`/api/documents/history?${params.toString()}`, { cache: "no-store" });
         const payload = response.ok ? await response.json() : null;
@@ -1259,16 +1404,109 @@ function WorkspaceContent() {
     return () => {
       alive = false;
     };
-  }, [analysis, dbSessionId]);
+  }, [analysis, dbSessionId, threadDocuments.length]);
+
+  // The thread's own rows come from /api/sessions, which has always returned every linked
+  // document — nothing new is needed on the server to show the story.
+  const refreshThread = useCallback(async (sessionId: string) => {
+    try {
+      const response = await fetch(`/api/sessions?sessionId=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
+      const payload = response.ok ? await response.json().catch(() => null) : null;
+      if (dbSessionIdRef.current !== sessionId) return;
+      if (payload?.ok && payload.session) setThreadDocuments(threadRowsFromDbSession(payload.session as DbWorkspaceSession));
+    } catch {
+      // A thread that cannot be re-read keeps the rows already on screen. Emptying the rail
+      // would say the documents are gone, and a dropped request is not that.
+    }
+  }, []);
+
+  // Suggestions and disagreements are the one part of this that a route has to compute, and
+  // a route that is not there yet answers 404. That is a workspace with no proposals in it,
+  // not a broken one — so it fails quiet rather than putting an error over the thread.
+  const loadThreadInsights = useCallback(async (sessionId: string) => {
+    try {
+      const response = await fetch(`/api/threads?sessionId=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
+      const payload = response.ok ? await response.json().catch(() => null) : null;
+      if (dbSessionIdRef.current !== sessionId) return;
+      // suggestThreadLinks returns an object — { proposals, unsure } — so the route may hand
+      // it over whole under one key or spread across two. Reading `suggestions` as an array
+      // without checking is how a populated answer renders as an empty rail.
+      const bundle = unwrapThreadSuggestions(payload);
+      setThreadSuggestions(payload?.ok ? normalizeThreadSuggestions(bundle.proposals) : []);
+      setThreadDisagreements(payload?.ok ? normalizeThreadDisagreements(payload.disagreements) : []);
+      setThreadUnsure(payload?.ok ? normalizeThreadUncertainty(bundle.unsure) : []);
+    } catch {
+      setThreadSuggestions([]);
+      setThreadDisagreements([]);
+      setThreadUnsure([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!dbSessionId) {
+      setThreadSuggestions([]);
+      setThreadDisagreements([]);
+      setThreadUnsure([]);
+      return;
+    }
+    void loadThreadInsights(dbSessionId);
+    // threadDocuments.length is in here so a document that has just joined the thread is
+    // scored against the rest of it instead of being proposed again.
+  }, [dbSessionId, loadThreadInsights, threadDocuments.length]);
+
+  // Never called on Clariti's own initiative: a proposal becomes a link when the reader taps
+  // Add. Silently deciding a dermatology letter belongs in a cardiology thread would have the
+  // agent reason across documents that do not belong together and state relationships that do
+  // not exist — the same failure as a confident wrong answer, with more surface area.
+  const acceptThreadLink = async (suggestion: ThreadLinkSuggestion) => {
+    if (!dbSessionId || linkingDocumentId) return;
+    setLinkingDocumentId(suggestion.document.id);
+    try {
+      // PATCH /api/sessions, not a write of its own: thread membership is one row in
+      // clariti_session_documents and that route owns it. Linking shares rather than moves,
+      // so accepting here does not empty the thread the document came from.
+      const response = await fetch("/api/sessions", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "link", sessionId: dbSessionId, documentId: suggestion.document.id }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (response.status === 402 && isPlusRequiredPayload(payload)) {
+        offerPlusUpgrade(payload.message);
+        return;
+      }
+      if (!response.ok || !payload?.ok) {
+        throw new Error(typeof payload?.error === "string" ? payload.error : "");
+      }
+      setThreadSuggestions((current) => current.filter((item) => item.document.id !== suggestion.document.id));
+      await refreshThread(dbSessionId);
+      track("thread_link_accepted");
+      showToast(`Added ${suggestion.document.title} to this thread.`);
+    } catch (caught) {
+      showToast(caught instanceof Error && caught.message
+        ? caught.message
+        : "Clariti could not add that document to this thread. Please try again in a moment.");
+    } finally {
+      setLinkingDocumentId(null);
+    }
+  };
+
+  const dismissThreadSuggestion = (suggestion: ThreadLinkSuggestion) => {
+    setDismissedSuggestions((current) => new Set(current).add(suggestion.document.id));
+  };
 
   const processAttachedDocument = async (
-    attachment: { file: File; name: string; previewUrl: string | null },
+    attachment: { file: File; name: string; previewUrl: string | null; intent: AttachIntent },
     userMessage: string,
   ) => {
     if (replacingDocument) return;
     const file = attachment.file;
     const previousAnalysis = analysis;
     const previousSessionId = dbSessionId;
+    // The only place a thread link can be created by attaching. It needs the reader to have
+    // pressed the rail's labelled button *and* a thread to put the document in; anything
+    // else — the paperclip, the camera, the follow-up button — is a document of its own.
+    const joinsThread = attachment.intent === "thread" && Boolean(previousSessionId);
     const question = userMessage.trim()
       || (previousAnalysis
         ? `Please explain this newer ${getClaritiKindMeta(previousAnalysis.kind).documentNoun} in plain English and note what changed from my earlier report.`
@@ -1366,6 +1604,11 @@ function WorkspaceContent() {
           fileName: file.name,
           documentId,
           previousSessionId: previousSessionId ?? undefined,
+          // Sent only when the reader pressed the rail's labelled button. Filing a document
+          // into a thread is what makes the agent read it together with the rest of that
+          // story, so it is a decision a person makes — never one inferred from whichever
+          // session happens to be open behind the paperclip.
+          threadSessionId: joinsThread ? previousSessionId ?? undefined : undefined,
         }),
       });
       const analyzePayload = await analyzeResponse.json().catch(() => null);
@@ -1378,7 +1621,13 @@ function WorkspaceContent() {
       }
 
       const nextAnalysis = analyzePayload.analysis as ClaritiAnalysis;
-      const savedSessionId = analyzePayload.persisted?.session?.id as string | undefined;
+      // The thread the route says this document landed in, preferred over the session inside
+      // `persisted`. On the reuse path the analysis handed back is the one already saved, so
+      // `persisted.session` still names the session the document was first read in — and
+      // following that walks the reader out of the thread they just added it to.
+      const savedSessionId = threadSessionIdFromAnalyze(analyzePayload)
+        ?? (analyzePayload.persisted?.session?.id as string | undefined);
+      const savedArtifactId = analyzePayload.persisted?.artifact?.id as string | undefined;
       track("follow_up_report_added");
       const nextRequest: ClaritiRequest = {
         kind: nextAnalysis.kind,
@@ -1397,32 +1646,55 @@ function WorkspaceContent() {
       setActiveAnalysis(nextAnalysis);
       setDegradedAnalysis(Boolean(analyzePayload.degraded));
       setActive(nextAnalysis.kind);
-      resetVideoState();
+      // A document that joined the open thread leaves the session — and any video already
+      // generated for it — where it was. Only a genuinely new session starts with none.
+      if (!savedSessionId || savedSessionId !== previousSessionId) resetVideoState();
       setComparisonCards([]);
+      setComparisonNote(null);
       if (savedSessionId) {
         dbSessionIdRef.current = savedSessionId;
         setDbSessionId(savedSessionId);
         window.history.replaceState(null, "", `/workspace?sessionId=${savedSessionId}`);
         setRecentSessions((current) => {
           const saved = toRecentWorkspaceSessionFromAnalysis(nextRequest, nextAnalysis, analyzePayload.persisted);
-          return [saved, ...current.filter((item) => item.id !== saved.id)];
+          const existing = current.find((item) => item.id === savedSessionId);
+          // A thread is named for the story, so it keeps the row it already has rather than
+          // taking the title of whatever was added to it last. Either way the row is filed
+          // under the session now on screen: `saved` can still carry the session this
+          // document was first read in.
+          const row = existing && joinsThread ? existing : { ...saved, id: savedSessionId };
+          return [row, ...current.filter((item) => item.id !== savedSessionId)];
         });
       }
 
-      const relatedToCurrentTrend = Boolean(
-        previousAnalysis
-        && previousAnalysis.kind !== "unknown"
-        && previousAnalysis.kind === nextAnalysis.kind,
-      );
+      // The rail has to be re-read whichever way this went: it now shows either this thread
+      // with one more document in it, or a new session holding one.
+      const sessionOnScreen = savedSessionId ?? previousSessionId;
+      if (sessionOnScreen) void refreshThread(sessionOnScreen);
+      // Counted only when a document actually joined a thread, so the funnel cannot report
+      // consent that nobody gave.
+      if (joinsThread) track("thread_document_added");
+
+      // This used to require both documents to be the same kind, which is the defect
+      // threading replaces: a bill and its EOB are different kinds and are the single most
+      // valuable comparison there is, while a thyroid panel and a diabetes panel are both
+      // lab_results and were compared as though they measured the same thing. The gate is
+      // now "is there an earlier document to compare against", and /api/compare answers
+      // comparison: null when it cannot say what the two share.
+      const hasEarlierDocument = Boolean(previousAnalysis && previousSessionId);
 
       let comparison: ProgressionComparison | null = null;
-      if (relatedToCurrentTrend) {
+      let comparedBecause: string[] = [];
+      if (hasEarlierDocument) {
         const compareResponse = await fetch("/api/compare", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             analysis: nextAnalysis,
             sessionId: savedSessionId,
+            // A thread holds many documents, so "not the one I am reading" has to name the
+            // artifact. Without it the new reading is its own comparison partner.
+            artifactId: savedArtifactId,
             compareSessionId: previousSessionId ?? undefined,
           }),
         });
@@ -1431,7 +1703,20 @@ function WorkspaceContent() {
           offerPlusUpgrade(comparePayload.message);
         } else if (compareResponse.ok && comparePayload?.ok && comparePayload.comparison) {
           comparison = comparePayload.comparison as ProgressionComparison;
+          // The route now says what the pairing rests on. Printing it keeps a comparison
+          // the reader accepted off a guess from reading as one Clariti worked out itself.
+          comparedBecause = normalizeComparedBecause(comparePayload.comparedBecause);
           track("compare_documents", { trend: comparison.trend });
+        } else if (compareResponse.ok && comparePayload?.ok && typeof comparePayload.message === "string" && comparePayload.message.trim()) {
+          // The route looked and would not compare, and it wrote out why. That is an answer,
+          // not an error — and it is the reader's cue to put the two documents in one thread
+          // if they know they belong together — so it goes into the conversation where it can
+          // be read twice, rather than into a toast that is gone in three seconds.
+          setComparisonNote({
+            id: createLocalId("compare-note"),
+            createdAt: createLocalTimestamp(),
+            message: comparePayload.message.trim(),
+          });
         }
       }
 
@@ -1510,7 +1795,7 @@ function WorkspaceContent() {
               ...savedMessages.map((message: { createdAt?: number }) => message.createdAt ?? 0),
             ) + 1;
             if (comparison) {
-              setComparisonCards([{ id: createLocalId("comparison"), createdAt: comparisonAt, comparison }]);
+              setComparisonCards([{ id: createLocalId("comparison"), createdAt: comparisonAt, comparison, comparedBecause }]);
               showToast("Newest report is active — comparison card added.");
             } else {
               setComparisonCards([]);
@@ -1529,7 +1814,7 @@ function WorkspaceContent() {
       }
 
       if (comparison) {
-        setComparisonCards([{ id: createLocalId("comparison"), createdAt: replyAt + 1, comparison }]);
+        setComparisonCards([{ id: createLocalId("comparison"), createdAt: replyAt + 1, comparison, comparedBecause }]);
         showToast("Newest report is active — comparison card added.");
       } else {
         setComparisonCards([]);
@@ -1777,6 +2062,22 @@ function WorkspaceContent() {
           <button type="button" className="mobile-call-button" onClick={() => void beginFollowUpConversation()} aria-label="Set email check-in"><Bell /></button>
         </header>
 
+        {threadPanelVisible && (
+          <ThreadPanel
+            documents={threadDocuments}
+            suggestions={visibleThreadSuggestions}
+            disagreements={threadDisagreements}
+            unsure={threadUnsure}
+            open={threadOpen}
+            busy={replacingDocument}
+            linkingDocumentId={linkingDocumentId}
+            onToggle={() => setThreadOpen((current) => !current)}
+            onAddDocument={() => threadFileInputRef.current?.click()}
+            onAccept={(suggestion) => void acceptThreadLink(suggestion)}
+            onDismiss={dismissThreadSuggestion}
+          />
+        )}
+
         <div className="clariti-chat-scroll" ref={chatScrollRef}>
           <div className="clariti-date-chip">Today</div>
           {chatTimeline.length > 0 ? chatTimeline.map((item) => {
@@ -1794,10 +2095,13 @@ function WorkspaceContent() {
               );
             }
             if (item.type === "comparison") {
-              return <ProgressionComparisonCard key={item.id} comparison={item.comparison} />;
+              return <ProgressionComparisonCard key={item.id} comparison={item.comparison} comparedBecause={item.comparedBecause} />;
             }
             if (item.type === "upgrade") {
               return <PlusUpgradeBubble key={item.id} message={item.message} />;
+            }
+            if (item.type === "compare-note") {
+              return <CompareDeclinedNote key={item.id} message={item.message} />;
             }
             return analysis ? <GeneratedVideoResponse key={item.id} video={item.video} analysis={analysis} /> : null;
           }) : (
@@ -1899,7 +2203,14 @@ function WorkspaceContent() {
               )}
               <div className="composer-pending-meta">
                 <b>{pendingAttachment.name}</b>
-                <small>Ready to send — Clariti will read this with your message</small>
+                {/* The last thing on screen before the document is read, so it says which of
+                    the two things is about to happen. A document that is about to join a
+                    story should never be filed into one without the reader seeing it said. */}
+                <small>
+                  {pendingAttachment.intent === "thread"
+                    ? "Ready to send — this joins this thread, and Clariti will read it together with the documents already in it"
+                    : "Ready to send — Clariti will read this on its own, with your message"}
+                </small>
               </div>
               <button
                 type="button"
@@ -1918,7 +2229,9 @@ function WorkspaceContent() {
             hidden
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) stageChatAttachment(file);
+              // "standalone", whatever thread is open behind it: the paperclip is how a
+              // document gets read, not how it gets filed into a story.
+              if (file) stageChatAttachment(file, "standalone");
             }}
           />
           {/* Separate from the input above on purpose: capture="environment" opens the camera
@@ -1932,7 +2245,20 @@ function WorkspaceContent() {
             hidden
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) stageChatAttachment(file);
+              if (file) stageChatAttachment(file, "standalone");
+            }}
+          />
+          {/* The thread rail's own picker, and the only one that stages an attachment with
+              "thread" on it. The reader reached it by pressing a button that says the
+              document becomes part of this story. */}
+          <input
+            ref={threadFileInputRef}
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.doc,.docx,application/pdf,image/*,text/plain"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) stageChatAttachment(file, "thread");
             }}
           />
           <button
@@ -2237,6 +2563,33 @@ function PlusUpgradeBubble({ message }: { message: string }) {
   );
 }
 
+/**
+ * /api/compare declining to compare, in the route's own words.
+ *
+ * It sits in the conversation as an assistant turn because that is what it is: an account
+ * of what Clariti looked for and did not find, which the reader can act on by putting the
+ * two documents in one thread. A toast takes it away before a paragraph can be read, and a
+ * red error would dress an honest answer up as a failure.
+ */
+function CompareDeclinedNote({ message }: { message: string }) {
+  return (
+    <article className="clariti-chat-turn assistant-turn">
+      <span className="clariti-ai-avatar">C</span>
+      <div className="clariti-ai-card">
+        <div className="message-meta">Clariti</div>
+        <p>{message}</p>
+        {/* The door out, named. The route's message invites the reader to overrule this, and a
+            thread is the thing that does it: /api/compare compares two documents in one thread
+            without needing to work out for itself what they share. */}
+        <p>If you know they belong to the same story, put them in one thread — Clariti reads a thread together, and it will compare them once they are in it.</p>
+        {/* The bar itself, quoted from the module that applies it, so the reader is told why
+            they are being asked rather than left to infer it. */}
+        <p className="source-grounded-line">{THREAD_EVIDENCE_RULE}</p>
+      </div>
+    </article>
+  );
+}
+
 function PendingAnalysisCanvas({ session, active }: { session: WorkspaceSession; active: ClaritiAnalysisKind }) {
   const detailLabel = getClaritiKindMeta(active).pendingLabel;
   return (
@@ -2366,7 +2719,7 @@ function GeneratedVideoResponse({ video, analysis }: { video: GeneratedVideo; an
   );
 }
 
-function ProgressionComparisonCard({ comparison }: { comparison: ProgressionComparison }) {
+function ProgressionComparisonCard({ comparison, comparedBecause }: { comparison: ProgressionComparison; comparedBecause: string[] }) {
   const trendLabel = {
     improving: "Improving",
     worsening: "Getting worse",
@@ -2420,10 +2773,369 @@ function ProgressionComparisonCard({ comparison }: { comparison: ProgressionComp
             ))}
           </div>
         )}
+        {comparedBecause.length > 0 && (
+          <p className="source-grounded-line">Compared because: {comparedBecause.join(" · ")}</p>
+        )}
         <p className="source-grounded-line">{comparison.safetyNote}</p>
       </div>
     </article>
   );
+}
+
+function normalizeComparedBecause(value: unknown): string[] {
+  if (!value || typeof value !== "object") return [];
+  const reasons = (value as { reasons?: unknown }).reasons;
+  if (!Array.isArray(reasons)) return [];
+  return reasons.filter((reason: unknown): reason is string => typeof reason === "string" && reason.trim().length > 0);
+}
+
+/**
+ * The thread: the documents in this session, in the order they arrived, plus anything
+ * Clariti proposes adding to it.
+ *
+ * The caller keeps this off screen entirely while the thread holds one document and nothing
+ * is proposed. Most threads are one document, and a thread of one should not look like a
+ * feature someone failed to use.
+ */
+function ThreadPanel({
+  documents,
+  suggestions,
+  disagreements,
+  unsure,
+  open,
+  busy,
+  linkingDocumentId,
+  onToggle,
+  onAddDocument,
+  onAccept,
+  onDismiss,
+}: {
+  documents: ThreadDocumentRow[];
+  suggestions: ThreadLinkSuggestion[];
+  disagreements: ThreadDisagreement[];
+  unsure: ThreadUncertainty[];
+  open: boolean;
+  busy: boolean;
+  linkingDocumentId: string | null;
+  onToggle: () => void;
+  onAddDocument: () => void;
+  onAccept: (suggestion: ThreadLinkSuggestion) => void;
+  onDismiss: (suggestion: ThreadLinkSuggestion) => void;
+}) {
+  return (
+    <section className="clariti-thread-rail" aria-label="Documents in this thread">
+      <div className="thread-rail-head">
+        <button type="button" className="thread-rail-toggle" onClick={onToggle} aria-expanded={open}>
+          {open ? <ChevronDown /> : <ChevronRight />}
+          <Layers />
+          <span>This thread</span>
+          {documents.length > 0 && (
+            <small>{documents.length === 1 ? "1 document" : `${documents.length} documents`}</small>
+          )}
+        </button>
+        {/* The one control that files a document into this thread, and it says so on its
+            face. The composer's paperclip and the camera read a document on its own; working
+            the intent out from whichever thread happened to be open is what linked documents
+            without anybody saying they belonged together. */}
+        <button
+          type="button"
+          className="thread-rail-add"
+          onClick={onAddDocument}
+          disabled={busy}
+          title="The document you choose becomes part of this story, and Clariti will read it together with the documents already here."
+        >
+          <Plus />Add a document to this thread
+        </button>
+      </div>
+
+      {open && (
+        <div className="thread-rail-body">
+          {/* Said before the button is pressed rather than after: a thread is what Clariti
+              reads together, so the reader has to know that is what they are agreeing to. */}
+          <p className="thread-rail-note">
+            Anything you add here becomes part of this story, and Clariti will read it together with the
+            rest of it. To have a document read on its own instead, use the paperclip under the chat.
+          </p>
+          {documents.length > 1 && (
+            <ol className="thread-doc-list">
+              {documents.map((document, index) => {
+                const date = formatThreadDate(document.createdAt);
+                return (
+                  <li key={document.id}>
+                    <span className="thread-doc-step" aria-hidden="true">{index + 1}</span>
+                    <span className={`file-icon file-icon-${document.kind}`}>{sidebarIcon(document.kind)}</span>
+                    <span className="thread-doc-meta">
+                      <b>{document.fileName}</b>
+                      <small>{getClaritiKindMeta(document.kind).title}{date ? ` · ${date}` : ""}</small>
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+
+          {disagreements.map((item) => (
+            <div className="thread-disagreement" key={item.id} role="status">
+              <div className="thread-disagreement-head"><AlertTriangle /><b>{item.label}</b></div>
+              <ul>
+                {item.values.map((value) => (
+                  <li key={`${value.documentTitle}-${value.value}`}>
+                    <span>{value.documentTitle}</span>
+                    <b>{value.value}</b>
+                  </li>
+                ))}
+              </ul>
+              {item.note ? <p>{item.note}</p> : null}
+              <p className="thread-disagreement-note">
+                These documents do not say the same thing. Clariti is reporting what each one says, not
+                deciding which is right.
+              </p>
+            </div>
+          ))}
+
+          {suggestions.map((suggestion) => {
+            const kind = isClaritiAnalysisKind(suggestion.document.kind) ? suggestion.document.kind : "unknown";
+            const date = formatThreadDate(suggestion.createdAt);
+            const linking = linkingDocumentId === suggestion.document.id;
+            return (
+              <div className="thread-suggestion" key={suggestion.document.id}>
+                <div className="thread-suggestion-head">
+                  <span className={`file-icon file-icon-${kind}`}>{sidebarIcon(kind)}</span>
+                  <span className="thread-doc-meta">
+                    <b>{suggestion.document.title}</b>
+                    <small>{getClaritiKindMeta(kind).title}{date ? ` · ${date}` : ""}</small>
+                  </span>
+                </div>
+                {/* The reasons, not a score. "Both mention claim 4471-002" is something a
+                    person can check and overrule; a confidence number is not. */}
+                <p className="thread-suggestion-why">This may belong in this thread because:</p>
+                <ul className="thread-reasons">
+                  {suggestion.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                </ul>
+                <div className="thread-suggestion-actions">
+                  <button
+                    type="button"
+                    className="thread-accept"
+                    disabled={Boolean(linkingDocumentId)}
+                    onClick={() => onAccept(suggestion)}
+                  >
+                    {linking ? <RefreshCw className="spin" /> : <Link2 />}
+                    {linking ? "Adding..." : "Add to this thread"}
+                  </button>
+                  <button
+                    type="button"
+                    className="thread-dismiss"
+                    disabled={Boolean(linkingDocumentId)}
+                    onClick={() => onDismiss(suggestion)}
+                  >
+                    Not related
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+          {suggestions.length > 0 && (
+            // The module exports this sentence so the UI states the bar rather than
+            // paraphrasing it into something looser than the code actually applies.
+            <p className="thread-rail-note">{THREAD_EVIDENCE_RULE}</p>
+          )}
+
+          {unsure.map((item) => (
+            <p className="thread-unsure" key={item.id}>
+              <b>{item.title}</b> looks adjacent, and Clariti will not call it: {item.whyNot}
+            </p>
+          ))}
+        </div>
+      )}
+      <style jsx>{`
+        .clariti-thread-rail{flex:none;border-bottom:1px solid var(--border);background:#fbfdfc;padding:9px 20px 11px;max-height:42vh;overflow:auto}
+        .thread-rail-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+        .thread-rail-toggle{display:flex;align-items:center;gap:7px;min-width:0;background:none;border:0;padding:2px 0;color:#315b53;font-family:inherit;cursor:pointer}
+        .thread-rail-toggle :global(svg){width:13px;height:13px;flex:none}
+        .thread-rail-toggle span{font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
+        .thread-rail-toggle small{color:#78908a;font-size:10px;font-weight:700}
+        .thread-rail-add{display:inline-flex;align-items:center;gap:5px;flex:none;border:1px solid #dfe9e5;background:#fff;color:#315b53;border-radius:9px;padding:6px 9px;font-size:10px;font-weight:850;font-family:inherit;cursor:pointer}
+        .thread-rail-add :global(svg){width:12px;height:12px}
+        .thread-rail-body{display:grid;gap:8px;margin-top:9px}
+        .thread-doc-list{list-style:none;display:grid;gap:6px;margin:0;padding:0}
+        .thread-doc-list li{display:flex;align-items:center;gap:8px;min-width:0;border:1px solid var(--border);background:#fff;border-radius:10px;padding:7px 9px}
+        .thread-doc-step{display:grid;place-items:center;flex:none;width:17px;height:17px;border-radius:999px;background:var(--accent-soft);color:var(--accent-dark);font-size:9px;font-weight:900}
+        .thread-doc-meta{display:block;min-width:0}
+        .thread-doc-meta b{display:block;color:#243631;font-size:11px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .thread-doc-meta small{display:block;color:#78908a;font-size:10px;margin-top:1px}
+        .thread-disagreement{border:1px solid var(--sev-check-border);background:var(--sev-check-bg);border-radius:12px;padding:9px 11px}
+        .thread-disagreement-head{display:flex;align-items:center;gap:6px;color:var(--sev-check-fg)}
+        .thread-disagreement-head :global(svg){width:13px;height:13px;flex:none}
+        .thread-disagreement-head b{font-size:11px;font-weight:900}
+        .thread-disagreement ul{list-style:none;display:grid;gap:4px;margin:7px 0 0;padding:0}
+        .thread-disagreement li{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:11px}
+        .thread-disagreement li span{min-width:0;color:#6d7d78;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .thread-disagreement li b{flex:none;color:#243631;font-weight:850}
+        .thread-disagreement p{margin:7px 0 0;color:#6d7d78;font-size:10px;line-height:1.45}
+        .thread-disagreement .thread-disagreement-note{color:#82908b}
+        .thread-rail-note{margin:0;color:#82908b;font-size:10px;line-height:1.5}
+        .thread-unsure{margin:0;color:#78908a;font-size:10px;line-height:1.5}
+        .thread-unsure b{color:#4c5f5a;font-weight:850}
+        .thread-suggestion{border:1px solid #dfe9e5;background:#fff;border-radius:12px;padding:9px 11px}
+        .thread-suggestion-head{display:flex;align-items:center;gap:8px;min-width:0}
+        .thread-suggestion-why{margin:8px 0 4px;color:#6d7d78;font-size:10px;font-weight:800}
+        .thread-reasons{list-style:none;display:grid;gap:3px;margin:0;padding:0}
+        .thread-reasons li{position:relative;padding-left:12px;color:#3d514c;font-size:11px;line-height:1.45}
+        .thread-reasons li:before{content:"";position:absolute;left:3px;top:7px;width:4px;height:4px;border-radius:999px;background:var(--accent)}
+        .thread-suggestion-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+        .thread-accept{display:inline-flex;align-items:center;gap:5px;border:0;background:var(--accent);color:#fff;border-radius:9px;padding:7px 11px;font-size:10px;font-weight:850;font-family:inherit;cursor:pointer}
+        .thread-accept :global(svg){width:12px;height:12px}
+        .thread-dismiss{border:1px solid var(--border);background:#fff;color:#6d7d78;border-radius:9px;padding:7px 11px;font-size:10px;font-weight:800;font-family:inherit;cursor:pointer}
+        .thread-rail-add:disabled,.thread-accept:disabled,.thread-dismiss:disabled{opacity:.55;cursor:not-allowed}
+        @media (max-width:900px){.clariti-thread-rail{padding:8px 16px 10px;max-height:38vh}}
+        /* The button says what it does, which makes it long. On a phone it takes its own
+           line rather than squeezing the thread's name down to an ellipsis. */
+        @media (max-width:430px){.thread-rail-head{flex-wrap:wrap}.thread-rail-add{width:100%;justify-content:center}}
+      `}</style>
+    </section>
+  );
+}
+
+function threadRowsFromDbSession(session: DbWorkspaceSession): ThreadDocumentRow[] {
+  return session.documents
+    .map((document) => ({
+      id: document.id,
+      kind: isAnalysisKind(document.kind) ? document.kind : inferKindFromTitleText(document.file_name),
+      fileName: document.file_name,
+      createdAt: timestampFromIso(document.created_at) ?? null,
+    }))
+    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+}
+
+/**
+ * The thread /api/analyze filed this document into, when it filed it into one.
+ *
+ * Read from the top level first: that is where the reuse path reports it, and that path
+ * hands back the analysis already saved, so `persisted` there describes the session the
+ * document was first read in rather than the thread it has just joined.
+ */
+function threadSessionIdFromAnalyze(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const row = payload as { threadSessionId?: unknown; persisted?: { threadSessionId?: unknown } | null };
+  if (typeof row.threadSessionId === "string" && row.threadSessionId) return row.threadSessionId;
+  const nested = row.persisted?.threadSessionId;
+  return typeof nested === "string" && nested ? nested : undefined;
+}
+
+/**
+ * `suggestThreadLinks` returns an object — `{ proposals, unsure }` — not an array, and the
+ * route may hand it over spread across two keys or whole under one. Reading it as an array
+ * without looking is how a populated answer renders as an empty rail, which reads to a person
+ * as "nothing else of yours is about this": a stronger claim than anybody is entitled to.
+ */
+function unwrapThreadSuggestions(payload: unknown): { proposals: unknown; unsure: unknown } {
+  const empty = { proposals: [] as unknown, unsure: [] as unknown };
+  if (!payload || typeof payload !== "object") return empty;
+  const row = payload as Record<string, unknown>;
+  const bundle = row.suggestions && typeof row.suggestions === "object" && !Array.isArray(row.suggestions)
+    ? row.suggestions as Record<string, unknown>
+    : null;
+
+  const proposals = Array.isArray(row.proposals)
+    ? row.proposals
+    : bundle && Array.isArray(bundle.proposals)
+      ? bundle.proposals
+      // Only a plain array under `suggestions` is read as proposals. An object there is the
+      // whole bundle, and rendering that as a list of proposals would show the reader the
+      // threads Clariti refused to call as though it had called them.
+      : Array.isArray(row.suggestions)
+        ? row.suggestions
+        : [];
+
+  const unsure = Array.isArray(row.unsure) ? row.unsure : bundle && Array.isArray(bundle.unsure) ? bundle.unsure : [];
+  return { proposals, unsure };
+}
+
+/**
+ * /api/threads is another route's answer, so nothing here trusts its shape. A proposal with
+ * no reasons is dropped rather than shown: a link the reader cannot check is the silent
+ * auto-link this feature exists to avoid.
+ */
+function normalizeThreadSuggestions(value: unknown): ThreadLinkSuggestion[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const row = entry as Record<string, unknown>;
+    const nested = row.document && typeof row.document === "object" ? row.document as Record<string, unknown> : row;
+    // The id has to be a clariti_documents id: it is what PATCH /api/sessions links by.
+    const id = typeof row.documentId === "string"
+      ? row.documentId
+      : typeof nested.documentId === "string"
+        ? nested.documentId
+        : typeof nested.id === "string" ? nested.id : null;
+    const title = typeof nested.title === "string" ? nested.title.trim() : "";
+    const reasons: string[] = Array.isArray(row.reasons)
+      ? row.reasons.filter((reason: unknown): reason is string => typeof reason === "string" && reason.trim().length > 0)
+      : [];
+    if (!id || !title || reasons.length === 0) return [];
+    return [{
+      document: { id, kind: isClaritiAnalysisKind(nested.kind) ? nested.kind : "unknown", title },
+      createdAt: toThreadTimestamp(nested.createdAt ?? row.createdAt),
+      reasons,
+    }];
+  });
+}
+
+/**
+ * A disagreement with fewer than two sides is not one, so it is dropped rather than printed
+ * as a finding about a thread.
+ */
+function normalizeThreadDisagreements(value: unknown): ThreadDisagreement[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object") return [];
+    const row = entry as Record<string, unknown>;
+    const label = typeof row.label === "string" ? row.label.trim() : "";
+    const values: Array<{ documentTitle: string; value: string }> = Array.isArray(row.values)
+      ? row.values.flatMap((candidate: unknown) => {
+        if (!candidate || typeof candidate !== "object") return [];
+        const item = candidate as Record<string, unknown>;
+        const documentTitle = typeof item.documentTitle === "string" ? item.documentTitle.trim() : "";
+        const itemValue = typeof item.value === "string" ? item.value.trim() : "";
+        return documentTitle && itemValue ? [{ documentTitle, value: itemValue }] : [];
+      })
+      : [];
+    if (!label || values.length < 2) return [];
+    return [{
+      id: typeof row.id === "string" ? row.id : `${label}-${index}`,
+      label,
+      note: typeof row.note === "string" && row.note.trim() ? row.note.trim() : null,
+      values,
+    }];
+  });
+}
+
+function normalizeThreadUncertainty(value: unknown): ThreadUncertainty[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object") return [];
+    const row = entry as Record<string, unknown>;
+    const title = typeof row.threadTitle === "string" ? row.threadTitle.trim() : typeof row.title === "string" ? row.title.trim() : "";
+    const whyNot = typeof row.whyNot === "string" ? row.whyNot.trim() : "";
+    // Without the reason this is just a name with a shrug next to it, which tells the
+    // reader nothing they can act on.
+    if (!title || !whyNot) return [];
+    return [{ id: typeof row.threadId === "string" ? row.threadId : `${title}-${index}`, title, whyNot }];
+  });
+}
+
+function toThreadTimestamp(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") return timestampFromIso(value) ?? null;
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.getTime() : null;
+  return null;
+}
+
+function formatThreadDate(value: number | null) {
+  if (value === null) return "";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString() : "";
 }
 
 function VideoStoryboard({

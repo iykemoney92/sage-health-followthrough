@@ -80,7 +80,12 @@ export async function analyzeClaritiDocument(input: AnalyzeInput): Promise<Clari
         ? process.env.AI_GATEWAY_MODEL ?? "anthropic/claude-sonnet-4.6"
         : anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
       schema: claritiAnalysisSchema,
-      maxOutputTokens: 2600,
+      // Thinking shares this budget. Claude Opus 5 runs adaptive thinking by
+      // default, so a cap tuned for a non-thinking model leaves the visible
+      // answer truncated — and for the structured call below that means
+      // generateObject throws and the reader gets the regex fallback instead of
+      // an explanation. A ceiling is not a target: unused headroom costs nothing.
+      maxOutputTokens: 8000,
       schemaName: "ClaritiDocumentAnalysis",
       schemaDescription: "A warm, simple, source-grounded explanation of one health document for a non-expert reader.",
       temperature: 0.2,

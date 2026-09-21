@@ -163,7 +163,8 @@ async function extractWithAiFile(buffer: Buffer, mimeType: string, filename: str
   const result = await generateText({
     model: anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
     temperature: 0,
-    maxOutputTokens: 2400,
+    // Thinking shares this budget; see lib/ai/clariti-analysis.ts.
+    maxOutputTokens: 8000,
     messages: [{
       role: "user",
       content: [
@@ -253,7 +254,8 @@ async function extractWithVisionImages(
       ? process.env.AI_GATEWAY_VISION_MODEL ?? process.env.AI_GATEWAY_MODEL ?? "anthropic/claude-sonnet-4.6"
       : anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
     temperature: 0,
-    maxOutputTokens: 6000,
+    // Thinking shares this budget; see lib/ai/clariti-analysis.ts.
+    maxOutputTokens: 12000,
     messages: [{
       role: "user",
       content: [
