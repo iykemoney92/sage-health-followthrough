@@ -270,10 +270,22 @@ Both changed on 2026-09-19, and neither is visible from the Vercel dashboard:
   card. Until either that secret or `CLARITI_REVENUECAT_WEB_PURCHASE_URL` is set,
   the web paywall says Plus cannot be bought on the web and points people at the
   iPhone app, which is where it is actually on sale.
-- `support@useclariti.app` cannot receive mail: `useclariti.app` has no MX
-  record. That address is what `/privacy`, `/terms` and `/delete-account` tell
-  people to write to, including the sign-in-less deletion request Guideline
-  5.1.1(v) expects to work. Fix the DNS before a reviewer tests it.
+- `support@useclariti.app` receives mail as of 2026-09-21, through **Cloudflare
+  Email Routing**, forwarded to the verified destination `labszapx@gmail.com`.
+  Before that the domain had no MX at all, while `/privacy`, `/terms` and
+  `/delete-account` all told people to write there — including the sign-in-less
+  deletion request Guideline 5.1.1(v) expects to work.
+  - DNS lives on **Cloudflare**, not Vercel (`vercel domains ls` reports it as
+    Third Party), under the `Labszapx@gmail.com` account. Email Routing had been
+    half-enabled for 41 days: the destination was verified but no routing rule
+    existed and the MX records had never been added, which is why mail bounced.
+  - The three `route{1,2,3}.mx.cloudflare.net` MX records and the DKIM TXT are
+    **locked** — Email Routing manages them, so do not hand-edit them in the DNS
+    panel.
+  - The SPF is `v=spf1 include:_spf.mx.cloudflare.net ~all`, which covers
+    *receiving* only. Nothing sends from `useclariti.app` today (`AUTH_EMAIL_FROM`
+    is `hello@usenura.app`), but the day anything does, Resend has to be added to
+    that record or the mail will soft-fail.
 
 ## 8. Google Play (Android)
 
