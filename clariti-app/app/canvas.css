@@ -1667,3 +1667,21 @@
     padding: 0 20px;
   }
 }
+
+/* A plain navigation row inside a Settings section, sized and shaped like the
+   buttons it sits beside so the group reads as one list rather than a link that
+   wandered in. */
+.settings-row-link {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  color: var(--accent-dark);
+  display: flex;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 44px;
+  padding: 11px 13px;
+  text-decoration: none;
+}

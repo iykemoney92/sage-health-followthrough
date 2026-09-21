@@ -20,6 +20,7 @@ import {
   SlidersHorizontal,
   UserRound,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ClaritiShell } from "@/components/clariti-shell";
@@ -393,6 +394,13 @@ export default function SettingsPage() {
         <section className="settings-section">
           <h2 className="settings-section-title">Your data</h2>
           <div style={{ display: "grid", gap: 10 }}>
+            {/* /connections has no home in the four-item mobile nav, and a page
+                nothing links to may as well not exist. Here because it is about
+                where a person's records come from, which is the same question
+                the rest of this section answers. */}
+            <Link className="settings-row-link" href="/connections">
+              Where your records can come from
+            </Link>
             <ExportDataButton />
             <DeleteAccountButton />
           </div>

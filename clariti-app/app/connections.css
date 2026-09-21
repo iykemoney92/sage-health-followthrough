@@ -1,0 +1,335 @@
+/* /connections — the routes a person has for getting a health document in front
+   of Clariti. It sits inside ClaritiShell like /documents and /settings, so the
+   topbar and the fixed mobile nav are inherited and only the page body is here.
+
+   Text on this page is sized in rem and none of it goes below 0.8125rem: these
+   are instructions somebody follows on a phone while holding the paperwork, not
+   the 9px metadata the list screens get away with. */
+
+.connections-page {
+  width: min(860px, 100%);
+  margin: 0 auto;
+  /* Side padding clears the notch in landscape, where the inset is non-zero and
+     a flat 24px would put the first word under the curve. */
+  padding: 42px max(24px, env(safe-area-inset-left)) 72px max(24px, env(safe-area-inset-right));
+}
+
+.connections-hero {
+  margin-bottom: 26px;
+}
+
+.connections-hero .clariti-kicker {
+  display: block;
+  margin: 0 0 10px;
+}
+
+.connections-hero h1 {
+  margin: 0;
+  font: 500 clamp(31px, 5vw, 40px) / 1.08 Georgia, "Times New Roman", serif;
+  letter-spacing: -0.035em;
+  color: #21332f;
+}
+
+.connections-hero p {
+  max-width: 58ch;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+
+/* The upload and camera route. It is the only one that works for everyone in
+   every country, so it is a full-width card above the rest rather than the
+   first tile in a grid of equals. */
+.connections-primary {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid #d5e6e0;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #f5faf8, #ecf5f2);
+  box-shadow: 0 10px 30px rgba(35, 63, 55, 0.045);
+}
+
+.connections-primary-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: var(--panel);
+  color: var(--accent-dark);
+  box-shadow: 0 5px 14px rgba(37, 88, 75, 0.07);
+}
+
+.connections-primary-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.connections-primary-body {
+  min-width: 0;
+}
+
+.connections-primary h2 {
+  margin: 6px 0 0;
+  font: 500 24px/1.2 Georgia, "Times New Roman", serif;
+  letter-spacing: -0.02em;
+  color: #21332f;
+}
+
+/* Where the source works, not a status pill: "Everywhere", "United Kingdom".
+   Nothing on this page reports a connection state, because there is no
+   connection to report. */
+.connections-region {
+  margin: 0;
+  color: #718f87;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.connections-gives {
+  max-width: 62ch;
+  margin: 10px 0 0;
+  color: #45564f;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+/* What the source actually hands you. Plain nouns — "hospital letters", "test
+   results" — so the person can tell at a glance whether their document is in
+   there. */
+.connections-documents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.connections-documents li {
+  padding: 5px 10px;
+  border: 1px solid #dbe7e3;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #4c605a;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+}
+
+.connections-steps {
+  counter-reset: connection-step;
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.connections-steps li {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  color: #3e4f49;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  /* A portal name or a menu path has nowhere to break, and a grid child will
+     not shrink below its longest word — one of them would widen the page. */
+  overflow-wrap: anywhere;
+}
+
+.connections-steps li::before {
+  counter-increment: connection-step;
+  content: counter(connection-step);
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 0.8125rem;
+  font-weight: 800;
+}
+
+.connections-cta,
+.connections-card-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 44pt: these are the only controls on the page. */
+  min-height: 44px;
+  margin-top: 18px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.connections-cta {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(47, 110, 102, 0.16);
+}
+
+.connections-cta:hover {
+  background: var(--accent-dark);
+}
+
+.connections-card-cta {
+  border: 1px solid #cfe0da;
+  background: var(--panel);
+  color: var(--accent-dark);
+}
+
+.connections-card-cta:hover {
+  border-color: #b8d0c9;
+  background: var(--accent-soft);
+}
+
+.connections-guided {
+  margin-top: 36px;
+}
+
+.connections-section-title {
+  margin: 0;
+  font: 500 22px/1.25 Georgia, "Times New Roman", serif;
+  letter-spacing: -0.02em;
+  color: #21332f;
+}
+
+.connections-section-lead {
+  max-width: 62ch;
+  margin: 10px 0 18px;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+
+.connections-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.connection-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 6px 22px rgba(35, 63, 55, 0.035);
+}
+
+.connection-card-head {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.connection-card-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  background: var(--soft);
+  color: #58736b;
+}
+
+.connection-card-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.connection-card h3 {
+  margin: 4px 0 0;
+  color: #21332f;
+  font-size: 1.0625rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+/* The screenshot fallback under the guided cards. Same weight as the cards'
+   own copy rather than footnote-small: it is the answer for anyone whose
+   download button turns out not to exist. */
+.connections-guided-note {
+  max-width: 62ch;
+  margin: 16px 0 0;
+  color: #4c605a;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.connections-footnote {
+  max-width: 62ch;
+  margin: 30px 0 0;
+  color: #8a9692;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 760px) {
+  .connections-page {
+    /* The fixed mobile nav is 68px plus the home indicator, and the update
+       notice floats above it — so the footnote needs to clear both rather than
+       sit under them. */
+    padding: 28px max(16px, env(safe-area-inset-left)) calc(104px + env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-right));
+  }
+
+  .connections-primary {
+    /* At 375px a 52px icon column leaves the heading about 250px, which breaks
+       "Photograph" onto its own line. The icon goes above the copy instead. */
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    padding: 17px;
+    border-radius: 18px;
+  }
+
+  .connections-primary h2 {
+    font-size: 21px;
+  }
+
+  .connections-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .connection-card {
+    padding: 16px;
+    border-radius: 16px;
+  }
+
+  .connections-guided {
+    margin-top: 30px;
+  }
+
+  .connections-cta,
+  .connections-card-cta {
+    /* Full width: a 44pt pill floating mid-card is easy to miss with a thumb. */
+    width: 100%;
+  }
+}
+
+/* The limit of a guided route — what it will not do. Set apart from the steps so
+   it is not read as a fifth instruction, but not hidden either: the whole reason
+   it exists is that someone would otherwise go looking for a button that is not
+   there. */
+.connections-step-note {
+  background: var(--warning-soft);
+  border-radius: 10px;
+  color: #7a5b16;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+}

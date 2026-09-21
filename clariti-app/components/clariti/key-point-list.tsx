@@ -73,7 +73,14 @@ export function KeyPointList({
             <span>
               <b>{point.label}</b>
               <small>
-                {point.detail} Source: {point.sourceAnchor}
+                {point.detail}
+                {/* The anchor is a quote the model claimed and the server checked
+                    against the document; it is blanked when the quote could not be
+                    found. Saying so is the point of checking — printing a bare
+                    "Source:" would turn a caught fabrication into a typo. */}
+                {point.sourceAnchor
+                  ? <> Source: {point.sourceAnchor}</>
+                  : <span className="key-point-unsourced"> Clariti could not find this wording in the document — check it against the paperwork yourself.</span>}
               </small>
             </span>
           </li>

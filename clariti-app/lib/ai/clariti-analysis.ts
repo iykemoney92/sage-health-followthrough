@@ -104,11 +104,22 @@ export async function analyzeClaritiDocument(input: AnalyzeInput): Promise<Clari
         "Do not include videoScenes in this first-pass response — Clariti builds those later if needed. " +
         "summary must be one plain sentence a friend could understand. plainEnglish must be 2-3 short everyday sentences. safetyNote must be one short reassuring sentence. " +
         "keyPoint labels should be everyday phrases, not clinical headings. " +
-        "Every keyPoint, metric and flag must be grounded in a source phrase from the document.",
+        "Every keyPoint, metric and flag must be grounded in the document. " +
+        "Each sourceAnchors entry and each keyPoint sourceAnchor must be an exact quote, copied word for word from the document text above — " +
+        "a short run of roughly three to fifteen words that really appears there. Not a paraphrase, not a tidied-up version, " +
+        "and not a section heading unless that heading is printed in the document. " +
+        "If no wording in the document supports a keyPoint, return an empty sourceAnchor for it rather than inventing a citation: " +
+        "Clariti checks every quote against the document and removes the ones it cannot find.",
     });
 
+    const normalized = normalizeSourceLabels(claritiAnalysisSchema.parse(result.object), input.documentText);
+
     return {
-      analysis: normalizeSourceLabels(claritiAnalysisSchema.parse(result.object), input.documentText),
+      // Verification runs after the rename, never before it: normalizeSourceLabels
+      // rewrites "Impression" to "Conclusion" exactly when the report says
+      // Conclusion, so checking first would strip a citation for naming the
+      // section the document actually uses.
+      analysis: verifyKeyPointAnchors(normalized, input.documentText),
       degraded: false,
     };
   } catch (error) {
@@ -125,6 +136,11 @@ export async function analyzeClaritiDocument(input: AnalyzeInput): Promise<Clari
     // Capped, because a provider error carries the offending model output and
     // that output is a summary of somebody's medical record.
     return {
+      // Not verified: the fallback's anchors are section labels its own regexes
+      // chose ("Findings", "Next steps"), not quotes it claims to have found, and
+      // the whole result is already flagged degraded and offered as a retry.
+      // Running the quote check here would blank every one of them and say
+      // "no source" about text Clariti never read in the first place.
       analysis: normalizeSourceLabels(buildFallbackAnalysis(input), input.documentText),
       degraded: true,
       failure: {
@@ -154,5 +170,47 @@ function normalizeSourceLabels(analysis: ClaritiAnalysis, documentText: string):
       script: replace(scene.script),
       visual: replace(scene.visual),
     })),
+  };
+}
+
+/**
+ * Fold the differences a real citation can legitimately have, and nothing more:
+ * case, whitespace runs (a PDF breaks lines mid-sentence), and the typographic
+ * quotes and dashes an extractor emits where the model types ASCII. Anything
+ * looser would be fuzzy matching, and a quote that only matches fuzzily is the
+ * case this check exists to catch.
+ */
+function normalizeForAnchorMatch(value: string): string {
+  return value
+    .replace(/[\u2018\u2019\u201b\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u201f\u2033]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * "Source-grounded" is the promise on the box, and it was decorative: the reader
+ * saw `Source: <whatever the model typed>` with identical confidence whether the
+ * phrase was in their document or invented. The model is now asked for an exact
+ * quote, and a quote that is not in the document loses its attribution here.
+ *
+ * Demoted, not dropped. A badly cited finding may still be a true one, and
+ * deleting it would hide it from the reader; showing it with no source says what
+ * Clariti actually knows. Only keyPoints are demoted: `sourceAnchors` is
+ * `.min(1)` and saved analyses are re-parsed from the database with this schema,
+ * so filtering that array could make an already-stored document unreadable.
+ */
+function verifyKeyPointAnchors(analysis: ClaritiAnalysis, documentText: string): ClaritiAnalysis {
+  const haystack = normalizeForAnchorMatch(documentText);
+
+  return {
+    ...analysis,
+    keyPoints: analysis.keyPoints.map((point) => {
+      const anchor = normalizeForAnchorMatch(point.sourceAnchor);
+      if (anchor.length > 0 && haystack.includes(anchor)) return point;
+      return { ...point, sourceAnchor: "" };
+    }),
   };
 }
