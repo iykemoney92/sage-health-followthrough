@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowRight, Eye, EyeOff, ShieldCheck, X } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import { AuthProviders } from "@/components/auth-providers";
 import { track } from "@/lib/analytics";
 
@@ -16,6 +16,8 @@ type AuthMode = "signin" | "signup";
  * link nobody sees.
  */
 type AuthView = "credentials" | "reset";
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function ClaritiAuthModal({
   modeDefault = "signin",
@@ -55,6 +57,60 @@ export function ClaritiAuthModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState(false);
+  const headingId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  const focusFirstControl = useCallback(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    (dialog.querySelector<HTMLElement>(FOCUSABLE) ?? dialog).focus();
+  }, []);
+
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+
+    // /?auth=1 opens this modal and then focuses the composer behind it on the
+    // next frame, so taking focus once on mount is not enough: anything that
+    // lands outside the dialog gets pulled back in.
+    const keepFocusInside = (event: FocusEvent) => {
+      const dialog = dialogRef.current;
+      if (!dialog || dialog.contains(event.target as Node)) return;
+      focusFirstControl();
+    };
+
+    document.addEventListener("focusin", keepFocusInside);
+    return () => {
+      document.removeEventListener("focusin", keepFocusInside);
+      opener?.focus?.();
+    };
+  }, [focusFirstControl]);
+
+  // Every screen here replaces the last one's controls, so focus has to be
+  // placed again rather than left on a button that no longer exists.
+  useEffect(() => {
+    focusFirstControl();
+  }, [focusFirstControl, view, pendingConfirmation, resetNotice]);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   const submitAuth = async (event: FormEvent) => {
     event.preventDefault();
@@ -125,17 +181,26 @@ export function ClaritiAuthModal({
 
   if (view === "reset") {
     return (
-      <div className="clariti-modal-backdrop" onMouseDown={onClose}>
+      <div
+        className="clariti-modal-backdrop"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        onMouseDown={onClose}
+      >
         <form className="clariti-modal entry-auth-modal" onSubmit={(event) => void submitReset(event)} onMouseDown={(event) => event.stopPropagation()}>
           <button type="button" className="sheet-close" onClick={onClose} aria-label="Close auth"><X /></button>
           <span className="modal-icon"><ShieldCheck /></span>
           <p className="canvas-kicker">RESET PASSWORD</p>
-          <h2>Reset your password</h2>
-          <p>{resetNotice ?? "Enter the email on your Clariti account and we’ll send a link to set a new password."}</p>
+          <h2 id={headingId}>Reset your password</h2>
+          <p role="status">{resetNotice ?? "Enter the email on your Clariti account and we’ll send a link to set a new password."}</p>
           {!resetNotice && (
             <>
               <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>
-              {error && <p className="auth-error">{error}</p>}
+              {error && <p className="auth-error" role="alert">{error}</p>}
               <button type="submit" className="auth-submit" disabled={loading}>{loading ? "Sending…" : <>Send reset link <ArrowRight /></>}</button>
             </>
           )}
@@ -157,12 +222,21 @@ export function ClaritiAuthModal({
 
   if (pendingConfirmation) {
     return (
-      <div className="clariti-modal-backdrop" onMouseDown={onClose}>
+      <div
+        className="clariti-modal-backdrop"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        onMouseDown={onClose}
+      >
         <div className="clariti-modal entry-auth-modal" onMouseDown={(event) => event.stopPropagation()}>
           <button type="button" className="sheet-close" onClick={onClose} aria-label="Close auth"><X /></button>
           <span className="modal-icon"><ShieldCheck /></span>
           <p className="canvas-kicker">CHECK YOUR EMAIL</p>
-          <h2>Confirm your account</h2>
+          <h2 id={headingId}>Confirm your account</h2>
           <p>We sent a confirmation link to <strong>{email}</strong>. Open it to verify your email — Clariti will bring you back here automatically.</p>
           {resendNotice && <p>{resendNotice}</p>}
           <button type="button" className="auth-submit" onClick={() => { setPendingConfirmation(false); setMode("signin"); }}>
@@ -208,12 +282,21 @@ export function ClaritiAuthModal({
   }
 
   return (
-    <div className="clariti-modal-backdrop" onMouseDown={onClose}>
+    <div
+      className="clariti-modal-backdrop"
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={headingId}
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+      onMouseDown={onClose}
+    >
       <form className="clariti-modal entry-auth-modal" onSubmit={(event) => void submitAuth(event)} onMouseDown={(event) => event.stopPropagation()}>
         <button type="button" className="sheet-close" onClick={onClose} aria-label="Close auth"><X /></button>
         <span className="modal-icon"><ShieldCheck /></span>
         <p className="canvas-kicker">{emailConfirmedNotice ? "EMAIL CONFIRMED" : kicker}</p>
-        <h2>{title ?? (mode === "signin" ? "Sign in to analyze" : "Create your Clariti")}</h2>
+        <h2 id={headingId}>{title ?? (mode === "signin" ? "Sign in to analyze" : "Create your Clariti")}</h2>
         <p>
           {emailConfirmedNotice
             ? "Your email is verified. Sign in with your password to continue."
@@ -224,7 +307,7 @@ export function ClaritiAuthModal({
         <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>
         <label>Password<span className="password-field"><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "signup" ? "Create a password" : "Password"} minLength={6} required autoComplete={mode === "signup" ? "new-password" : "current-password"} /><button type="button" onClick={() => setShowPassword((show) => !show)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff /> : <Eye />}</button></span></label>
         {mode === "signup" && <label>Confirm password<span className="password-field"><input type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm password" minLength={6} required autoComplete="new-password" /><button type="button" onClick={() => setShowConfirmPassword((show) => !show)} aria-label={showConfirmPassword ? "Hide password confirmation" : "Show password confirmation"}>{showConfirmPassword ? <EyeOff /> : <Eye />}</button></span></label>}
-        {error && <p className="auth-error">{error}</p>}
+        {error && <p className="auth-error" role="alert">{error}</p>}
         <button type="submit" className="auth-submit" disabled={loading}>{loading ? "Please wait..." : <>{mode === "signin" ? "Sign in" : "Create account"} <ArrowRight /></>}</button>
         <button type="button" className="auth-mode-switch" onClick={() => setMode(mode === "signin" ? "signup" : "signin")}>
           {mode === "signin" ? "Need an account? Create one" : "Already have an account? Sign in"}

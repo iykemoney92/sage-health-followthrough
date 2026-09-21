@@ -2,7 +2,9 @@
 
 import {
   ArrowUp,
+  Camera,
   ClipboardList,
+  ClipboardPaste,
   FileHeart,
   FileText,
   FlaskConical,
@@ -15,7 +17,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { ChangeEvent, Suspense, useEffect, useRef, useState } from "react";
 import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { AppDownloadLinks } from "@/components/app-download-links";
 import { ClaritiAuthModal } from "@/components/clariti-auth-modal";
@@ -25,6 +27,7 @@ import type { ClaritiAnalysisKind } from "@/lib/ai/clariti-analysis";
 import { track } from "@/lib/analytics";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 import { inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
+import { formatHumanError } from "@/lib/domain/human-errors";
 
 type StarterKind = ClaritiAnalysisKind;
 
@@ -69,20 +72,24 @@ const extractionLabels: Record<string, string> = {
   image_vision: "image",
 };
 
+/** The floor /api/analyze itself enforces: anything shorter is not a document. */
+const MIN_DOCUMENT_CHARS = 20;
+
+const unreadableDocumentMessage =
+  "Clariti could not read this document. Try a clearer photo or a text-based PDF, or paste the report text instead.";
+
 export default function Home() {
-  return (
-    <Suspense>
-      <HomeContent />
-    </Suspense>
-  );
+  return <HomeContent />;
 }
 
 function HomeContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const [query, setQuery] = useState<LandingQuery>(noLandingQuery);
   const [kind, setKind] = useState<StarterKind>("medical_bill");
   const [message, setMessage] = useState("");
-  const [documentText, setDocumentText] = useState("");
+  const [extractedText, setExtractedText] = useState("");
+  const [pastedText, setPastedText] = useState("");
+  const [pasteOpen, setPasteOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [authConfigured, setAuthConfigured] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -98,27 +105,44 @@ function HomeContent() {
   const [error, setError] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const documentTextRef = useRef<HTMLTextAreaElement>(null);
   const extractionAbortRef = useRef<AbortController | null>(null);
 
-  const hasDocumentText = documentText.trim().length >= 20;
+  const pastedLength = pastedText.trim().length;
+  const hasExtractedText = extractedText.trim().length >= MIN_DOCUMENT_CHARS;
+  // Typed text wins over a file's extraction once it is long enough to analyse. Pasting
+  // is the documented way out of a photo that reads as nothing, so it has to override
+  // that photo rather than sit beside it.
+  const documentText = pastedLength >= MIN_DOCUMENT_CHARS ? pastedText : extractedText;
+  const hasDocumentText = documentText.trim().length >= MIN_DOCUMENT_CHARS;
   const hasAskText = Boolean(message.trim());
-  const canSubmit = hasAskText && hasDocumentText && !submitting && !extracting;
+  // A file picked while signed out is held unread on purpose, so send stays live for it:
+  // pressing it reopens the sign-in gate rather than asking for a document that is
+  // already attached.
+  const pendingSignIn = Boolean(selectedFile) && !authenticated;
+  const canSubmit = hasAskText && (hasDocumentText || pendingSignIn) && !submitting && !extracting;
   const sendDisabledReason = !hasAskText
     ? "Ask a question first"
     : extracting
       ? "Preparing document"
-      : !hasDocumentText
-        ? "Attach a readable document"
+      : !hasDocumentText && !pendingSignIn
+        ? "Attach a document or paste its text"
         : "";
 
+  /**
+   * Polls until the session cookie the routes read is actually set, and reports the
+   * consent state with it: a fresh sign-up has none, and /api/documents/extract refuses
+   * a request without it.
+   */
   const waitForServerAuth = async () => {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       const response = await fetch("/api/auth/status", { cache: "no-store" }).catch(() => null);
       const payload = response?.ok ? await response.json().catch(() => null) : null;
-      if (payload?.authenticated) return true;
+      if (payload?.authenticated) return { authenticated: true, aiConsent: Boolean(payload.aiConsent) };
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    return false;
+    return { authenticated: false, aiConsent: false };
   };
 
   useEffect(() => {
@@ -139,25 +163,23 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
-    const next = searchParams.get("next");
-    const confirmed = searchParams.get("confirmed") === "1";
-
-    if (authenticated && confirmed) {
+    if (authenticated && query.confirmed) {
       // Session already established via /auth/confirm — drop the query noise.
+      const next = query.next;
       router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
       return;
     }
 
-    if (searchParams.get("auth") === "1" && !authenticated) {
+    if (query.auth && !authenticated) {
       queueMicrotask(() => {
-        setAuthMode(searchParams.get("mode") === "signup" ? "signup" : "signin");
-        setAuthNext(next ?? "/");
+        setAuthMode(query.mode === "signup" ? "signup" : "signin");
+        setAuthNext(query.next ?? "/");
         setAuthIntent("navigate");
         setAuthOpen(true);
         requestAnimationFrame(() => composerRef.current?.focus());
       });
     }
-  }, [authenticated, router, searchParams]);
+  }, [authenticated, query, router]);
 
   useEffect(() => {
     if (!extracting) return;
@@ -183,6 +205,23 @@ function HomeContent() {
     fileInputRef.current?.click();
   };
 
+  const chooseCamera = () => {
+    cameraInputRef.current?.click();
+  };
+
+  const openPaste = () => {
+    setPasteOpen(true);
+    requestAnimationFrame(() => documentTextRef.current?.focus());
+  };
+
+  const handlePickedFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.target;
+    await handleFileSelected(input.files?.[0]);
+    // Choosing the same file again fires no change event, so a document that failed to
+    // read could not be retried without picking a different one first.
+    input.value = "";
+  };
+
   const handleFileSelected = async (file: File | undefined) => {
     if (!file) return;
 
@@ -201,9 +240,30 @@ function HomeContent() {
     // bucket only — the document's own category is health data and stays out of GA.
     track("document_selected", { mime: file.type || "unknown", size_bucket: fileSizeBucket(file.size) });
 
+    // The extractor refuses an anonymous request too, and its 401 body — the single
+    // word "unauthorized" — was being rendered as Clariti's answer. Hold the file,
+    // ask for the sign-in this flow always needed, and read it in handleAuthenticated
+    // so the pick survives.
+    if (!authenticated) {
+      setError(null);
+      setSelectedFile(file);
+      setExtractedText("");
+      setExtractionMethod(null);
+      setExtractionProgress(0);
+      setAuthMode("signin");
+      setAuthIntent("submit");
+      setAuthNext(null);
+      setAuthOpen(true);
+      return;
+    }
+
+    await extractDocument(file);
+  };
+
+  const extractDocument = async (file: File) => {
     setError(null);
     setSelectedFile(file);
-    setDocumentText("");
+    setExtractedText("");
     setExtractionMethod(null);
     setExtractionProgress(8);
     setExtracting(true);
@@ -229,44 +289,50 @@ function HomeContent() {
       formData.set("file", prepared.file);
       const response = await fetch("/api/documents/extract", { method: "POST", body: formData, signal: controller.signal });
       const payload = await readDocumentApiResponse(response);
-      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not read this document.");
-      const extractedText = String(payload.extractedText ?? "");
+      if (!response.ok || !payload.ok) {
+        throw new Error(formatHumanError(response.status, payload.error, unreadableDocumentMessage));
+      }
+      const text = String(payload.extractedText ?? "");
       const inferredKind = inferClaritiKind({
         kind,
         question: message.trim(),
-        documentText: extractedText,
+        documentText: text,
         fileName: file.name,
       });
       setKind(inferredKind);
       setMessage((current) => isEmptyOrStarterPrompt(current) ? promptForKind(inferredKind) : current);
-      setDocumentText(extractedText);
+      setExtractedText(text);
       setExtractionMethod(String(payload.extractionMethod ?? "text"));
       setExtractionProgress(100);
     } catch (caught) {
+      // Removing the attachment, or picking another file, aborts this controller on
+      // purpose — only a run still registered here failed on its own, so the other two
+      // stay silent instead of reporting a timeout the reader did not cause.
+      if (extractionAbortRef.current !== controller) return;
       const timedOut = caught instanceof DOMException && caught.name === "AbortError";
       track("extract_failed", { mime: file.type || "unknown", reason: timedOut ? "timeout" : stage });
-      setDocumentText("");
+      setExtractedText("");
       setExtractionProgress(0);
-      setError(
-        timedOut
-          ? "Document reading took too long. Try a clearer PDF/image, a smaller file, or paste the report text."
-          : caught instanceof Error ? caught.message : "Could not read this document.",
-      );
+      setError(formatHumanError(null, caught, unreadableDocumentMessage));
     } finally {
       window.clearTimeout(timeout);
-      if (extractionAbortRef.current === controller) extractionAbortRef.current = null;
-      setExtracting(false);
+      if (extractionAbortRef.current === controller) {
+        extractionAbortRef.current = null;
+        setExtracting(false);
+      }
     }
   };
 
   const clearFile = () => {
     extractionAbortRef.current?.abort();
     extractionAbortRef.current = null;
+    setExtracting(false);
     setSelectedFile(null);
-    setDocumentText("");
+    setExtractedText("");
     setExtractionMethod(null);
     setExtractionProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
 
   const handleSubmit = async () => {
@@ -286,7 +352,7 @@ function HomeContent() {
     }
 
     if (!hasDocumentText) {
-      setError("Attach one readable document before analysis.");
+      setError("Attach a document or paste its text before analysis.");
       return;
     }
 
@@ -300,8 +366,8 @@ function HomeContent() {
     try {
       const textForAnalysis = documentText.trim();
       let documentId: string | undefined;
-      if (textForAnalysis.length < 20) {
-        throw new Error("Attach one readable document before analysis.");
+      if (textForAnalysis.length < MIN_DOCUMENT_CHARS) {
+        throw new Error("Attach a document or paste its text before analysis.");
       }
       const resolvedKind = inferClaritiKind({
         kind,
@@ -318,7 +384,9 @@ function HomeContent() {
 
         const uploadResponse = await fetch("/api/documents/upload", { method: "POST", body: formData });
         const uploadPayload = await readDocumentApiResponse(uploadResponse);
-        if (!uploadResponse.ok || !uploadPayload.ok) throw new Error(uploadPayload.error ?? "Could not upload document");
+        if (!uploadResponse.ok || !uploadPayload.ok) {
+          throw new Error(formatHumanError(uploadResponse.status, uploadPayload.error, "Clariti could not save this document to your account."));
+        }
         documentId = typeof uploadPayload.document === "object" && uploadPayload.document && "id" in uploadPayload.document
           ? String(uploadPayload.document.id)
           : undefined;
@@ -342,7 +410,7 @@ function HomeContent() {
       }
       router.push("/workspace?new=1");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Clariti could not process this document.");
+      setError(formatHumanError(null, caught, "Clariti could not process this document."));
     } finally {
       setSubmitting(false);
     }
@@ -353,15 +421,34 @@ function HomeContent() {
     setAuthOpen(false);
 
     if (authIntent === "submit") {
-      if (!hasDocumentText) {
-        setError("Now attach one readable document before analysis.");
-        return;
-      }
-      const serverAuthenticated = await waitForServerAuth();
-      if (!serverAuthenticated) {
+      const session = await waitForServerAuth();
+      if (!session.authenticated) {
         setError("Sign-in finished, but Clariti could not confirm the secure session yet. Please press send again.");
         return;
       }
+      setAiConsent(session.aiConsent);
+
+      // A file picked while signed out was held rather than sent. Read it now, on the
+      // session that just landed — unless consent is still outstanding, which is the
+      // one thing that has to come before a document leaves the device.
+      if (selectedFile && !hasExtractedText) {
+        if (!session.aiConsent) {
+          router.push("/ai-consent?next=%2F");
+          return;
+        }
+        await extractDocument(selectedFile);
+        return;
+      }
+
+      if (!hasDocumentText) {
+        setError("Now attach a document, or paste its text, before analysis.");
+        return;
+      }
+
+      // Only the send button promises an analysis. A pick that opened this gate leaves a
+      // ready composer instead, because /api/analyze refuses an empty question anyway.
+      if (!hasAskText) return;
+
       await runJourney(true);
       return;
     }
@@ -371,6 +458,9 @@ function HomeContent() {
 
   return (
     <ClaritiShell>
+      <Suspense fallback={null}>
+        <LandingQueryReader onChange={setQuery} />
+      </Suspense>
       <AnalyticsBeacon event="landing_view" />
       <section className="clariti-entry-page" data-ui-version="clariti-preview-latest">
         <div className="clariti-entry-inner">
@@ -387,26 +477,79 @@ function HomeContent() {
               type="file"
               className="entry-file-input"
               accept=".txt,.pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,text/plain,application/pdf,image/*"
-              onChange={(event) => void handleFileSelected(event.target.files?.[0])}
+              onChange={(event) => void handlePickedFile(event)}
+            />
+
+            {/* Clariti's whole premise is photographing the paperwork in your hand, and
+                nothing on this screen said so. `capture` opens the camera instead of the
+                chooser; it stays a second input because putting the attribute on the one
+                above would take PDFs off the table. */}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              className="entry-file-input"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => void handlePickedFile(event)}
             />
 
             {selectedFile && (
-              <div className={`entry-attachment ${extracting ? "is-reading" : hasDocumentText ? "is-ready" : "needs-attention"}`}>
+              <div className={`entry-attachment ${extracting ? "is-reading" : hasExtractedText ? "is-ready" : "needs-attention"}`}>
                 <div className="entry-attachment-icon">
                   {extracting ? <Loader2 className="entry-spinner" /> : <FileText />}
                 </div>
                 <div className="entry-attachment-body">
                   <div className="entry-attachment-main">
                     <b>{selectedFile.name}</b>
-                    <small>{extracting ? `${extractionProgress}%` : hasDocumentText ? "Ready" : "Needs text"}</small>
+                    <small>{extracting ? `${extractionProgress}%` : hasExtractedText ? "Ready" : pendingSignIn ? "Held" : "Needs text"}</small>
                   </div>
-                  <p>{extracting ? "Preparing this document before send..." : hasDocumentText ? `Readable text extracted from ${extractionLabels[extractionMethod ?? ""] ?? "document"}.` : "Readable document text is required before analysis."}</p>
-                  <div className="entry-file-progress" aria-hidden={!extracting && !hasDocumentText}>
-                    <span style={{ width: `${hasDocumentText ? 100 : extractionProgress}%` }} />
+                  <p>{extracting
+                    ? "Preparing this document before send..."
+                    : hasExtractedText
+                      ? `Readable text extracted from ${extractionLabels[extractionMethod ?? ""] ?? "document"}.`
+                      : pendingSignIn
+                        ? "Still on your device. Sign in and Clariti reads it — nothing was sent."
+                        : "Clariti found no readable text in this file. Paste what it says instead."}</p>
+                  <div className="entry-file-progress" aria-hidden={!extracting && !hasExtractedText}>
+                    <span style={{ width: `${hasExtractedText ? 100 : extractionProgress}%` }} />
                   </div>
                 </div>
                 <button type="button" onClick={clearFile}>Remove</button>
               </div>
+            )}
+
+            {/* Eight error messages across the product tell people to paste the report
+                text, and until now there was nowhere to paste it. This is the exit from
+                every unreadable photo, refused PDF and failed extraction at once. */}
+            {pasteOpen ? (
+              <div className="entry-document-panel">
+                <div className="entry-document-panel-header">
+                  <span>The document text</span>
+                  <small>
+                    {pastedLength === 0
+                      ? `At least ${MIN_DOCUMENT_CHARS} characters`
+                      : pastedLength >= MIN_DOCUMENT_CHARS
+                        ? "Clariti will read this"
+                        : `${MIN_DOCUMENT_CHARS - pastedLength} more characters`}
+                  </small>
+                </div>
+                <textarea
+                  ref={documentTextRef}
+                  className="entry-document-text"
+                  aria-label="The document text"
+                  placeholder="Type or paste what the document says — the lines, the codes, the amounts."
+                  value={pastedText}
+                  onChange={(event) => setPastedText(event.target.value)}
+                />
+              </div>
+            ) : (
+              <button type="button" className="entry-upload-nudge" onClick={openPaste}>
+                <ClipboardPaste />
+                <span>
+                  <b>Paste the text instead</b>
+                  <small>No file to hand, or a photo Clariti cannot read? Give it the words and it works from those.</small>
+                </span>
+              </button>
             )}
 
             <textarea
@@ -422,6 +565,7 @@ function HomeContent() {
             <div className="entry-composer-footer">
               <div className="entry-tools">
                 <button type="button" onClick={chooseFile}><Paperclip /> {selectedFile ? "Replace document" : "Attach document"}</button>
+                <button type="button" onClick={chooseCamera}><Camera /> Take a photo</button>
               </div>
               {sendDisabledReason && <span className="entry-send-hint">{sendDisabledReason}</span>}
               <button type="button" className="clariti-entry-send" aria-label="Send to Clariti" title={sendDisabledReason || "Send to Clariti"} disabled={!canSubmit} onClick={() => void handleSubmit()}>
@@ -456,7 +600,7 @@ function HomeContent() {
           modeDefault={authMode}
           onClose={() => setAuthOpen(false)}
           onAuthenticated={handleAuthenticated}
-          emailConfirmedNotice={searchParams.get("confirmed") === "1"}
+          emailConfirmedNotice={query.confirmed}
           kicker={authIntent === "navigate" ? "SIGN IN TO CONTINUE" : "SAVE YOUR DOCUMENT"}
           title={authIntent === "navigate" ? "Sign in without losing your ask" : undefined}
           copy={authIntent === "navigate" ? "Create or sign in to Clariti. We will keep you on the Ask Clariti flow and open the page you selected after auth." : undefined}
@@ -464,6 +608,37 @@ function HomeContent() {
       )}
     </ClaritiShell>
   );
+}
+
+type LandingQuery = {
+  next: string | null;
+  confirmed: boolean;
+  auth: boolean;
+  mode: string | null;
+};
+
+const noLandingQuery: LandingQuery = { next: null, confirmed: false, auth: false, mode: null };
+
+/**
+ * `useSearchParams` opts its whole Suspense boundary out of server rendering, and that
+ * boundary used to be the page: https://useclariti.app answered with a single
+ * BAILOUT_TO_CLIENT_SIDE_RENDERING template and 139 bytes of body, which is a white
+ * screen on cellular and on every cold start of the App Store build. Reading the query
+ * down here keeps the bailout inside one empty child so the hero, the composer and the
+ * starters ship as HTML.
+ */
+function LandingQueryReader({ onChange }: { onChange: (query: LandingQuery) => void }) {
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next");
+  const confirmed = searchParams.get("confirmed") === "1";
+  const auth = searchParams.get("auth") === "1";
+  const mode = searchParams.get("mode");
+
+  useEffect(() => {
+    onChange({ next, confirmed, auth, mode });
+  }, [auth, confirmed, mode, next, onChange]);
+
+  return null;
 }
 
 function isEmptyOrStarterPrompt(value: string) {

@@ -25,6 +25,13 @@ const ACCEPTED_MIME_TYPES = new Set([
   "image/heif",
 ]);
 
+/**
+ * Pages rendered for vision when a PDF's own text layer is unreadable. Raising this
+ * multiplies the vision cost of every scanned upload, so what is fixed here instead is
+ * the silence: the response reports how much of the document was actually read.
+ */
+const MAX_VISION_PAGES = 4;
+
 export async function POST(request: NextRequest) {
   // This route sends whatever it is given to a vision model. Without a session
   // check it was an open, unauthenticated OCR endpoint that anyone on the
@@ -78,7 +85,7 @@ export async function POST(request: NextRequest) {
         return extracted(text, "pdf");
       } catch {
         const result = await extractPdfText(buffer);
-        return extracted(result.text, result.method);
+        return extracted(result.text, result.method, result.pages);
       }
     }
 
@@ -108,20 +115,34 @@ export async function POST(request: NextRequest) {
 
 type ExtractionMethod = "text" | "pdf" | "pdf_vision" | "image_vision";
 
-function extracted(text: string, extractionMethod: ExtractionMethod) {
+/** How many pages the document has, and how many of them Clariti read. */
+type PageSpan = { total?: number; read?: number };
+
+function extracted(text: string, extractionMethod: ExtractionMethod, pages: PageSpan = {}) {
   const extractedText = text.replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   if (!hasEnoughDocumentSignal(extractedText)) {
     return NextResponse.json({
       ok: false,
-      error: "Clariti could not find enough readable report text. Try a clearer scan, upload an image/PDF with readable text, or paste the report text.",
+      error: "Clariti could not find enough readable text in this document. Try a clearer scan, or use “Paste the text instead” on the home screen.",
     }, { status: 422 });
   }
+
+  // An itemised bill puts the total on the last page, an EOB puts patient responsibility
+  // after the line items, and a discharge summary puts the warning signs at the end — so
+  // a document read only as far as MAX_VISION_PAGES is missing the part it was uploaded
+  // for, and eighty readable characters off page one are enough to pass the check above.
+  // Report the shortfall rather than let a fragment be explained as the whole document.
+  const pageCount = pages.total ?? null;
+  const pagesRead = pages.read ?? null;
 
   return NextResponse.json({
     ok: true,
     extractedText,
     extractionMethod,
     charCount: extractedText.length,
+    pageCount,
+    pagesRead,
+    truncated: pageCount !== null && pagesRead !== null && pagesRead < pageCount,
   });
 }
 
@@ -169,11 +190,23 @@ async function extractPdfText(buffer: Buffer) {
   const parser = new PDFParse({ data: buffer });
   try {
     const parsed = await parser.getText();
-    if (hasEnoughDocumentSignal(parsed.text)) return { text: parsed.text, method: "pdf" as const };
+    const total = parsed.total;
+
+    // getText reads every page, so this path loses nothing.
+    // A different question from the 422 refusal below, and it needs a stricter
+    // answer. There, the choice is "is this readable at all"; here it is "is this
+    // text layer good enough to skip vision OCR". A scanned bill often carries a
+    // thin layer of header furniture — a few dozen words of letterhead — which
+    // clears the structural floor while the actual charges live only in the
+    // pixels. Falling through to the screenshots costs a model call; not falling
+    // through costs the document.
+    if (hasEnoughDocumentSignal(parsed.text) && hasUsableTextLayer(parsed.text, total)) {
+      return { text: parsed.text, method: "pdf" as const, pages: { total, read: total } };
+    }
 
     const screenshots = await parser.getScreenshot({
       desiredWidth: 1400,
-      first: Math.min(parsed.total ?? 4, 4),
+      first: Math.min(total ?? MAX_VISION_PAGES, MAX_VISION_PAGES),
     });
     const pages = screenshots.pages
       .filter((page) => page.data?.length)
@@ -183,8 +216,12 @@ async function extractPdfText(buffer: Buffer) {
         pageNumber: page.pageNumber,
       }));
 
-    if (!pages.length) return { text: parsed.text, method: "pdf" as const };
-    return { text: await extractWithVisionImages(pages, "rendered PDF pages"), method: "pdf_vision" as const };
+    if (!pages.length) return { text: parsed.text, method: "pdf" as const, pages: { total, read: total } };
+    return {
+      text: await extractWithVisionImages(pages, "rendered PDF pages"),
+      method: "pdf_vision" as const,
+      pages: { total, read: pages.length },
+    };
   } finally {
     await parser.destroy();
   }
@@ -193,12 +230,12 @@ async function extractPdfText(buffer: Buffer) {
 function friendlyExtractionError(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   if (/Provider file upload is not configured|AI Gateway|Anthropic/i.test(message)) {
-    return "Clariti could not read this PDF/image because document vision is not configured in production. Try a text-based PDF, a .txt file, or paste the report text.";
+    return "Clariti could not read this PDF/image because document vision is not configured in production. Try a text-based PDF, a .txt file, or use “Paste the text instead” on the home screen.";
   }
   if (/timeout|aborted|duration|exceeded/i.test(message)) {
-    return "Document reading took too long. Try a smaller or clearer PDF/image, or paste the report text.";
+    return "Document reading took too long. Try a smaller or clearer PDF/image, or use “Paste the text instead” on the home screen.";
   }
-  return "Clariti could not extract readable text from this document. Try a clearer PDF/image, a text-based PDF, or paste the report text.";
+  return "Clariti could not extract readable text from this document. Try a clearer PDF/image, a text-based PDF, or use “Paste the text instead” on the home screen.";
 }
 
 async function extractWithVisionImages(
@@ -245,6 +282,17 @@ async function extractWithVisionImages(
   return result.text;
 }
 
+/**
+ * Whether a PDF's own text layer is worth trusting over rendering the pages and
+ * reading them. Density per page is the signal: a real text layer carries
+ * hundreds of characters a page, a scan's carries a letterhead.
+ */
+function hasUsableTextLayer(text: string, totalPages: number | null | undefined) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const pages = Math.max(1, totalPages ?? 1);
+  return normalized.length / pages >= 200;
+}
+
 function hasEnoughDocumentSignal(text: string) {
   const normalized = text
     .replace(/--\s*\d+\s*of\s*\d+\s*--/gi, " ")
@@ -253,10 +301,15 @@ function hasEnoughDocumentSignal(text: string) {
     .replace(/\s+/g, " ")
     .trim();
 
+  // Structural checks only. This used to end in a regex of English section keywords, so a
+  // cleanly extracted Spanish factura ("paciente", "importe", "reclamacion") matched none
+  // of them and was refused as a bad scan — in 175 territories, telling people to rephotograph
+  // a document that was read perfectly well. Length and word count are what actually separate
+  // extracted text from a blank page.
   if (normalized.length < 80) return false;
   if (normalized.split(/\s+/).filter((word) => /[a-z]{3,}/i.test(word)).length < 12) return false;
 
-  return /findings|impression|conclusion|procedure|exam|study|patient|provider|amount|charges|claim|diagnosis|technique|comparison|indications/i.test(normalized);
+  return true;
 }
 
 function inferMimeType(fileName: string) {

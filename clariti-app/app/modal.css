@@ -92,12 +92,6 @@
   color: #91a09b;
 }
 
-.prototype-option-list button:focus-visible,
-.sheet-close:focus-visible {
-  outline: 3px solid rgba(77, 141, 131, 0.22);
-  outline-offset: 2px;
-}
-
 .prototype-option-list button > svg {
   background: #eaf4f1;
   border-radius: 14px;
@@ -154,9 +148,12 @@
   width: 100%;
 }
 
+/* The 14%-alpha halo this drew sat at about 1.05:1 against the sheet behind
+   it, so the field looked identical focused and unfocused. Solid accent-dark
+   clears 3:1 as a non-text indicator. */
 .sheet-field input:focus {
-  border-color: #9fc5bc;
-  box-shadow: 0 0 0 3px rgba(77, 141, 131, 0.14);
+  border-color: var(--accent-dark);
+  box-shadow: 0 0 0 2px var(--accent-dark);
 }
 
 .source-document-preview {

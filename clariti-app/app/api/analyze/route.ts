@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { analyzeClaritiDocument, claritiAnalysisSchema, claritiDocumentKindSchema } from "@/lib/ai/clariti-analysis";
+import { analyzeClaritiDocument, claritiAnalysisSchema, claritiDocumentKindSchema, type ClaritiAnalysis } from "@/lib/ai/clariti-analysis";
+import { reportError } from "@/lib/observability/report-error";
 import { enforceFreeLimit, ensureClaritiProfile, FREE_DOCUMENT_LIMIT } from "@/lib/billing/subscription";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 import { inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
@@ -20,6 +21,8 @@ const requestSchema = z.object({
   previousSessionId: z.string().uuid().optional(),
   /** Skip the LLM and only persist a client-provided analysis (e.g. after timeout fallback). */
   persistOnly: z.boolean().optional(),
+  /** Send with `persistOnly` when the supplied analysis is the client's own fallback, so it is stored as degraded and never reused. */
+  degraded: z.boolean().optional(),
   /** Bypass reuse of an existing document analysis (explicit re-run). */
   force: z.boolean().optional(),
   analysis: claritiAnalysisSchema.optional(),
@@ -54,29 +57,49 @@ export async function POST(request: NextRequest) {
       kind: inferClaritiKind(parsed.data),
     };
 
+    const existing = resolvedRequest.documentId && !resolvedRequest.persistOnly
+      ? await findExistingAnalysisForDocument(user.id, resolvedRequest.documentId)
+      : null;
+
     // Reuse an existing analysis for this document so reloads / double-submits
-    // do not re-run the LLM or create duplicate sessions.
-    if (user && resolvedRequest.documentId && !resolvedRequest.persistOnly && !resolvedRequest.force) {
-      const existing = await findExistingAnalysisForDocument(user.id, resolvedRequest.documentId);
-      if (existing) {
-        return NextResponse.json({ ok: true, analysis: existing.analysis, persisted: existing.persisted, reused: true });
-      }
+    // do not re-run the LLM or create duplicate sessions. A degraded one is never
+    // reused: it is the fallback text, not a reading of the document, so the next
+    // load has to be allowed to replace it with a real answer.
+    if (existing && !existing.degraded && !resolvedRequest.force) {
+      return NextResponse.json({ ok: true, analysis: existing.analysis, persisted: existing.persisted, degraded: false, reused: true });
     }
 
     const supabase = await getSupabaseSessionClient();
     await ensureClaritiProfile(supabase, user.id, (user.user_metadata?.display_name as string | undefined) ?? null);
-    if (!resolvedRequest.persistOnly) {
+    // The free tier counts documents, and a document that already has an analysis
+    // has already been counted. Charging again for the retry would sell the upgrade
+    // to the one person whose first pass failed.
+    if (!resolvedRequest.persistOnly && !existing) {
       const limitResponse = await enforceFreeLimit(supabase, user.id, "documents", FREE_DOCUMENT_LIMIT);
       if (limitResponse) return limitResponse;
     }
 
-    const analysis = parsed.data.persistOnly && parsed.data.analysis
-      ? parsed.data.analysis
-      : await analyzeClaritiDocument(resolvedRequest);
+    const { analysis, degraded } = parsed.data.persistOnly && parsed.data.analysis
+      // A persistOnly body carries an analysis this route did not produce, so it is
+      // only as trustworthy as the caller says it is.
+      ? { analysis: parsed.data.analysis, degraded: parsed.data.degraded === true }
+      : await analyzeClaritiDocument(resolvedRequest).then((result) => {
+          // Reported from the route rather than from the analysis module: that
+          // module is imported by client components for its schema, and the
+          // reporter reaches for next/server.
+          if (result.degraded && result.failure) {
+            reportError("ai/clariti-analysis", result.failure.message || result.failure.name, {
+              errorName: result.failure.name,
+              kind: resolvedRequest.kind,
+              documentChars: resolvedRequest.documentText.length,
+            });
+          }
+          return result;
+        });
 
-    const persisted = await persistAnalysis({ ...resolvedRequest, ownerId: user.id, analysis });
+    const persisted = await persistAnalysis({ ...resolvedRequest, ownerId: user.id, analysis, degraded });
 
-    return NextResponse.json({ ok: true, analysis, persisted });
+    return NextResponse.json({ ok: true, analysis, persisted, degraded });
   } catch (error) {
     // The message can carry provider text that echoes the document, and the
     // document is somebody's medical record. It stays in the log.
@@ -133,6 +156,9 @@ async function findExistingAnalysisForDocument(ownerId: string, documentId: stri
 
     return {
       analysis: parsedAnalysis.data,
+      // The flag rides inside the payload jsonb because clariti_artifacts has no
+      // column for it; claritiAnalysisSchema strips it back off the analysis.
+      degraded: (artifact.payload as { degraded?: unknown }).degraded === true,
       persisted: { document, session, artifact },
     };
   }
@@ -149,12 +175,17 @@ async function persistAnalysis({
   documentId,
   previousSessionId,
   analysis,
+  degraded,
 }: z.infer<typeof requestSchema> & {
   ownerId: string;
-  analysis: Awaited<ReturnType<typeof analyzeClaritiDocument>>;
+  analysis: ClaritiAnalysis;
+  degraded: boolean;
 }) {
   const supabase = await getSupabaseSessionClient();
   const resolvedFileName = fileName ?? `${kind.replaceAll("_", "-")}.txt`;
+  // Stored with the analysis rather than beside it, so a later read can tell a
+  // real pass from the fallback without a new column.
+  const payload = { ...analysis, degraded };
 
   // Prefer updating an existing session for this document (especially persistOnly / retries).
   if (documentId) {
@@ -188,7 +219,7 @@ async function persistAnalysis({
             kind: getClaritiKindMeta(analysis.kind).artifactKind,
             title: analysis.title,
             summary: analysis.summary,
-            payload: analysis,
+            payload,
           })
           .eq("id", existing.persisted.artifact.id)
           .select("id, kind, title, created_at")
@@ -204,7 +235,7 @@ async function persistAnalysis({
           kind: getClaritiKindMeta(analysis.kind).artifactKind,
           title: analysis.title,
           summary: analysis.summary,
-          payload: analysis,
+          payload,
         })
         .select("id, kind, title, created_at")
         .single();
@@ -276,7 +307,7 @@ async function persistAnalysis({
     supabase.from("clariti_session_documents").insert({ session_id: sessionId, document_id: savedDocumentId }),
     supabase.from("clariti_messages").insert([
       { session_id: sessionId, role: "user", content: question, created_at: userMessageCreatedAt.toISOString() },
-      { session_id: sessionId, role: "assistant", content: buildInitialAnalysisReply(analysis), created_at: assistantMessageCreatedAt.toISOString() },
+      { session_id: sessionId, role: "assistant", content: buildInitialAnalysisReply(analysis, degraded), created_at: assistantMessageCreatedAt.toISOString() },
     ]),
     supabase
       .from("clariti_artifacts")
@@ -285,7 +316,7 @@ async function persistAnalysis({
         kind: getClaritiKindMeta(analysis.kind).artifactKind,
         title: analysis.title,
         summary: analysis.summary,
-        payload: analysis,
+        payload,
       })
       .select("id, kind, title, created_at")
       .single(),
@@ -297,8 +328,14 @@ async function persistAnalysis({
   return { document, session, artifact };
 }
 
-function buildInitialAnalysisReply(analysis: Awaited<ReturnType<typeof analyzeClaritiDocument>>) {
+function buildInitialAnalysisReply(analysis: ClaritiAnalysis, degraded: boolean) {
   const source = analysis.keyPoints[0]?.sourceAnchor ?? analysis.sourceAnchors[0] ?? "your document";
   const nextAction = analysis.nextActions[0] ?? "talk this through with the right person";
+
+  // This line is saved to the chat and is the first thing the person reads, so a
+  // pass that never happened has to say so here too — not only in the panel.
+  if (degraded) {
+    return `I could not finish reading this document, so the panel on the right only shows the parts I could pick out of the text itself — please treat it as unfinished rather than an explanation. Opening this document again will try once more. In the meantime: ${nextAction}.`;
+  }
   return `${analysis.summary}\n\nI put the main points in the panel on the right — written in plain language. A good next step: ${nextAction}. Source: ${source}.`;
 }

@@ -5,6 +5,7 @@ import NextImage from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  AlertTriangle,
   ArrowLeft,
   Bell,
   CheckCircle2,
@@ -40,7 +41,12 @@ import { claritiAnalysisSchema, type ClaritiAnalysis, type ClaritiAnalysisKind }
 import { FLUX_MAX_CLIP_SECONDS, formatHumanVideoError } from "@/lib/ai/clariti-video";
 import { getClaritiKindMeta, inferKindFromTitleText, isClaritiAnalysisKind } from "@/lib/domain/clariti-document-kinds";
 import type { ProgressionComparison } from "@/lib/domain/clariti-progression";
-import { trendToSeverityToken } from "@/lib/domain/clariti-severity";
+import {
+  flagSeverityToToken,
+  trendToSeverityToken,
+  type ClaritiFlagSeverity,
+  type ClaritiSeverityToken,
+} from "@/lib/domain/clariti-severity";
 // Event names and non-clinical params only. The document kind is a health category, and
 // sending it to GA against an identifiable visitor makes it Art. 9 special-category data,
 // which needs explicit consent for that purpose — the cookie banner's generic Accept is
@@ -82,7 +88,8 @@ type GeneratedIllustration = {
 type ChatTimelineItem =
   | { type: "message"; id: string; sortAt: number; message: ChatMessage; messageIndex: number }
   | { type: "video"; id: string; sortAt: number; video: GeneratedVideo }
-  | { type: "comparison"; id: string; sortAt: number; comparison: ProgressionComparison };
+  | { type: "comparison"; id: string; sortAt: number; comparison: ProgressionComparison }
+  | { type: "upgrade"; id: string; sortAt: number; message: string };
 type FollowUpDraft = {
   action: string;
   email?: string;
@@ -107,6 +114,8 @@ type ClaritiRequest = {
   createdAt?: number;
   status?: "pending" | "analyzing" | "done";
   analysis?: ClaritiAnalysis;
+  /** Whether the saved analysis was the regex fallback rather than a model answer. */
+  degraded?: boolean;
   persisted?: unknown;
 };
 type WorkspaceSession = {
@@ -162,6 +171,10 @@ type DbWorkspaceSession = {
   }>;
 };
 
+/** Said before a locally built analysis so the first thing read is not a confident one. */
+const DEGRADED_ANALYSIS_NOTE =
+  "I could not finish the full explanation of this document. What follows is only wording Clariti could pick out of the text itself, so please read it as a rough index rather than an explanation.";
+
 const STORAGE_KEY = "clariti-active-request";
 const BOOT_LOCK_KEY = "clariti-boot-lock";
 const ACTIVE_SESSION_KEY = "clariti-active-session-id";
@@ -203,6 +216,12 @@ function WorkspaceContent() {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [activeAnalysis, setActiveAnalysis] = useState<ClaritiAnalysis | null>(null);
+  // True when the analysis on screen is the regex fallback rather than a model answer —
+  // either because /api/analyze substituted one, or because this page built one itself.
+  const [degradedAnalysis, setDegradedAnalysis] = useState(false);
+  const [paywalled, setPaywalled] = useState(false);
+  const [retryingAnalysis, setRetryingAnalysis] = useState(false);
+  const [upgradePrompt, setUpgradePrompt] = useState<{ id: string; createdAt: number; message: string } | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [followUpText, setFollowUpText] = useState("");
   const [sendingFollowUp, setSendingFollowUp] = useState(false);
@@ -238,6 +257,7 @@ function WorkspaceContent() {
     previewUrl: string | null;
   } | null>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
+  const chatCameraInputRef = useRef<HTMLInputElement>(null);
   const composerInputRef = useRef<HTMLInputElement>(null);
   const pendingAttachmentUrlRef = useRef<string | null>(null);
   const activeRequestRef = useRef<ClaritiRequest | null>(null);
@@ -265,15 +285,24 @@ function WorkspaceContent() {
     () => groupSidebarSessions(sidebarSessions, activeSidebarId),
     [sidebarSessions, activeSidebarId],
   );
-  const analysis = useMemo(() => {
-    if (activeAnalysis) return activeAnalysis;
-    if (!activeRequest || loading || booting) return null;
+  // The same regex fallback /api/analyze substitutes when the model call fails, built here
+  // for the request that never reached it. It is marked degraded through the same flag, so
+  // there is one honest state instead of two that both look finished.
+  const localFallbackAnalysis = useMemo(() => {
+    if (activeAnalysis || !activeRequest || loading || booting) return null;
+    // A Plus refusal is not a failed analysis. Without this the 402 branch leaves
+    // `loading` false with no analysis, the regex fallback fills the gap, and the
+    // person is told Clariti could not read their document when in fact it simply
+    // has not been asked to yet.
+    if (paywalled) return null;
     return buildFallbackAnalysis({
       kind: activeRequest.kind,
       question: activeRequest.question,
       documentText: activeRequest.documentText,
     });
-  }, [activeAnalysis, activeRequest, booting, loading]);
+  }, [activeAnalysis, activeRequest, booting, loading, paywalled]);
+  const analysis = activeAnalysis ?? localFallbackAnalysis;
+  const analysisDegraded = Boolean(analysis) && (degradedAnalysis || Boolean(localFallbackAnalysis));
   const artifact = useMemo(() => analysis ? toArtifactMeta(analysis) : null, [analysis]);
   const analysisPending = loading && !activeAnalysis;
   const chatTimeline = useMemo<ChatTimelineItem[]>(() => {
@@ -292,6 +321,9 @@ function WorkspaceContent() {
         video: generatedVideo,
       }]
       : [];
+    const upgradeItems = upgradePrompt
+      ? [{ type: "upgrade" as const, id: upgradePrompt.id, sortAt: upgradePrompt.createdAt, message: upgradePrompt.message }]
+      : [];
     const latestMessageAt = messageItems.reduce((max, item) => Math.max(max, item.sortAt), 0);
     const comparisonItems = comparisonCards.map((card, index) => ({
       type: "comparison" as const,
@@ -300,13 +332,13 @@ function WorkspaceContent() {
       sortAt: Math.max(card.createdAt, latestMessageAt + 1 + index),
       comparison: card.comparison,
     }));
-    return [...messageItems, ...videoItems, ...comparisonItems].sort((a, b) => {
+    return [...messageItems, ...videoItems, ...comparisonItems, ...upgradeItems].sort((a, b) => {
       if (a.sortAt !== b.sortAt) return a.sortAt - b.sortAt;
-      // Stable preference: messages → videos → comparison cards
-      const rank = { message: 0, video: 1, comparison: 2 } as const;
+      // Stable preference: messages → videos → comparison cards → upgrade offer
+      const rank = { message: 0, video: 1, comparison: 2, upgrade: 3 } as const;
       return rank[a.type] - rank[b.type];
     });
-  }, [chatMessages, comparisonCards, generatedVideo]);
+  }, [chatMessages, comparisonCards, generatedVideo, upgradePrompt]);
 
   useEffect(() => {
     activeRequestRef.current = activeRequest;
@@ -332,6 +364,7 @@ function WorkspaceContent() {
     }
     setPendingAttachment(null);
     if (chatFileInputRef.current) chatFileInputRef.current.value = "";
+    if (chatCameraInputRef.current) chatCameraInputRef.current.value = "";
   }, []);
 
   const stageChatAttachment = useCallback((file: File) => {
@@ -344,6 +377,7 @@ function WorkspaceContent() {
     pendingAttachmentUrlRef.current = previewUrl;
     setPendingAttachment({ file, name: file.name, previewUrl });
     if (chatFileInputRef.current) chatFileInputRef.current.value = "";
+    if (chatCameraInputRef.current) chatCameraInputRef.current.value = "";
   }, []);
 
   const injectComposerPrompt = useCallback((prompt: string) => {
@@ -380,11 +414,17 @@ function WorkspaceContent() {
     toastTimerRef.current = setTimeout(() => setToast(null), 2800);
   }, []);
 
-  const redirectToUpgrade = useCallback((message?: string) => {
-    showToast(message ?? "That is a Clariti Plus feature.");
+  // Someone who has just typed a day and a time for a check-in should not be thrown onto a
+  // price list with the answer they typed discarded. The offer arrives as a bubble in the
+  // thread instead, and the funnel keeps counting the same event it always did.
+  const offerPlusUpgrade = useCallback((message?: string) => {
     track("plus_upgrade_redirect", { source: "workspace" });
-    window.setTimeout(() => router.push("/billing"), 900);
-  }, [router, showToast]);
+    setUpgradePrompt({
+      id: createLocalId("plus-offer"),
+      createdAt: createLocalTimestamp(),
+      message: message?.trim() || "That is a Clariti Plus feature.",
+    });
+  }, []);
 
   // Someone who withdrew consent in Settings gets the gate again rather than the
   // refusal token. The sessionId lands in the URL through replaceState, so the
@@ -519,7 +559,8 @@ function WorkspaceContent() {
       if (response.status === 402 && isPlusRequiredPayload(payload)) {
         setPendingSessions((current) => current.filter((item) => item.id !== pendingKey));
         if (stillCurrentRequest(activeRequestRef.current)) {
-          redirectToUpgrade(payload.message);
+          offerPlusUpgrade(payload.message);
+          setPaywalled(true);
           setLoading(false);
         }
         return;
@@ -540,6 +581,7 @@ function WorkspaceContent() {
         return;
       }
       setActiveAnalysis(analysis);
+      setDegradedAnalysis(Boolean(payload.degraded));
       setActiveRequest((current) => current ? { ...current, analysis, persisted: payload.persisted, status: "done" } : current);
       clearStoredRequest();
       if (savedSessionId) {
@@ -557,7 +599,11 @@ function WorkspaceContent() {
       setChatMessages((current) => current.some((message) => message.role === "assistant")
         ? current
         : [...current, { id: createLocalId("analysis-assistant"), role: "assistant", content: buildInitialAnalysisReply(analysis), createdAt: createLocalTimestamp() }]);
-      showToast(payload.reused ? "Clariti restored your existing analysis." : "Clariti generated a source-grounded analysis.");
+      showToast(payload.degraded
+        ? "Clariti could not finish the full explanation — see the note on the analysis."
+        : payload.reused
+          ? "Clariti restored your existing analysis."
+          : "Clariti generated a source-grounded analysis.");
     } catch {
       const fallbackAnalysis = buildFallbackAnalysis({ ...request, documentText: request.documentText });
       // Persist the fallback so video/illustration can attach to a real session.
@@ -571,6 +617,11 @@ function WorkspaceContent() {
             documentText: request.documentText,
             persistOnly: true,
             analysis: fallbackAnalysis,
+            // This is the client's own regex fallback, not a model answer. Without
+            // this flag the route stores it as genuine and then serves it from the
+            // reuse cache for ever — which is the exact failure the degraded band
+            // exists to make visible.
+            degraded: true,
           }),
         });
         const persistPayload = await persistResponse.json().catch(() => null);
@@ -586,6 +637,7 @@ function WorkspaceContent() {
         return;
       }
       setActiveAnalysis(fallbackAnalysis);
+      setDegradedAnalysis(true);
       setActiveRequest((current) => current ? { ...current, analysis: fallbackAnalysis, status: "done" } : current);
       if (persistedSessionId) {
         clearStoredRequest();
@@ -604,15 +656,75 @@ function WorkspaceContent() {
       }
       setChatMessages((current) => current.some((message) => message.role === "assistant")
         ? current
-        : [...current, { id: createLocalId("fallback-assistant"), role: "assistant", content: buildInitialAnalysisReply(fallbackAnalysis), createdAt: createLocalTimestamp() }]);
-      showToast(persistedSessionId
-        ? "Clariti saved a quick local analysis while the full AI pass finishes."
-        : "Using a quick local analysis for now — try again if you need the full AI pass.");
+        : [...current, {
+          id: createLocalId("fallback-assistant"),
+          role: "assistant",
+          content: `${DEGRADED_ANALYSIS_NOTE}\n\n${buildInitialAnalysisReply(fallbackAnalysis)}`,
+          createdAt: createLocalTimestamp(),
+        }]);
+      // No toast here: it used to say the full AI pass was still finishing, and nothing was
+      // running. The band on the analysis is the durable, honest version of that message.
     } finally {
       if (analyzeInFlightRef.current === fingerprint) analyzeInFlightRef.current = null;
       if (stillCurrentRequest(activeRequestRef.current)) setLoading(false);
     }
-  }, [redirectToUpgrade, showToast]);
+  }, [offerPlusUpgrade, showToast]);
+
+  // force: true so the re-run cannot be answered out of the reuse cache — a degraded
+  // analysis is exactly the one nobody should be handed a second time.
+  const retryAnalysis = useCallback(async () => {
+    const request = activeRequestRef.current;
+    if (!request || retryingAnalysis) return;
+    setRetryingAnalysis(true);
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind: request.kind,
+          question: request.question,
+          documentText: request.documentText,
+          fileName: request.fileName,
+          documentId: request.documentId,
+          force: true,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (response.status === 402 && isPlusRequiredPayload(payload)) {
+        offerPlusUpgrade(payload.message);
+        return;
+      }
+      if (response.status === 403 && isConsentRequiredPayload(payload)) {
+        redirectToConsent();
+        return;
+      }
+      if (!response.ok || !payload?.ok || !payload.analysis) {
+        showToast("Clariti still could not produce the full explanation. Please try again in a moment.");
+        return;
+      }
+      const nextAnalysis = payload.analysis as ClaritiAnalysis;
+      const savedSessionId = payload.persisted?.session?.id as string | undefined;
+      setActiveAnalysis(nextAnalysis);
+      setDegradedAnalysis(Boolean(payload.degraded));
+      setActiveRequest((current) => current
+        ? { ...current, analysis: nextAnalysis, persisted: payload.persisted, status: "done" }
+        : current);
+      if (savedSessionId) {
+        clearStoredRequest();
+        dbSessionIdRef.current = savedSessionId;
+        setDbSessionId(savedSessionId);
+        bootHandledRef.current = `session:${savedSessionId}`;
+        window.history.replaceState(null, "", `/workspace?sessionId=${savedSessionId}`);
+      }
+      showToast(payload.degraded
+        ? "Clariti still could not produce the full explanation."
+        : "Clariti finished the full explanation.");
+    } catch {
+      showToast("Clariti could not reach the analysis service. Check your connection and try again.");
+    } finally {
+      setRetryingAnalysis(false);
+    }
+  }, [offerPlusUpgrade, redirectToConsent, retryingAnalysis, showToast]);
 
   useEffect(() => {
     let alive = true;
@@ -629,6 +741,11 @@ function WorkspaceContent() {
       setChatMessages(messagesFromDbSession(sessionPayload));
       void hydrateGeneratedVideo(sessionPayload.id);
       setActiveAnalysis(dbRequest.analysis ?? null);
+      setDegradedAnalysis(dbRequest.degraded === true);
+      // A stale upgrade bubble belongs to the conversation it fired in, not to
+      // whichever one is opened next.
+      setUpgradePrompt(null);
+      setPaywalled(false);
       setLoading(false);
       try {
         window.sessionStorage.setItem(ACTIVE_SESSION_KEY, sessionPayload.id);
@@ -756,6 +873,7 @@ function WorkspaceContent() {
           if (pendingRequest.analysis) {
             if (alive) {
               setActiveAnalysis(pendingRequest.analysis);
+              setDegradedAnalysis(false);
               setLoading(false);
             }
             const existingSessionId = getPersistedSessionId(pendingRequest) ?? lockedSessionId;
@@ -798,6 +916,7 @@ function WorkspaceContent() {
 
           if (alive) {
             setActiveAnalysis(null);
+            setDegradedAnalysis(false);
             setLoading(true);
             void analyzeRequest({ ...pendingRequest, status: "analyzing" });
           }
@@ -823,11 +942,13 @@ function WorkspaceContent() {
           setCanvasTab("summary");
           setChatMessages(messagesFromRequest(pendingRequest));
           setActiveAnalysis(pendingRequest.analysis ?? null);
+          setDegradedAnalysis(false);
           setLoading(false);
           bootHandledRef.current = fingerprint ? `pending:${fingerprint}` : "empty";
         } else if (alive) {
           setActiveRequest(null);
           setActiveAnalysis(null);
+          setDegradedAnalysis(false);
           setChatMessages([]);
           setDbSessionId(null);
           dbSessionIdRef.current = null;
@@ -866,6 +987,9 @@ function WorkspaceContent() {
       setActiveRequest(item.request);
       setActive(item.kind);
       setActiveAnalysis(item.request.analysis ?? null);
+      setDegradedAnalysis(item.request.degraded === true);
+      setUpgradePrompt(null);
+      setPaywalled(false);
       setChatMessages(messagesFromRequest(item.request));
       resetVideoState();
       setLoading(!item.request.analysis);
@@ -978,7 +1102,7 @@ function WorkspaceContent() {
         redirectToConsent();
       } else if (error instanceof Error && "plusRequired" in error) {
         setCanvasOpen(false);
-        redirectToUpgrade(error.message);
+        offerPlusUpgrade(error.message);
       } else {
         const message = formatHumanVideoError(error);
         setVideoError(message);
@@ -1068,7 +1192,7 @@ function WorkspaceContent() {
       const payload = await response.json();
       if (response.status === 402 && isPlusRequiredPayload(payload)) {
         setChatMessages((current) => current.filter((message) => message.id !== userMessage.id));
-        redirectToUpgrade(payload.message);
+        offerPlusUpgrade(payload.message);
         return;
       }
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not send message");
@@ -1246,7 +1370,7 @@ function WorkspaceContent() {
       });
       const analyzePayload = await analyzeResponse.json().catch(() => null);
       if (analyzeResponse.status === 402 && isPlusRequiredPayload(analyzePayload)) {
-        redirectToUpgrade(analyzePayload.message);
+        offerPlusUpgrade(analyzePayload.message);
         return;
       }
       if (!analyzeResponse.ok || !analyzePayload?.ok || !analyzePayload.analysis) {
@@ -1271,6 +1395,7 @@ function WorkspaceContent() {
       activeRequestRef.current = nextRequest;
       setActiveRequest(nextRequest);
       setActiveAnalysis(nextAnalysis);
+      setDegradedAnalysis(Boolean(analyzePayload.degraded));
       setActive(nextAnalysis.kind);
       resetVideoState();
       setComparisonCards([]);
@@ -1303,7 +1428,7 @@ function WorkspaceContent() {
         });
         const comparePayload = await compareResponse.json().catch(() => null);
         if (compareResponse.status === 402 && isPlusRequiredPayload(comparePayload)) {
-          redirectToUpgrade(comparePayload.message);
+          offerPlusUpgrade(comparePayload.message);
         } else if (compareResponse.ok && comparePayload?.ok && comparePayload.comparison) {
           comparison = comparePayload.comparison as ProgressionComparison;
           track("compare_documents", { trend: comparison.trend });
@@ -1508,7 +1633,7 @@ function WorkspaceContent() {
       // SyntaxError that the catch below would have printed into the chat.
       const payload = await response.json().catch(() => null);
       if (response.status === 402 && isPlusRequiredPayload(payload)) {
-        redirectToUpgrade(payload.message);
+        offerPlusUpgrade(payload.message);
         return "none";
       }
       if (!response.ok || !payload?.ok) {
@@ -1671,6 +1796,9 @@ function WorkspaceContent() {
             if (item.type === "comparison") {
               return <ProgressionComparisonCard key={item.id} comparison={item.comparison} />;
             }
+            if (item.type === "upgrade") {
+              return <PlusUpgradeBubble key={item.id} message={item.message} />;
+            }
             return analysis ? <GeneratedVideoResponse key={item.id} video={item.video} analysis={analysis} /> : null;
           }) : (
             <div className="clariti-ai-message">
@@ -1704,6 +1832,10 @@ function WorkspaceContent() {
                 <span className="clariti-thinking-dots" aria-hidden="true"><i /><i /><i /></span>
               </div>
             </article>
+          )}
+
+          {!analysisPending && analysis && analysisDegraded && (
+            <DegradedAnalysisBand onRetry={() => void retryAnalysis()} retrying={retryingAnalysis} />
           )}
 
           {!analysisPending && analysis && artifact && (
@@ -1746,6 +1878,13 @@ function WorkspaceContent() {
               >
                 Add follow-up report
               </button>
+              <button
+                type="button"
+                disabled={replacingDocument}
+                onClick={() => chatCameraInputRef.current?.click()}
+              >
+                Photograph a report
+              </button>
             </div>
           </section>
         )}
@@ -1776,6 +1915,20 @@ function WorkspaceContent() {
             ref={chatFileInputRef}
             type="file"
             accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.doc,.docx,application/pdf,image/*,text/plain"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) stageChatAttachment(file);
+            }}
+          />
+          {/* Separate from the input above on purpose: capture="environment" opens the camera
+              straight away, which is what a paper letter needs, and would take the file picker
+              away from the PDF that arrived by email. */}
+          <input
+            ref={chatCameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
             hidden
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -1831,6 +1984,9 @@ function WorkspaceContent() {
               <button className={canvasTab === "detail" ? "active" : ""} onClick={() => setCanvasTab("detail")}>{getClaritiKindMeta(active).detailTab}</button>
               <button className={canvasTab === "actions" ? "active" : ""} onClick={() => setCanvasTab("actions")}>Next steps</button>
             </div>
+            {analysisDegraded && (
+              <DegradedAnalysisBand onRetry={() => void retryAnalysis()} retrying={retryingAnalysis} />
+            )}
             <AnalysisCanvas analysis={analysis} tab={canvasTab} videoScene={videoScene} generatedVideoUrl={generatedVideo?.url ?? null} generatedIllustration={generatedIllustrations[videoScene] ?? null} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} videoGenerating={videoGenerating} videoStatus={videoStatus} videoProgress={videoProgress} videoPipeline={videoPipeline} videoSegments={videoSegments} videoSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={setVideoScene} onGenerateVideo={generateHumanVideo} onGenerateIllustration={generateIllustration} onOpenIllustration={setExpandedIllustration} onCreateQuestionList={createQuestionList} onOpenSource={() => openSheet("source")} />
             <section className="canvas-continuity">
               <div><p className="canvas-kicker">CONTINUE WITH CLARITI</p><h3>Don’t stop at understanding.</h3><p>Schedule an email check-in so Clariti can ask if anything changed.</p></div>
@@ -1943,6 +2099,7 @@ function AnalysisCanvas({
   const concernMetric = analysis.metrics[1] ?? analysis.metrics[0];
   const meta = getClaritiKindMeta(analysis.kind);
   const family = meta.uiFamily;
+  const heroToken = worstFlagSeverityToken(analysis.flags);
 
   return (
     <div className={`canvas-content canvas-family-${family}`}>
@@ -1954,7 +2111,7 @@ function AnalysisCanvas({
               <h3>{analysis.summary}</h3>
               <p>{analysis.plainEnglish}</p>
             </div>
-            <span className="risk-pill sev-positive">{concernMetric?.value ?? "Review"}</span>
+            <span className={`risk-pill sev-${heroToken}`}>{concernMetric?.value ?? "Review"}</span>
           </section>
           <section className="impression-stats">
             <div><strong>{analysis.keyPoints.length}</strong><span>Key points</span></div>
@@ -2016,6 +2173,67 @@ function AnalysisCanvas({
       )}
       {analysis.flags.map((flag) => <FlagCard flag={flag} key={flag.label} />)}
     </div>
+  );
+}
+
+/**
+ * The pill on the clinical hero used to be a hardcoded sev-positive — a green all-clear
+ * printed over every radiology and pathology report, including ones carrying urgent
+ * flags. It follows the flags now, and with no flags to read it stays neutral rather
+ * than reassuring.
+ */
+function worstFlagSeverityToken(flags: ClaritiAnalysis["flags"]): ClaritiSeverityToken {
+  const rank: Record<ClaritiFlagSeverity, number> = { info: 0, check: 1, urgent: 2 };
+  const worst = flags.reduce<ClaritiFlagSeverity | null>(
+    (current, flag) => (current === null || rank[flag.severity] > rank[current] ? flag.severity : current),
+    null,
+  );
+  return worst ? flagSeverityToToken(worst) : "neutral";
+}
+
+/**
+ * Shown whenever the analysis on screen came from the regex fallback instead of the
+ * model. It has no dismiss control on purpose: there is no state in which this document
+ * has been explained, so there is no state in which the band should be gone.
+ */
+function DegradedAnalysisBand({ onRetry, retrying }: { onRetry: () => void; retrying: boolean }) {
+  return (
+    <section className="canvas-card flag-card sev-check" role="status" style={{ margin: "14px 0" }}>
+      <div className="card-title">
+        <AlertTriangle />
+        <h3>Clariti could not finish this explanation</h3>
+      </div>
+      <p>
+        The AI pass did not complete, so everything here was assembled from the document&rsquo;s own
+        wording by pattern-matching alone. It can miss findings, misread numbers and say nothing
+        about the parts that matter most. Read it as a rough index of the document rather than an
+        explanation of it, and do not use it to judge whether something needs attention.
+      </p>
+      <button type="button" className="meta-link-btn" disabled={retrying} onClick={onRetry}>
+        {retrying ? <RefreshCw className="spin" /> : <RefreshCw />}
+        {retrying ? "Retrying the full explanation..." : "Retry the full explanation"}
+      </button>
+    </section>
+  );
+}
+
+/** The Plus offer arrives here rather than at /billing — see offerPlusUpgrade. */
+function PlusUpgradeBubble({ message }: { message: string }) {
+  return (
+    <article className="clariti-chat-turn assistant-turn">
+      <span className="clariti-ai-avatar">C</span>
+      <div className="clariti-ai-card">
+        <div className="message-meta">Clariti</div>
+        <p>{message}</p>
+        <p>This chat stays exactly where it is — nothing you have typed has been lost.</p>
+        <Link href="/billing" className="meta-link-btn" style={{ textDecoration: "none" }}>
+          <Sparkles />Start Clariti Plus
+        </Link>
+        {/* No figure is printed here: a subscription costs a different amount in every
+            storefront, and /billing renders the store's own localised price. */}
+        <p className="source-grounded-line">The store shows the price in your own currency before anything is charged.</p>
+      </div>
+    </article>
   );
 }
 
@@ -2955,6 +3173,11 @@ function requestFromDbSession(session: DbWorkspaceSession): ClaritiRequest | nul
   const artifact = session.artifacts[0];
   const parsedAnalysis = claritiAnalysisSchema.safeParse(artifact?.payload);
   const analysis = parsedAnalysis.success ? parsedAnalysis.data : undefined;
+  // Off the raw payload: claritiAnalysisSchema does not carry `degraded`, so
+  // parsing first would drop the one field that says this analysis is not a real
+  // one — and the band would vanish on the next load of a document it was written
+  // for.
+  const degraded = (artifact?.payload as { degraded?: unknown } | undefined)?.degraded === true;
   const document = session.documents[0];
   const kindSource = analysis?.kind ?? document?.kind;
   if (!isAnalysisKind(kindSource)) return null;
@@ -2967,6 +3190,7 @@ function requestFromDbSession(session: DbWorkspaceSession): ClaritiRequest | nul
     fileName: document?.file_name,
     documentId: document?.id,
     analysis,
+    degraded,
     persisted: {
       session: { id: session.id, title: session.title, status: session.status },
       document: document ? { id: document.id, file_name: document.file_name, kind: document.kind, status: document.status } : null,

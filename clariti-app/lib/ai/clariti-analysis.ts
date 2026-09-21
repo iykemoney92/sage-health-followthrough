@@ -49,10 +49,28 @@ type AnalyzeInput = {
   documentText: string;
 };
 
-export async function analyzeClaritiDocument(input: AnalyzeInput): Promise<ClaritiAnalysis> {
+/**
+ * `degraded` means the model never read the document: there was no key, or the
+ * call failed, and `analysis` is the regex fallback instead. It reads like a
+ * finished answer, so every caller has to carry the flag through and label it —
+ * a confident-sounding guess about somebody's medical paperwork is worse than an
+ * obvious gap.
+ */
+export type ClaritiAnalysisResult = {
+  analysis: ClaritiAnalysis;
+  degraded: boolean;
+  /**
+   * Set when the model call threw, for the caller to report. Described rather
+   * than passed through: a provider error carries the offending model output,
+   * and that output is a summary of somebody's medical record.
+   */
+  failure?: { name: string; message: string };
+};
+
+export async function analyzeClaritiDocument(input: AnalyzeInput): Promise<ClaritiAnalysisResult> {
   const hasGatewayAuth = Boolean(process.env.VERCEL_OIDC_TOKEN || process.env.AI_GATEWAY_API_KEY);
   const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY);
-  if (!hasGatewayAuth && !hasAnthropicKey) return buildFallbackAnalysis(input);
+  if (!hasGatewayAuth && !hasAnthropicKey) return { analysis: buildFallbackAnalysis(input), degraded: true };
 
   const kindMeta = getClaritiKindMeta(input.kind);
 
@@ -89,9 +107,31 @@ export async function analyzeClaritiDocument(input: AnalyzeInput): Promise<Clari
         "Every keyPoint, metric and flag must be grounded in a source phrase from the document.",
     });
 
-    return normalizeSourceLabels(claritiAnalysisSchema.parse(result.object), input.documentText);
-  } catch {
-    return normalizeSourceLabels(buildFallbackAnalysis(input), input.documentText);
+    return {
+      analysis: normalizeSourceLabels(claritiAnalysisSchema.parse(result.object), input.documentText),
+      degraded: false,
+    };
+  } catch (error) {
+    // This used to be a bare catch, so a model outage looked exactly like a good
+    // pass from both sides: the reader got a regex summary of their bill and the
+    // log said nothing at all.
+    //
+    // Described here and reported by the caller, not reported here. Client
+    // components import this module for its schema and types, so a server-only
+    // import (`after`, inside the reporter) would pull next/server into the
+    // browser graph and fail the build — tsc, eslint and vitest all pass while
+    // it does, so nothing but `next build` would have caught it.
+    //
+    // Capped, because a provider error carries the offending model output and
+    // that output is a summary of somebody's medical record.
+    return {
+      analysis: normalizeSourceLabels(buildFallbackAnalysis(input), input.documentText),
+      degraded: true,
+      failure: {
+        name: error instanceof Error ? error.name : "Error",
+        message: error instanceof Error ? error.message.slice(0, 200) : "",
+      },
+    };
   }
 }
 
