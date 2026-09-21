@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  Clock,
   FileDown,
   FileHeart,
   FileText,
@@ -40,7 +41,13 @@ import {
   X,
 } from "lucide-react";
 import { claritiAnalysisSchema, type ClaritiAnalysis, type ClaritiAnalysisKind } from "@/lib/ai/clariti-analysis";
-import { FLUX_MAX_CLIP_SECONDS, formatHumanVideoError } from "@/lib/ai/clariti-video";
+import {
+  FLUX_MAX_CHAINED_SEGMENTS,
+  FLUX_MAX_CLIP_SECONDS,
+  formatHumanVideoError,
+  recommendExplainerSeconds,
+  segmentsForExplainerSeconds,
+} from "@/lib/ai/clariti-video";
 import { getClaritiKindMeta, inferKindFromTitleText, isClaritiAnalysisKind } from "@/lib/domain/clariti-document-kinds";
 import type { ProgressionComparison } from "@/lib/domain/clariti-progression";
 import { THREAD_EVIDENCE_RULE, type ThreadDocument } from "@/lib/domain/clariti-threads";
@@ -2445,7 +2452,7 @@ function AnalysisCanvas({
             <div><strong>{concernMetric?.value ?? "Ask"}</strong><span>{concernMetric?.label ?? "Ask your clinician"}</span></div>
           </section>
           <KeyPointList points={analysis.keyPoints} variant="list" />
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard key={analysis.title} analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : family === "lab" ? (
         <>
@@ -2460,7 +2467,7 @@ function AnalysisCanvas({
             {analysis.metrics.slice(0, 3).map((metric) => <MetricChip {...metric} key={metric.label} />)}
           </section>
           <KeyPointList points={analysis.keyPoints} variant="list" heading="Markers to understand" />
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard key={analysis.title} analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : family === "care_plan" ? (
         <>
@@ -2473,7 +2480,7 @@ function AnalysisCanvas({
           </section>
           <KeyPointList points={analysis.keyPoints} variant="timeline" limit={3} />
           <section className="canvas-card"><h3>In plain English</h3><p>{analysis.plainEnglish}</p></section>
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard key={analysis.title} analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : family === "medication" ? (
         <>
@@ -2485,7 +2492,7 @@ function AnalysisCanvas({
             </div>
           </section>
           <KeyPointList points={analysis.keyPoints} variant="pills" />
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard key={analysis.title} analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       ) : (
         <>
@@ -2494,7 +2501,7 @@ function AnalysisCanvas({
           </section>
           <section className="canvas-card"><h3>In plain English</h3><p>{analysis.plainEnglish}</p></section>
           <KeyPointList points={analysis.keyPoints} variant="list" />
-          <VideoStoryboard analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
+          <VideoStoryboard key={analysis.title} analysis={analysis} activeScene={videoScene} generatedVideoUrl={generatedVideoUrl} generatedIllustration={generatedIllustration} generatedIllustrations={generatedIllustrations} illustrationGenerating={illustrationGenerating} illustrationError={illustrationError} generating={videoGenerating} jobStatus={videoStatus} jobProgress={videoProgress} jobPipeline={videoPipeline} jobSegments={videoSegments} jobSegmentCount={videoSegmentCount} videoError={videoError} onSceneChange={onSceneChange} onGenerateVideo={onGenerateVideo} onGenerateIllustration={onGenerateIllustration} onOpenIllustration={onOpenIllustration} />
         </>
       )}
       {analysis.flags.map((flag) => <FlagCard flag={flag} key={flag.label} />)}
@@ -3184,11 +3191,41 @@ function VideoStoryboard({
   // chained path saves, the last segment is the whole explainer, so repeating the
   // segments under a finished video would just be the same footage twice.
   const showSegments = !generatedVideoUrl && jobSegments.length > 0;
-  // Twenty seconds is what Flux renders in one call, so asking for exactly that keeps the
-  // default explainer a single clip. The route clamps this down for models that cannot
-  // reach it, and the legacy stitched cut sets its own length.
-  const durationSeconds = FLUX_MAX_CLIP_SECONDS;
+  // Length is the one thing that moves the bill — Flux charges by the second and every
+  // clip past the first is another render — so Clariti proposes a length for this
+  // document and the reader picks. It used to ask for a flat twenty seconds whatever
+  // the document said, which spent the same money on a one-line result as on a bill.
+  const lengthOptions = explainerLengthOptions(analysis);
+  const [chosenSeconds, setChosenSeconds] = useState<number | null>(null);
+  // A one-clip suggestion is pre-selected: there is no spend to consent to beyond
+  // the render they already asked for. A suggestion that costs two or more renders
+  // is not — the default tap must not be the expensive one, and on the free tier a
+  // multi-clip explainer spends the whole allowance.
+  const suggestionCostsExtra = (lengthOptions[0]?.segments ?? 1) > 1;
+  const chosenLength = lengthOptions.find((option) => option.seconds === chosenSeconds) ?? lengthOptions[0];
+  const durationSeconds = chosenLength.seconds;
+  // Nothing is null here — the card always has a length to show. What is withheld is
+  // the Generate button, until a multi-render suggestion has actually been picked.
+  const lengthNotChosen = suggestionCostsExtra && chosenSeconds === null;
   const videoRef = useRef<HTMLVideoElement>(null);
+  const playlistRef = useRef<HTMLVideoElement>(null);
+  const [playlistIndex, setPlaylistIndex] = useState(0);
+  // Set only by a click, so every play() below follows a gesture. Chaining on `ended`
+  // after the reader started the first clip is what mobile autoplay policy allows.
+  const chainFromGestureRef = useRef(false);
+  // Derived, not corrected in an effect. A new job replaces the clips under the
+  // player, so the position has to come back into range rather than point at a URL
+  // that is gone — but doing that with setState inside an effect renders once with
+  // a stale index first, which is what react-hooks/set-state-in-effect is warning
+  // about.
+  const safePlaylistIndex = playlistIndex < jobSegments.length ? playlistIndex : 0;
+
+  useEffect(() => {
+    if (!chainFromGestureRef.current) return;
+    chainFromGestureRef.current = false;
+    void playlistRef.current?.play().catch(() => undefined);
+  }, [playlistIndex]);
+
   const generatedSceneIndexes = Object.keys(generatedIllustrations)
     .map((key) => Number(key))
     .filter((index) => Number.isFinite(index) && index >= 0 && index < scenes.length)
@@ -3198,8 +3235,40 @@ function VideoStoryboard({
 
   if (scenes.length === 0) return null;
   const scene = scenes[activeScene] ?? scenes[0];
+  // The chain is only whole if every planned part came back. `jobSegmentCount` is what
+  // the job planned; a segment index past it means the job grew, so take the larger.
+  const totalParts = Math.max(jobSegmentCount, jobSegments.length ? jobSegments[jobSegments.length - 1].sceneIndex + 1 : 0);
+  // Only once the job has stopped. While it is still rendering, a part that has not
+  // arrived has not failed — and telling someone their explainer is incomplete while
+  // it is being built is a false alarm in the feature whose whole job is to degrade
+  // honestly.
+  const missingParts = (generating ? [] : Array.from({ length: totalParts }, (_, part) => part))
+    .filter((part) => !jobSegments.some((segment) => segment.sceneIndex === part));
+  const missingPartsNote = missingParts.length === 0
+    ? null
+    : missingParts.length === 1
+      ? `part ${missingParts[0] + 1} did not render, so this explainer skips it`
+      : `parts ${missingParts.map((part) => part + 1).join(", ")} did not render, so this explainer is incomplete`;
+  const playingSegment = jobSegments[safePlaylistIndex] ?? jobSegments[0];
+  const playSegment = (index: number) => {
+    chainFromGestureRef.current = true;
+    setPlaylistIndex(index);
+  };
+  // One clip ending is the reader's own play still running, so starting the next one
+  // reads as a single explainer without asking them to press play four times.
+  const playNextSegment = () => {
+    if (safePlaylistIndex + 1 >= jobSegments.length) return;
+    playSegment(safePlaylistIndex + 1);
+  };
   const generateVideo = async () => {
     onSceneChange(0);
+    // Event name and non-clinical counters only: the length the reader agreed to and
+    // how many renders that is. Nothing here describes the document.
+    track("video_length_chosen", {
+      seconds: durationSeconds,
+      clips: chosenLength.segments,
+      suggested: chosenLength.seconds === lengthOptions[0].seconds,
+    });
     await onGenerateVideo(durationSeconds);
     requestAnimationFrame(() => {
       void videoRef.current?.play().catch(() => undefined);
@@ -3260,17 +3329,61 @@ function VideoStoryboard({
           )}
         </div>
       </div>
-      {showSegments && (
+      {showSegments && (jobSegments.length === 1 ? (
         <div className="video-segment-list">
-          <span>{jobSegments.length === 1 ? "Segment saved so far" : `${jobSegments.length} segments saved so far`}</span>
-          {jobSegments.map((segment) => (
-            <figure key={segment.sceneIndex}>
-              <video className="clariti-generated-video" src={segment.videoUrl} controls playsInline preload="metadata" />
-              <figcaption>{`${segment.sceneIndex + 1}. ${segment.title}`}</figcaption>
-            </figure>
-          ))}
+          <span>Segment saved so far</span>
+          <figure key={jobSegments[0].sceneIndex}>
+            <video className="clariti-generated-video" src={jobSegments[0].videoUrl} controls playsInline preload="metadata" />
+            <figcaption>{`${jobSegments[0].sceneIndex + 1}. ${jobSegments[0].title}`}</figcaption>
+          </figure>
         </div>
-      )}
+      ) : (
+        <>
+          <div className="video-segment-list video-explainer-playlist">
+            <span>{`Part ${playingSegment.sceneIndex + 1} of ${totalParts}`}</span>
+            <figure>
+              <video
+                ref={playlistRef}
+                className="clariti-generated-video"
+                src={playingSegment.videoUrl}
+                controls
+                playsInline
+                preload="metadata"
+                onEnded={playNextSegment}
+              />
+              <figcaption>
+                {`${playingSegment.sceneIndex + 1}. ${playingSegment.title}`}
+                {missingPartsNote ? ` — ${missingPartsNote}` : ""}
+              </figcaption>
+            </figure>
+          </div>
+          <div className="video-scene-strip" aria-label="Explainer parts">
+            {Array.from({ length: totalParts }, (_, part) => {
+              const index = jobSegments.findIndex((segment) => segment.sceneIndex === part);
+              // A part that never rendered is still shown, greyed out. Silently
+              // renumbering the clips that survived would read as a whole story.
+              if (index < 0) {
+                return (
+                  <button key={`missing-${part}`} type="button" disabled aria-label={`Part ${part + 1} did not render`}>
+                    {part + 1}
+                  </button>
+                );
+              }
+              return (
+                <button
+                  key={jobSegments[index].videoUrl}
+                  type="button"
+                  className={index === safePlaylistIndex ? "active" : ""}
+                  onClick={() => playSegment(index)}
+                  aria-label={`Play part ${part + 1}: ${jobSegments[index].title}`}
+                >
+                  {part + 1}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      ))}
       <div className="video-explainer-foot">
         <span><Sparkles />Source: {scene.sourceAnchor}</span>
       </div>
@@ -3292,7 +3405,44 @@ function VideoStoryboard({
           })}
         </div>
       )}
-      <button type="button" className="video-primary-cta" disabled={generating} onClick={() => void generateVideo()}>
+      {!generating && (
+        <div className="video-segment-list video-length-plan">
+          <div className="illustration-prompt-card video-length-card">
+            <span><Clock />Before you generate</span>
+            <b>{formatExplainerLength(chosenLength)}</b>
+            {chosenLength.reasons.map((reason) => <small key={reason}>{reason}</small>)}
+            <small>
+              {chosenLength.segments > 1
+                ? "Each clip is a separate render, and until Clariti is set up to chain them a longer request comes back as the first clip only. Either length counts as one explainer against your plan."
+                : "A shorter clip costs less to render, and either length counts as one explainer against your plan."}
+            </small>
+          </div>
+          {lengthOptions.length > 1 && (
+            <div className="illustration-actions">
+              {lengthOptions.map((option) => (
+                <button
+                  key={option.seconds}
+                  type="button"
+                  className={`illustration-generate-btn${option.seconds === durationSeconds ? "" : " secondary"}`}
+                  aria-pressed={option.seconds === durationSeconds}
+                  onClick={() => setChosenSeconds(option.seconds)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {/* Held until a multi-render length has been picked. A one-clip suggestion
+          is pre-selected and this reads exactly as it did before. */}
+      <button
+        type="button"
+        className="video-primary-cta"
+        disabled={generating || lengthNotChosen}
+        title={lengthNotChosen ? "Choose how long this explainer should be first" : undefined}
+        onClick={() => void generateVideo()}
+      >
         {generating ? <RefreshCw className="spin" /> : <Play />}
         {generatedVideoUrl ? "Regenerate video explainer" : generating ? `Generating video ${jobProgress}%` : "Generate video explainer"}
       </button>
@@ -3344,6 +3494,94 @@ function getVideoExplainerMeta(analysis: ClaritiAnalysis) {
     title: meta.videoTitle,
     chatPrompt: meta.videoChatPrompt,
   };
+}
+
+/** A length Clariti will offer for an explainer, and what choosing it costs. */
+type ExplainerLengthOption = {
+  seconds: number;
+  segments: number;
+  label: string;
+  /** Best first, and short enough to read standing at the confirm button. */
+  reasons: string[];
+};
+
+/** How many of the recommender's reasons fit beside the button before it stops being read. */
+const SHOWN_LENGTH_REASONS = 2;
+
+/**
+ * What Clariti proposes for this document, its own suggestion first.
+ *
+ * The number and the reasoning both come from `recommendExplainerSeconds`, so the
+ * client cannot drift from what the enqueue route plans. Clariti recommends and
+ * the reader decides: Flux bills by the second, every clip past the first is
+ * another render, and the whole explainer still only counts as one against the
+ * plan — so the shorter answer is always offered beside the suggestion.
+ */
+/**
+ * The longest explainer this deployment will actually produce.
+ *
+ * Chaining is off until `CLARITI_VIDEO_PIPELINE=chained`, and with it off the
+ * enqueue route clamps any request to a single twenty-second clip. Offering
+ * "about 45 seconds, 3 clips" while the renderer will return 20 is precisely the
+ * over-promise this card exists to prevent, so the options are capped at what the
+ * server will honour. Raise this to 80 in the same change that turns chaining on —
+ * it is public because the card is client-rendered, and the runbook says to move
+ * the two together.
+ */
+function explainerRenderCeiling() {
+  const raw = Number(process.env.NEXT_PUBLIC_CLARITI_VIDEO_MAX_SECONDS);
+  if (!Number.isFinite(raw) || raw <= 0) return FLUX_MAX_CLIP_SECONDS;
+  return Math.min(Math.round(raw), FLUX_MAX_CHAINED_SEGMENTS * FLUX_MAX_CLIP_SECONDS);
+}
+
+function explainerLengthOptions(analysis: ClaritiAnalysis): ExplainerLengthOption[] {
+  const uncapped = recommendExplainerSeconds(analysis);
+  const ceiling = explainerRenderCeiling();
+  const cappedSeconds = Math.min(uncapped.seconds, ceiling);
+  const recommendation = cappedSeconds === uncapped.seconds
+    ? uncapped
+    : {
+        ...uncapped,
+        seconds: cappedSeconds,
+        segments: segmentsForExplainerSeconds(cappedSeconds),
+        // Not the reasons for the longer version. Those argued for seconds this
+        // deployment will not render, and leaving them under a shorter number
+        // would explain a length nobody is getting.
+        reasons: [`Clariti would cover this in about ${uncapped.seconds} seconds, but this app currently renders explainers up to ${ceiling}.`],
+      };
+  const suggested = buildExplainerLengthOption(
+    recommendation.seconds,
+    recommendation.segments,
+    "Clariti suggests",
+    recommendation.reasons.slice(0, SHOWN_LENGTH_REASONS),
+  );
+
+  // Past one clip the cheaper answer is the single clip, because the second clip is
+  // a whole extra render. Inside one clip it is simply fewer seconds.
+  const shorterSeconds = recommendation.segments > 1
+    ? FLUX_MAX_CLIP_SECONDS
+    : Math.max(recommendation.minSeconds, Math.floor(recommendation.seconds * 0.6 / 5) * 5);
+  if (shorterSeconds >= recommendation.seconds) return [suggested];
+
+  return [suggested, buildExplainerLengthOption(
+    shorterSeconds,
+    segmentsForExplainerSeconds(shorterSeconds),
+    "Shorter",
+    ["Shorter than Clariti suggests and cheaper to render, at the cost of leaving something out."],
+  )];
+}
+
+function buildExplainerLengthOption(seconds: number, segments: number, prefix: string, reasons: string[]): ExplainerLengthOption {
+  return {
+    seconds,
+    segments,
+    label: `${prefix} · ${seconds}s, ${segments === 1 ? "1 clip" : `${segments} clips`}`,
+    reasons,
+  };
+}
+
+function formatExplainerLength(option: ExplainerLengthOption) {
+  return `About ${option.seconds} seconds · ${option.segments === 1 ? "one clip" : `${option.segments} clips`}`;
 }
 
 function getEducationDisclaimer(analysis: ClaritiAnalysis) {
