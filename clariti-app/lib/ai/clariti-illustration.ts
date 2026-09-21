@@ -44,7 +44,7 @@ export function buildIllustrationPrompt(analysis: ClaritiIllustrationAnalysis, s
     .slice(0, 5)
     .map((metric) => `- ${metric.label}: ${metric.value}${metric.caveat ? ` (${metric.caveat})` : ""}`)
     .join("\n");
-  const source = scene?.sourceAnchor ?? analysis.keyPoints[0]?.sourceAnchor ?? analysis.sourceAnchors[0] ?? "saved document";
+  const source = scene?.sourceAnchor || analysis.keyPoints[0]?.sourceAnchor || analysis.sourceAnchors[0] || "saved document";
 
   return `
 Create a premium 16:9 patient-education illustration for Clariti.

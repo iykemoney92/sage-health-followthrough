@@ -128,7 +128,12 @@ export function planFluxSegments(analysis: ClaritiVideoAnalysis, totalSeconds: n
       title: isWholeExplainer ? "Full explainer" : beats[0].title,
       durationSeconds,
       narration: joinBeatNarration(beats, durationSeconds, { keepClosing: index === durations.length - 1 }),
-      sourceAnchor: beats[0].sourceAnchor ?? analysis.sourceAnchors[0] ?? "Saved analysis",
+      // `||` rather than `??` throughout: verifyKeyPointAnchors writes an empty
+      // string for a quote it could not find in the document, and an empty string
+      // is neither null nor undefined — so `??` handed it straight through as the
+      // scene's cited source, which is the fabricated citation the check exists to
+      // catch, now narrated aloud in a video.
+      sourceAnchor: beats[0].sourceAnchor || analysis.sourceAnchors[0] || "Saved analysis",
       status: "queued",
       isWholeExplainer,
       prompt: "",
@@ -454,20 +459,20 @@ export function buildVideoScenes(analysis: ClaritiVideoAnalysis, durationSeconds
     ? [{
       title: "Main report finding",
       narration: `Your report describes ${main?.detail ?? analysis.summary}. Ask your clinician: ${question}`,
-      sourceAnchor: main?.sourceAnchor ?? analysis.sourceAnchors[0] ?? "Saved analysis",
+      sourceAnchor: main?.sourceAnchor || analysis.sourceAnchors[0] || "Saved analysis",
       visual: visualDirection,
     }]
     : [
       {
         title: "Main report finding",
         narration: `Your report describes ${main?.detail ?? analysis.summary}`,
-        sourceAnchor: main?.sourceAnchor ?? analysis.sourceAnchors[0] ?? "Saved analysis",
+        sourceAnchor: main?.sourceAnchor || analysis.sourceAnchors[0] || "Saved analysis",
         visual: visualDirection,
       },
       {
         title: "Question to ask",
         narration: `Clariti is explaining the wording, not diagnosing. Ask your clinician: ${question}`,
-        sourceAnchor: analysis.sourceAnchors[0] ?? "Saved analysis",
+        sourceAnchor: analysis.sourceAnchors[0] || "Saved analysis",
         visual: "Show a concise question checklist and educational disclaimer.",
       },
     ];
@@ -528,7 +533,7 @@ function buildDefaultFiveScenePlan({
     {
       title: "What this document is",
       narration: `Let's walk through this ${documentNoun} together. In plain words: ${analysis.summary}`,
-      sourceAnchor: analysis.sourceAnchors[0] ?? main?.sourceAnchor ?? "Document header",
+      sourceAnchor: analysis.sourceAnchors[0] || main?.sourceAnchor || "Document header",
       visual: "Show the document header and highlight the opening source phrase being explained.",
     },
     {
@@ -538,13 +543,13 @@ function buildDefaultFiveScenePlan({
         : family === "money"
           ? `The key numbers are ${analysis.metrics.slice(0, 3).map((metric) => `${metric.label}: ${metric.value}`).join(", ") || analysis.summary}.`
           : `Here is what matters most: ${main?.detail ?? analysis.summary}`,
-      sourceAnchor: analysis.metrics[0]?.label ?? main?.sourceAnchor ?? "Key detail",
+      sourceAnchor: analysis.metrics[0]?.label || main?.sourceAnchor || "Key detail",
       visual: visualDirection,
     },
     {
       title: "Main takeaway",
       narration: `The main takeaway is ${main?.detail ?? analysis.plainEnglish}`,
-      sourceAnchor: main?.sourceAnchor ?? analysis.sourceAnchors[0] ?? "Main point",
+      sourceAnchor: main?.sourceAnchor || analysis.sourceAnchors[0] || "Main point",
       visual: family === "clinical_report"
         ? visualDirection
         : "Show the most important source-grounded point as a clean explainer card.",
@@ -556,13 +561,13 @@ function buildDefaultFiveScenePlan({
         : third
           ? `It also notes ${third.detail}`
           : analysis.plainEnglish,
-      sourceAnchor: second?.sourceAnchor ?? third?.sourceAnchor ?? analysis.sourceAnchors[1] ?? analysis.sourceAnchors[0] ?? "Document wording",
+      sourceAnchor: second?.sourceAnchor || third?.sourceAnchor || analysis.sourceAnchors[1] || analysis.sourceAnchors[0] || "Document wording",
       visual: "Show a secondary source phrase and a short plain-English explanation beside it.",
     },
     {
       title: "What to ask next",
       narration: `${getSafetyShortLine(analysis)} A good next step: ${nextAction} Ask: ${question}`,
-      sourceAnchor: analysis.sourceAnchors[0] ?? "Next step",
+      sourceAnchor: analysis.sourceAnchors[0] || "Next step",
       visual: "Show a concise next-question checklist with the educational disclaimer.",
     },
   ];
