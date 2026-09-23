@@ -9,7 +9,11 @@ import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
 import { OAUTH_NEXT_KEY } from "@/lib/auth/oauth";
 import { safeNextPath } from "@/lib/auth/safe-path";
 
-/** Must match CFBundleURLTypes in nura-mobile's Info.plist and Supabase's allow list. */
+/**
+ * Must match nura-mobile's scheme registration on BOTH platforms - CFBundleURLTypes
+ * in Info.plist (iOS) and the VIEW intent-filter in AndroidManifest.xml (Android) -
+ * plus Supabase's redirect allow list.
+ */
 const NATIVE_SCHEME = "app.usenura.mobile:";
 
 /**

@@ -13,8 +13,11 @@ export type OAuthProvider = "google" | "apple";
  * A custom scheme rather than the https:// Universal Link: iOS does not reliably
  * hand a Universal Link back to the app when the navigation originates inside
  * SFSafariViewController, but it always honours a registered custom scheme. The
- * matching CFBundleURLTypes entry lives in nura-mobile's Info.plist, and the URL
- * is on Supabase's redirect allow list.
+ * scheme is registered twice in nura-mobile - CFBundleURLTypes in Info.plist for
+ * iOS and a BROWSABLE VIEW intent-filter in AndroidManifest.xml for Android - and
+ * the URL is on Supabase's redirect allow list. Miss either registration and the
+ * provider's redirect goes nowhere: the in-app browser stays parked on the consent
+ * screen and the app never comes forward.
  */
 export const NATIVE_OAUTH_REDIRECT = "app.usenura.mobile://auth/callback";
 

@@ -18,6 +18,25 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!--
+                The OAuth return leg. Google refuses to authorise inside an embedded
+                WebView, so sign-in opens in a Custom Tab and the provider sends the
+                user back to this custom scheme. Without this filter Android has
+                nothing registered for app.usenura.mobile://, so the Custom Tab stays
+                parked on the consent screen and the app never comes forward - iOS
+                worked only because CFBundleURLSchemes in Info.plist did this job
+                there. MainActivity is already singleTask, so the return arrives on
+                the existing instance as `appUrlOpen` (see NativeDeepLinks) rather
+                than launching a second copy over the WebView holding the PKCE
+                verifier cookie.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="app.usenura.mobile" />
+            </intent-filter>
         </activity>
 
         <provider
