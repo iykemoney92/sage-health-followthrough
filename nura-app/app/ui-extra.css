@@ -210,3 +210,20 @@
 .join-footnote a{color:#4b7558}
 .today-shared{margin:18px 0 4px}
 .today-shared .shared-with-me-row{grid-template-columns:minmax(0,1fr)}
+
+/* Care circle, cut 3: Nura's update for the circle */
+.circle-update-card{margin:0 0 18px;background:#f7f9f4;border-color:#d9e4da}
+.journey-detail-v2 .circle-update-card+.journey-detail-hero{margin-top:0}
+.circle-update-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.circle-update-head h3{display:flex;align-items:center;gap:8px;margin:0 0 6px}
+.circle-update-head h3 svg{width:18px;height:18px;color:#4b7558;flex:none}
+.circle-update-refresh{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line,#e4e4dc);background:#fff;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700;color:#4b7558;cursor:pointer;white-space:nowrap;flex:none}
+.circle-update-refresh svg{width:14px;height:14px}
+.circle-update-refresh:disabled{opacity:.6;cursor:default}
+.circle-update-refresh .spin{animation:nura-voice-spin 1s linear infinite}
+.circle-update-intro{margin:0 0 10px;font-size:12px;line-height:1.5;color:#718078}
+.circle-update-body{margin:0;font-size:15px;line-height:1.6;color:#2f4a3a;white-space:pre-wrap}
+.circle-update-body.muted{color:#87918d;font-style:italic}
+.circle-update-meta{display:block;margin-top:10px;font-size:12px;color:#87918d}
+.circle-update-error{margin:8px 0 0;font-size:12px;color:#8a2f27}
+.care-circle-card+.journey-share-row{margin-top:14px}

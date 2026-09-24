@@ -12,7 +12,9 @@ import { NuraShell } from "@/components/nura-shell";
 import { RescheduleButton } from "@/components/nura-actions";
 import { PlanJourney } from "@/components/plan-journey";
 import { CareCircleCard } from "@/components/care-circle-card";
+import { CircleUpdateCard } from "@/components/circle-update-card";
 import { getPlanAccess, listCircleMembers, readJourney } from "@/lib/care-circle";
+import { getLatestCircleUpdate } from "@/lib/care-circle-updates";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { categoryLabel, channelLabel, formatCheckInWhen } from "@/lib/domain/journey-naming";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
@@ -41,7 +43,7 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
   const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email || "You";
   const avatarUrl = getUserAvatarUrl(user);
 
-  const [{ data: observations }, { data: nextCheckIn }, { data: sourceContexts }, { data: messages }, journey, circleMembers] =
+  const [{ data: observations }, { data: nextCheckIn }, { data: sourceContexts }, { data: messages }, journey, circleMembers, circleUpdate] =
     await Promise.all([
       supabase
         .from("nura_observations")
@@ -81,7 +83,9 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
             next_step: plan.next_step as string,
           }),
       isWatcher ? Promise.resolve([]) : listCircleMembers(supabase, id),
+      getLatestCircleUpdate(supabase, id),
     ]);
+  const ownerFirstName = (ownerName ?? (displayName as string)).trim().split(/\s+/)[0] || "them";
 
   const meta = categoryLabel((plan.category as string) || "general_health");
   const title = plan.title as string;
@@ -136,6 +140,10 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
               You can see the plan, its journey and check-ins. Their conversation with Nura stays private to them.
             </span>
           </aside>
+        )}
+
+        {isWatcher && (
+          <CircleUpdateCard planId={plan.id as string} role="watcher" ownerFirstName={ownerFirstName} initial={circleUpdate} />
         )}
 
         <section className="journey-detail-hero">
@@ -208,6 +216,9 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
 
         <PlanJourney planId={plan.id as string} milestones={journey} readOnly={isWatcher} />
 
+        {!isWatcher && circleMembers.length > 0 && (
+          <CircleUpdateCard planId={plan.id as string} role="owner" ownerFirstName={ownerFirstName} initial={circleUpdate} />
+        )}
         {!isWatcher && <CareCircleCard planId={plan.id as string} initialMembers={circleMembers} />}
 
         {(hasUpdates || hasDocs) && (
