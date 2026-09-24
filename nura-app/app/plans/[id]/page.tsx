@@ -15,6 +15,7 @@ import { CareCircleCard } from "@/components/care-circle-card";
 import { CircleUpdateCard } from "@/components/circle-update-card";
 import { getPlanAccess, listCircleMembers, readJourney } from "@/lib/care-circle";
 import { getLatestCircleUpdate } from "@/lib/care-circle-updates";
+import { listCircleAlerts } from "@/lib/care-circle-alerts";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { categoryLabel, channelLabel, formatCheckInWhen } from "@/lib/domain/journey-naming";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
@@ -43,7 +44,7 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
   const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email || "You";
   const avatarUrl = getUserAvatarUrl(user);
 
-  const [{ data: observations }, { data: nextCheckIn }, { data: sourceContexts }, { data: messages }, journey, circleMembers, circleUpdate] =
+  const [{ data: observations }, { data: nextCheckIn }, { data: sourceContexts }, { data: messages }, journey, circleMembers, circleUpdate, circleAlerts] =
     await Promise.all([
       supabase
         .from("nura_observations")
@@ -84,6 +85,7 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
           }),
       isWatcher ? Promise.resolve([]) : listCircleMembers(supabase, id),
       getLatestCircleUpdate(supabase, id),
+      listCircleAlerts(supabase, id),
     ]);
   const ownerFirstName = (ownerName ?? (displayName as string)).trim().split(/\s+/)[0] || "them";
 
@@ -139,6 +141,17 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
             <span>
               You can see the plan, its journey and check-ins. Their conversation with Nura stays private to them.
             </span>
+          </aside>
+        )}
+
+        {isWatcher && circleAlerts.length > 0 && (
+          <aside className="circle-alerts" aria-label="Missed check-ins">
+            {circleAlerts.map((alert) => (
+              <p key={alert.id}>
+                <b>Missed check-in</b>
+                <span>{alert.body}</span>
+              </p>
+            ))}
           </aside>
         )}
 
@@ -219,7 +232,23 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
         {!isWatcher && circleMembers.length > 0 && (
           <CircleUpdateCard planId={plan.id as string} role="owner" ownerFirstName={ownerFirstName} initial={circleUpdate} />
         )}
-        {!isWatcher && <CareCircleCard planId={plan.id as string} initialMembers={circleMembers} />}
+        {!isWatcher && circleAlerts.length > 0 && (
+          <aside className="circle-alerts owner" aria-label="What your circle was told">
+            <small>Your circle was told</small>
+            {circleAlerts.map((alert) => (
+              <p key={alert.id}>
+                <span>{alert.body}</span>
+              </p>
+            ))}
+          </aside>
+        )}
+        {!isWatcher && (
+          <CareCircleCard
+            planId={plan.id as string}
+            initialMembers={circleMembers}
+            initialAlertMissed={Boolean(plan.circle_alert_missed)}
+          />
+        )}
 
         {(hasUpdates || hasDocs) && (
           <section className="journey-detail-activity">

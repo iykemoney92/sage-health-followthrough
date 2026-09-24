@@ -47,6 +47,14 @@ ssh -i ~/.ssh/migoai_digitalocean root@134.209.186.1 \
     echo "* * * * * /opt/nura/scripts/dispatch-check-ins.sh >> /var/log/nura-checkin.log 2>&1") | crontab -'
 ```
 
+## Daily Care-circle jobs
+
+`/opt/nura/scripts/circle-jobs.sh` runs once a day (root crontab `30 7 * * *` →
+`/var/log/nura-circle.log`) and POSTs `/api/agent/circle-updates` then
+`/api/agent/circle-alerts` with the same `AGENT_TOOL_SECRET`. Both routes are
+idempotent. They live here, not in `vercel.json`, because Vercel Hobby allows only
+two cron jobs per project and both are already used.
+
 ## Backups
 
 - Vercel Hobby cron: once daily at 08:00 UTC (catch-up only)

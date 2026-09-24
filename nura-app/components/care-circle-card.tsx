@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Check, Copy, Link2, MessageCircle, Users, X } from "lucide-react";
+import { BellRing, Check, Copy, Link2, MessageCircle, Users, X } from "lucide-react";
 import type { CircleMember } from "@/lib/care-circle";
 
 type Invite = { url: string; whatsappUrl: string; expiresAt: string };
@@ -12,8 +12,18 @@ type Invite = { url: string; whatsappUrl: string; expiresAt: string };
  * Removal is final the moment the request returns - the row is revoked in Postgres and every
  * policy that let that person read the plan stops matching.
  */
-export function CareCircleCard({ planId, initialMembers }: { planId: string; initialMembers: CircleMember[] }) {
+export function CareCircleCard({
+  planId,
+  initialMembers,
+  initialAlertMissed = false,
+}: {
+  planId: string;
+  initialMembers: CircleMember[];
+  initialAlertMissed?: boolean;
+}) {
   const [members, setMembers] = useState(initialMembers);
+  const [alertMissed, setAlertMissed] = useState(initialAlertMissed);
+  const [savingAlert, setSavingAlert] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [invite, setInvite] = useState<Invite | null>(null);
   const [creating, setCreating] = useState(false);
@@ -61,6 +71,31 @@ export function CareCircleCard({ planId, initialMembers }: { planId: string; ini
       setError("Couldn't create an invite link just now. Please try again.");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function toggleAlert(next: boolean) {
+    if (savingAlert) return;
+    setSavingAlert(true);
+    setError("");
+    const previous = alertMissed;
+    setAlertMissed(next);
+    try {
+      const res = await fetch(`/api/plans/${planId}/circle`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alertMissed: next }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setAlertMissed(previous);
+        setError("Couldn't save that just now. Please try again.");
+      }
+    } catch {
+      setAlertMissed(previous);
+      setError("Couldn't save that just now. Please try again.");
+    } finally {
+      setSavingAlert(false);
     }
   }
 
@@ -140,6 +175,23 @@ export function CareCircleCard({ planId, initialMembers }: { planId: string; ini
           <Link2 /> {creating ? "Creating link…" : "Invite someone"}
         </button>
       )}
+
+      <label className="care-circle-toggle">
+        <input
+          type="checkbox"
+          checked={alertMissed}
+          disabled={savingAlert}
+          onChange={(event) => void toggleAlert(event.target.checked)}
+        />
+        <span className="care-circle-toggle-text">
+          <b>
+            <BellRing aria-hidden /> Tell my circle if I miss a check-in
+          </b>
+          <small>
+            If a check-in is still not done a day later, the people here get a gentle nudge. Off unless you switch it on.
+          </small>
+        </span>
+      </label>
 
       {error && <p className="care-circle-error">{error}</p>}
     </section>

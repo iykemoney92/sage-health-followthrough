@@ -16,7 +16,7 @@ function buildSections(supportEmail: string) {
     },
     {
       title: "Your Care circle",
-      body: "You can invite family, a friend or a carer to keep an eye on a specific Care plan. Someone you invite sees that plan’s title, notes, roadmap and check-in status — never your conversation with Nura, your uploaded documents, your phone number or anything from other Care plans. Invites are single-use links that expire after seven days, and you can remove anyone from a Care plan at any moment, which takes effect immediately.",
+      body: "You can invite family, a friend or a carer to keep an eye on a specific Care plan. Someone you invite sees that plan’s title, notes, roadmap and check-in status — never your conversation with Nura, your uploaded documents, your phone number or anything from other Care plans. Invites are single-use links that expire after seven days, and you can remove anyone from a Care plan at any moment, which takes effect immediately. Nura also writes your circle a short update from that same plan information, which you can always read yourself, and — only if you switch it on for a plan — tells them when a scheduled check-in is still not done a day later.",
     },
     {
       title: "Your control",
