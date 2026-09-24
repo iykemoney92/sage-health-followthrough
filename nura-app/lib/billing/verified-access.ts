@@ -88,6 +88,9 @@ export async function getVerifiedSubscriptionAccess(
     return local;
   }
 
+  // Granted on purpose with the service role (founder, App Review): nothing to verify.
+  if (local.complimentaryUntil) return local;
+
   // Prefer service-role reads/writes so RLS/client tampering cannot stick.
   let admin: SupabaseClient;
   try {
@@ -113,5 +116,6 @@ export async function getVerifiedSubscriptionAccess(
     hasPlus: false,
     trialEndsAt: null,
     currentPeriodEndsAt: null,
+    complimentaryUntil: null,
   };
 }

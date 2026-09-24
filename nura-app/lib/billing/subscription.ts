@@ -13,6 +13,8 @@ export type SubscriptionAccess = {
   hasPlus: boolean;
   trialEndsAt: string | null;
   currentPeriodEndsAt: string | null;
+  /** Set when Plus was granted deliberately server-side (founder, App Review) - never revoked by the verifier. */
+  complimentaryUntil: string | null;
 };
 
 type ProfileSubscriptionRow = {
@@ -21,6 +23,7 @@ type ProfileSubscriptionRow = {
   trial_started_at?: string | null;
   trial_ends_at?: string | null;
   subscription_current_period_ends_at?: string | null;
+  complimentary_plus_until?: string | null;
 };
 
 function isFuture(value: string | null | undefined) {
@@ -41,7 +44,7 @@ export async function getSubscriptionAccess(
 ): Promise<SubscriptionAccess> {
   const { data } = await supabase
     .from("nura_profiles")
-    .select("subscription_tier, subscription_status, trial_started_at, trial_ends_at, subscription_current_period_ends_at")
+    .select("subscription_tier, subscription_status, trial_started_at, trial_ends_at, subscription_current_period_ends_at, complimentary_plus_until")
     .eq("id", ownerId)
     .maybeSingle();
 
@@ -54,7 +57,12 @@ export async function getSubscriptionAccess(
   const paidUntil = profile.subscription_current_period_ends_at;
   const activePaidStatus = status === "active" || status === "grace_period" || (status === "cancelled" && isFuture(paidUntil));
   const trialActive = status === "trialing" && isFuture(trialEndsAt);
-  const hasPlus = (tier === "plus" && activePaidStatus) || trialActive;
+  // A complimentary grant can only have been written with the service role (the protect
+  // trigger blanks it for anyone else), so a future value is Plus on purpose, whatever the
+  // store says.
+  const complimentaryUntil = isFuture(profile.complimentary_plus_until) ? (profile.complimentary_plus_until as string) : null;
+  const hasPlus = (tier === "plus" && activePaidStatus) || trialActive || Boolean(complimentaryUntil);
+  if (complimentaryUntil && !activePaidStatus && !trialActive) status = "active";
 
   // Surface past trials as expired even if the webhook hasn't flipped the row yet.
   if (!hasPlus && status === "trialing" && trialEndsAt && !isFuture(trialEndsAt)) {
@@ -65,11 +73,12 @@ export async function getSubscriptionAccess(
   }
 
   return {
-    tier: hasPlus ? tier : status === "expired" ? "free" : tier,
+    tier: hasPlus ? "plus" : status === "expired" ? "free" : tier,
     status,
     hasPlus,
     trialEndsAt: trialEndsAt ?? null,
-    currentPeriodEndsAt: paidUntil ?? null,
+    currentPeriodEndsAt: paidUntil ?? complimentaryUntil ?? null,
+    complimentaryUntil,
   };
 }
 

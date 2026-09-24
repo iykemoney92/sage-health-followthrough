@@ -28,7 +28,30 @@ describe("getSubscriptionAccess", () => {
       hasPlus: false,
       trialEndsAt: null,
       currentPeriodEndsAt: null,
+      complimentaryUntil: null,
     });
+  });
+
+  it("treats a service-role complimentary grant as Plus without any store record", async () => {
+    const until = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const access = await getSubscriptionAccess(
+      fakeSupabase({ subscription_tier: "free", subscription_status: "free", complimentary_plus_until: until }),
+      OWNER_ID,
+    );
+    expect(access.hasPlus).toBe(true);
+    expect(access.tier).toBe("plus");
+    expect(access.status).toBe("active");
+    expect(access.complimentaryUntil).toBe(until);
+  });
+
+  it("ignores a complimentary grant that has already ended", async () => {
+    const until = new Date(Date.now() - 60 * 1000).toISOString();
+    const access = await getSubscriptionAccess(
+      fakeSupabase({ subscription_tier: "free", subscription_status: "free", complimentary_plus_until: until }),
+      OWNER_ID,
+    );
+    expect(access.hasPlus).toBe(false);
+    expect(access.complimentaryUntil).toBeNull();
   });
 
   it("grants access during an active 7-day trial", async () => {
@@ -112,6 +135,7 @@ describe("isSubscriptionLockedOut", () => {
         hasPlus: false,
         trialEndsAt: new Date(Date.now() - 86400000).toISOString(),
         currentPeriodEndsAt: null,
+        complimentaryUntil: null,
       }),
     ).toBe(true);
   });
@@ -124,6 +148,7 @@ describe("isSubscriptionLockedOut", () => {
         hasPlus: false,
         trialEndsAt: null,
         currentPeriodEndsAt: null,
+        complimentaryUntil: null,
       }),
     ).toBe(false);
   });
