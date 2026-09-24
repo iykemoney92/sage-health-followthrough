@@ -14,6 +14,19 @@ import {
   voiceRecordingFileName,
   voiceUnavailableMessage,
 } from "@/lib/client/voice-recording";
+import { VoiceNoteBubble, formatVoiceClock } from "@/components/voice-note-bubble";
+import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
+import { MAX_VOICE_NOTE_MS, MIN_VOICE_NOTE_MS, VOICE_NOTES_BUCKET } from "@/lib/voice-notes";
+
+type StoredAttachment = {
+  name: string;
+  kind: ChatAttachment["kind"];
+  /** Voice notes only: where the recording lives, so it can be played back on any later visit. */
+  storagePath?: string | null;
+  durationMs?: number | null;
+  /** Voice notes only, this session: blob URL from the recorder for instant playback. */
+  localUrl?: string;
+};
 
 type ChatMessage = {
   id: string;
@@ -21,7 +34,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   created_at: string;
-  attachments?: { name: string; kind: ChatAttachment["kind"] }[];
+  attachments?: StoredAttachment[];
 };
 
 type ChatAttachment = {
@@ -63,7 +76,7 @@ function shortFileName(name: string, max = 18) {
 /** Split legacy "Shared N attachments: a, b." text into clean body + chip metadata. */
 function displayMessage(message: ChatMessage): {
   text: string;
-  attachments: { name: string; kind: ChatAttachment["kind"] }[];
+  attachments: StoredAttachment[];
 } {
   const stored = Array.isArray(message.attachments) ? message.attachments : [];
   if (stored.length > 0) {
@@ -76,6 +89,11 @@ function displayMessage(message: ChatMessage): {
     text: message.content.replace(LEGACY_ATTACHMENT_SUFFIX, "").trim(),
     attachments: names.map((name) => ({ name, kind: inferAttachmentKind(name) })),
   };
+}
+
+/** A stored audio attachment that was recorded in-app (as opposed to a file picked via the clip). */
+function isVoiceNote(file: StoredAttachment) {
+  return file.kind === "audio" && Boolean(file.storagePath || file.localUrl);
 }
 
 const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB per file
@@ -151,7 +169,8 @@ export default function WorkspacePage() {
   const [whatsappCode, setWhatsappCode] = useState<string | null>(null);
   const [whatsappLinked, setWhatsappLinked] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [transcribing, setTranscribing] = useState(false);
+  const [recordingMs, setRecordingMs] = useState(0);
+  const [sendingVoice, setSendingVoice] = useState(false);
   const [voiceError, setVoiceError] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [attachingFiles, setAttachingFiles] = useState(false);
@@ -160,6 +179,10 @@ export default function WorkspacePage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const recordingTimerRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef(0);
+  // Set by Cancel before stop(): onstop then drops the chunks instead of sending them.
+  const discardRecordingRef = useRef(false);
 
   // Reveals a trailing run of assistant messages one at a time, each preceded by a "Nura is
   // thinking…" beat, instead of dumping them onto the screen already-written - this is what
@@ -386,9 +409,17 @@ export default function WorkspacePage() {
     streamRef.current = null;
   }
 
+  function clearRecordingTimer() {
+    if (recordingTimerRef.current !== null) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }
+
   async function startRecording() {
     if (mediaRecorderRef.current) return; // already recording - avoid orphaning a prior stream
     setVoiceError("");
+    discardRecordingRef.current = false;
     if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       setVoiceError(voiceUnavailableMessage());
       return;
@@ -411,13 +442,29 @@ export default function WorkspacePage() {
       };
       recorder.onstop = () => {
         releaseMicStream();
+        clearRecordingTimer();
         mediaRecorderRef.current = null;
-        void transcribeAndSend(recorder.mimeType || mimeType || "audio/webm");
+        const durationMs = Date.now() - recordingStartedAtRef.current;
+        const chunks = chunksRef.current;
+        chunksRef.current = [];
+        setRecording(false);
+        setRecordingMs(0);
+        if (discardRecordingRef.current) return;
+        const type = recorder.mimeType || mimeType || "audio/webm";
+        void sendVoiceNote(new Blob(chunks, { type }), type, durationMs);
       };
       mediaRecorderRef.current = recorder;
       // Timeslice keeps chunks flowing on iOS WKWebView.
       recorder.start(250);
+      recordingStartedAtRef.current = Date.now();
+      setRecordingMs(0);
       setRecording(true);
+      recordingTimerRef.current = window.setInterval(() => {
+        const elapsed = Date.now() - recordingStartedAtRef.current;
+        setRecordingMs(elapsed);
+        // Stop and send on its own rather than recording silently forever.
+        if (elapsed >= MAX_VOICE_NOTE_MS) stopRecording();
+      }, 200);
     } catch {
       setVoiceError(voiceMicDeniedMessage());
     }
@@ -428,36 +475,130 @@ export default function WorkspacePage() {
       mediaRecorderRef.current.stop();
     } else {
       releaseMicStream();
+      clearRecordingTimer();
+      setRecording(false);
+      setRecordingMs(0);
     }
-    setRecording(false);
   }
 
-  useEffect(() => releaseMicStream, []);
+  function cancelRecording() {
+    discardRecordingRef.current = true;
+    stopRecording();
+  }
 
-  async function transcribeAndSend(mimeType = "audio/webm") {
-    const blob = new Blob(chunksRef.current, { type: mimeType });
-    chunksRef.current = [];
-    if (blob.size === 0) return;
+  useEffect(() => () => {
+    releaseMicStream();
+    clearRecordingTimer();
+  }, []);
 
-    setTranscribing(true);
+  /**
+   * Sends a recording the way WhatsApp does: the audio itself is the message. The note is
+   * uploaded to the owner's folder in the voice-notes bucket, then /api/messages is told
+   * where it is - the server transcribes it and the transcript becomes the message body,
+   * while the bubble keeps the recording playable. The optimistic bubble plays from the
+   * local blob straight away so nothing looks stuck while the upload and reply run.
+   */
+  async function sendVoiceNote(blob: Blob, mimeType: string, durationMs: number) {
+    if (blob.size === 0 || durationMs < MIN_VOICE_NOTE_MS) {
+      setVoiceError("That was too short - try again and speak for a moment.");
+      return;
+    }
+    if (sending) return;
+
+    const contentType = mimeType.split(";")[0] || "audio/webm";
+    const name = voiceRecordingFileName(mimeType);
+    const localUrl = URL.createObjectURL(blob);
+    const tempId = `temp-voice-${Date.now()}`;
+    const optimistic: ChatMessage = {
+      id: tempId,
+      plan_id: activePlan?.id ?? null,
+      role: "user",
+      content: "",
+      created_at: new Date().toISOString(),
+      attachments: [{ name, kind: "audio", localUrl, durationMs }],
+    };
+    setMessages((prev) => [...(prev ?? []), optimistic]);
+    setSending(true);
+    setSendingVoice(true);
+    setVoiceError("");
+
+    const dropOptimistic = () => setMessages((prev) => (prev ?? []).filter((message) => message.id !== tempId));
+
     try {
-      const formData = new FormData();
-      formData.append("audio", blob, voiceRecordingFileName(mimeType));
-      const res = await fetch("/api/voice/transcribe", { method: "POST", body: formData });
+      const supabase = getSupabaseBrowserClient();
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+      if (!userId) throw new Error("not signed in");
+
+      const extension = name.split(".").pop() || "webm";
+      const storagePath = `${userId}/${newAttachmentId()}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from(VOICE_NOTES_BUCKET)
+        .upload(storagePath, blob, { contentType, upsert: false });
+      if (uploadError) throw uploadError;
+
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: "",
+          planId: targetPlanId,
+          attachments: [{ name, type: contentType, kind: "audio", storagePath, durationMs }],
+        }),
+      });
       const data = await res.json();
-      if (!data.ok) {
-        if (res.status === 402 && data.upgradeUrl) {
-          setVoiceError("Voice notes are a Nura Plus feature. Open Billing to upgrade.");
-          return;
-        }
-        setVoiceError(data.error || "Couldn't transcribe that voice note. Please try again.");
+
+      if (res.status === 402 && data.upgradeUrl) {
+        track("chat_paywall_hit", { source: "workspace_voice_note" });
+        dropOptimistic();
+        setVoiceError("Voice notes are a Nura Plus feature. Open Billing to upgrade.");
         return;
       }
-      await send(data.text);
-    } catch {
-      setVoiceError("Couldn't transcribe that voice note. Please try again.");
+      if (!data.ok) throw new Error(data.error || "send failed");
+
+      track("chat_send", {
+        source: "workspace",
+        has_attachments: true,
+        voice_note: true,
+        plan_linked: Boolean(data.planId || targetPlanId),
+      });
+      setMessages((prev) => [
+        ...(prev ?? []).map((message) =>
+          message.id === tempId
+            ? {
+                ...message,
+                content: typeof data.transcript === "string" ? data.transcript : "",
+                attachments: [{ name, kind: "audio" as const, localUrl, storagePath, durationMs }],
+              }
+            : message,
+        ),
+        {
+          id: `reply-${Date.now()}`,
+          plan_id: data.planId ?? null,
+          role: "assistant" as const,
+          content: data.reply,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      if (data.planId) setActivePlan({ id: data.planId, title: data.planTitle });
+
+      if (typeof document !== "undefined" && document.visibilityState === "hidden" && data.reply) {
+        void fetch("/api/push/notify-reply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            body: String(data.reply).slice(0, 200),
+            url: data.planId ? `/plans/${data.planId}` : "/workspace",
+          }),
+        }).catch(() => null);
+      }
+    } catch (error) {
+      console.error("[workspace] voice note send failed", error);
+      dropOptimistic();
+      setVoiceError("Couldn't send that voice note. Please try again.");
     } finally {
-      setTranscribing(false);
+      setSending(false);
+      setSendingVoice(false);
     }
   }
 
@@ -500,11 +641,21 @@ export default function WorkspacePage() {
                 );
               }
               const { text, attachments } = displayMessage(message);
+              const voiceNote = attachments.find(isVoiceNote);
+              const chips = attachments.filter((file) => file !== voiceNote);
               return (
-                <div className="user-message" key={message.id}>
-                  {attachments.length > 0 && (
+                <div className={`user-message${voiceNote ? " voice" : ""}`} key={message.id}>
+                  {voiceNote && (
+                    <VoiceNoteBubble
+                      storagePath={voiceNote.storagePath ?? undefined}
+                      localUrl={voiceNote.localUrl}
+                      durationMs={voiceNote.durationMs}
+                      transcript={text && text !== "Voice note" ? text : undefined}
+                    />
+                  )}
+                  {chips.length > 0 && (
                     <div className="message-attachments">
-                      {attachments.map((file, index) => (
+                      {chips.map((file, index) => (
                         <span className="attachment-chip" key={`${file.name}-${index}`} title={file.name}>
                           <AttachmentIcon kind={file.kind} />
                           <span>{shortFileName(file.name)}</span>
@@ -512,7 +663,7 @@ export default function WorkspacePage() {
                       ))}
                     </div>
                   )}
-                  {text ? <p className="user-message-text">{text}</p> : null}
+                  {text && !voiceNote ? <p className="user-message-text">{text}</p> : null}
                 </div>
               );
             })}
@@ -523,7 +674,7 @@ export default function WorkspacePage() {
               </div>
             )}
           </div>
-          {(pendingAttachments.length > 0 || attachingFiles || recording || transcribing || voiceError) && (
+          {(pendingAttachments.length > 0 || attachingFiles || sendingVoice || voiceError) && (
             <div className="composer-status-stack">
               {pendingAttachments.length > 0 && (
                 <div className="pending-attachments">
@@ -539,9 +690,9 @@ export default function WorkspacePage() {
                 </div>
               )}
               {attachingFiles && <p className="voice-note-status"><span>Attaching file…</span></p>}
-              {(recording || transcribing || voiceError) && (
+              {(sendingVoice || voiceError) && (
                 <p className={`voice-note-status${voiceError ? " error" : ""}`}>
-                  <span>{voiceError || (recording ? "Recording… tap the mic again to send." : "Transcribing your voice note…")}</span>
+                  <span>{voiceError || "Sending your voice note…"}</span>
                   {voiceError && (
                     <button type="button" aria-label="Dismiss" onClick={() => setVoiceError("")}>
                       <X />
@@ -552,42 +703,68 @@ export default function WorkspacePage() {
             </div>
           )}
           <div className="chat-composer" aria-label="Message Nura">
-            <label className="composer-file-button" aria-label="Attach image, document, audio, or file">
-              <Paperclip />
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept="image/*,audio/*,.pdf,.doc,.docx,.txt,.md,.csv,.json"
-                onChange={(event) => handleFiles(event.target.files)}
-                disabled={sending}
+            {recording ? (
+              <button
+                type="button"
+                className="composer-cancel-recording"
+                aria-label="Cancel recording"
+                title="Cancel recording"
+                onClick={cancelRecording}
+              >
+                <X />
+              </button>
+            ) : (
+              <label className="composer-file-button" aria-label="Attach image, document, audio, or file">
+                <Paperclip />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,audio/*,.pdf,.doc,.docx,.txt,.md,.csv,.json"
+                  onChange={(event) => handleFiles(event.target.files)}
+                  disabled={sending}
+                />
+              </label>
+            )}
+            {recording ? (
+              <div className="composer-recording" role="status" aria-live="polite">
+                <span className="composer-recording-dot" aria-hidden="true" />
+                <span className="composer-recording-time">{formatVoiceClock(recordingMs)}</span>
+                <span className="composer-recording-hint">Recording… tap send when you&apos;re done</span>
+              </div>
+            ) : (
+              <textarea
+                placeholder="Message Nura…"
+                rows={1}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    send();
+                  }
+                }}
               />
-            </label>
-            <textarea
-              placeholder="Message Nura…"
-              rows={1}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  send();
-                }
-              }}
-            />
+            )}
             <button
               type="button"
               className={recording ? "recording" : ""}
               aria-label={recording ? "Stop recording and send voice note" : "Record a voice note"}
-              title={transcribing ? "Transcribing…" : recording ? "Stop recording" : "Record a voice note"}
+              title={sendingVoice ? "Sending voice note…" : recording ? "Stop and send" : "Record a voice note"}
               onClick={() => (recording ? stopRecording() : startRecording())}
-              disabled={sending || transcribing}
+              disabled={sending || sendingVoice}
             >
               <Mic />
             </button>
-            <button type="button" className="send-button" onClick={() => send()} disabled={sending || attachingFiles || (!draft.trim() && pendingAttachments.length === 0)}>
-              <Send />
-            </button>
+            {recording ? (
+              <button type="button" className="send-button" aria-label="Send voice note" onClick={stopRecording}>
+                <Send />
+              </button>
+            ) : (
+              <button type="button" className="send-button" onClick={() => send()} disabled={sending || attachingFiles || (!draft.trim() && pendingAttachments.length === 0)}>
+                <Send />
+              </button>
+            )}
           </div>
         </div>
         <aside className="context-panel">

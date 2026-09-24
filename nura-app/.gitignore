@@ -12,3 +12,6 @@ yarn-error.log*
 .vercel
 .data
 supabase/.temp
+
+# personal Claude Code overrides
+.claude/settings.local.json

@@ -46,7 +46,17 @@ export type NuraDecision = {
 export type PlanSummary = { id: string; title: string; current_focus: string | null; category?: string | null };
 export type PlanContext = { plan_id: string; title: string; summary: string; kind: string };
 export type MissedCheckIn = { plan_title: string; prompt: string; scheduled_for: string; reason: string };
-export type MessageAttachment = { name: string; type: string; kind: "image" | "audio" | "document" | "file"; text?: string; base64?: string };
+export type MessageAttachment = {
+  name: string;
+  type: string;
+  kind: "image" | "audio" | "document" | "file";
+  text?: string;
+  base64?: string;
+  /** Voice notes: object path inside the voice-notes bucket, owned by the sender. */
+  storagePath?: string;
+  /** Voice notes: recorded length, measured client-side because opus/webm often reports Infinity. */
+  durationMs?: number;
+};
 export type HistoryTurn = { role: "user" | "assistant"; content: string };
 
 const PHONE_PATTERN = /(\+?\d[\d\s\-().]{6,}\d)/;
@@ -625,7 +635,9 @@ export async function insertConversationTurn(
   planId: string | null,
   userContent: string,
   assistantReply: string,
-  attachments: Array<{ name: string; kind: string }> = [],
+  // name/kind is the minimum every chip needs; voice notes add storagePath/durationMs so the
+  // bubble can play them back later. Stored verbatim as jsonb.
+  attachments: Array<{ name: string; kind: string } & Record<string, unknown>> = [],
 ) {
   const { error: userMsgError } = await supabase.from("nura_messages").insert({
     owner_id: ownerId,
