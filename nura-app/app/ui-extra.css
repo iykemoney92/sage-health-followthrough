@@ -179,3 +179,34 @@
 .shared-with-me-who{display:grid;min-width:0}
 .shared-with-me-who b{font-size:14px}
 .shared-with-me-who small{font-size:12px;color:#87918d}
+
+/* Care circle, cut 2: invites, join page, Today rail */
+.care-circle-empty{margin:0 0 12px;font-size:13px;color:#718078}
+.care-circle-invite-button{display:inline-flex;align-items:center;gap:8px;margin-top:12px}
+.care-circle-invite-button svg{width:16px;height:16px}
+.care-circle-invite{margin-top:14px;padding:14px;border-radius:12px;background:#f5f7f3;border:1px solid #dfe6dd;display:grid;gap:10px}
+.care-circle-invite label{display:grid;gap:6px}
+.care-circle-invite label span{font-size:12px;font-weight:700;color:#4b7558;letter-spacing:.02em}
+.care-circle-invite input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line,#e4e4dc);border-radius:9px;background:#fff;font-size:13px;color:#2f4a3a}
+.care-circle-invite .button-row{display:flex;flex-wrap:wrap;gap:8px}
+.care-circle-invite .button-row a,.care-circle-invite .button-row button{display:inline-flex;align-items:center;gap:6px}
+.care-circle-invite .button-row svg{width:16px;height:16px}
+.care-circle-invite small{font-size:12px;color:#718078;line-height:1.5}
+.care-circle-upsell b{font-size:14px;color:#2f4a3a}
+.care-circle-upsell span{font-size:13px;color:#4f6a5b}
+.join-page{min-height:100vh;background:#fbfaf6;display:flex;flex-direction:column;align-items:center;padding:24px 16px 48px;box-sizing:border-box}
+.join-brand{margin:8px 0 24px}
+.join-card{width:min(520px,100%);background:#fff;border:1px solid var(--line,#e4e4dc);border-radius:20px;padding:28px 24px;box-sizing:border-box;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.join-icon{width:44px;height:44px;border-radius:12px;background:#eef4ef;color:#4b7558;display:grid;place-items:center}
+.join-icon svg{width:22px;height:22px}
+.join-card h1{margin:4px 0 0;font:600 26px/1.15 Georgia,serif;color:#1f3328}
+.join-card>p{margin:0;font-size:15px;line-height:1.55;color:#4f5f57}
+.join-actions{margin-top:10px;width:100%;display:flex;flex-direction:column;gap:10px}
+.join-actions .primary-cta,.join-actions .secondary-cta{width:100%;box-sizing:border-box;text-align:center;justify-content:center}
+.join-actions small{font-size:12px;color:#87918d;text-align:center}
+.join-note{margin:0;font-size:14px;color:#4f5f57}
+.join-error{margin:0;font-size:13px;color:#8a2f27}
+.join-footnote{margin-top:12px!important;font-size:12px!important;color:#87918d!important}
+.join-footnote a{color:#4b7558}
+.today-shared{margin:18px 0 4px}
+.today-shared .shared-with-me-row{grid-template-columns:minmax(0,1fr)}

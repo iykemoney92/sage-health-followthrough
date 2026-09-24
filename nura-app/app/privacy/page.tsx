@@ -15,6 +15,10 @@ function buildSections(supportEmail: string) {
       body: "If you connect WhatsApp, Nura uses your phone number and link code to associate WhatsApp messages with your account. In-app messages, WhatsApp messages, and voice check-ins can update the same Care plans.",
     },
     {
+      title: "Your Care circle",
+      body: "You can invite family, a friend or a carer to keep an eye on a specific Care plan. Someone you invite sees that plan’s title, notes, roadmap and check-in status — never your conversation with Nura, your uploaded documents, your phone number or anything from other Care plans. Invites are single-use links that expire after seven days, and you can remove anyone from a Care plan at any moment, which takes effect immediately.",
+    },
+    {
       title: "Your control",
       body: "You decide what Nura remembers. You can edit your profile, change follow-up preferences, review summaries, or ask Nura to stop remembering specific context. From Me → Data & export you can download a full copy of your data, or permanently delete your account — both take effect immediately.",
     },

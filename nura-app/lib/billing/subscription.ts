@@ -145,7 +145,9 @@ export async function ensureTrialStarted(
     .eq("id", ownerId);
 }
 
-export function plusRequiredResponse(feature: "voice" | "whatsapp" | "threads" | "journey") {
+export type PlusFeature = "voice" | "whatsapp" | "threads" | "journey" | "circle";
+
+export function plusRequiredResponse(feature: PlusFeature) {
   return NextResponse.json({
     ok: false,
     error: "plus_required",
@@ -158,7 +160,7 @@ export function plusRequiredResponse(feature: "voice" | "whatsapp" | "threads" |
 export async function requirePlusAccess(
   supabase: SupabaseClient,
   ownerId: string,
-  feature: "voice" | "whatsapp" | "threads" | "journey",
+  feature: PlusFeature,
 ) {
   const access = await getSubscriptionAccess(supabase, ownerId);
   return access.hasPlus ? null : plusRequiredResponse(feature);

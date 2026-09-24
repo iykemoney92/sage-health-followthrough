@@ -22,6 +22,7 @@ import { getUserAvatarUrl } from "@/lib/avatar";
 import { categoryLabel, channelLabel, displayJourneyFocus, formatCheckInWhen, isUsefulDisplayText } from "@/lib/domain/journey-naming";
 import { getOrCreateWhatsappLink } from "@/lib/channel-links";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { listSharedWithMe } from "@/lib/care-circle";
 import { createWhatsappHref } from "@/lib/whatsapp-link";
 
 function greeting(hour: number) {
@@ -137,6 +138,8 @@ export default async function TodayPage({
           .maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
+
+  const sharedWithMe = user ? await listSharedWithMe(supabase, user.id) : [];
 
   const checkInCountByDay = new Map<string, number>();
   for (const row of weekCheckIns ?? []) {
@@ -307,6 +310,23 @@ export default async function TodayPage({
                 </>
               )}
             </section>
+
+            {sharedWithMe.length > 0 && (
+              <section className="shared-with-me today-shared" aria-label="Care plans shared with you">
+                <h2>Shared with you</h2>
+                <p>You can see these Care plans and their check-ins, not the owner&apos;s conversation.</p>
+                <div className="shared-with-me-list">
+                  {sharedWithMe.map((shared) => (
+                    <Link href={`/plans/${shared.id}`} className="shared-with-me-row" key={shared.id}>
+                      <span className="shared-with-me-who">
+                        <b>{shared.title}</b>
+                        <small>{shared.ownerName}&apos;s Care plan</small>
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {focusPlan && (
               <article className="today-focus-card">

@@ -22,6 +22,10 @@ const PROTECTED_PREFIXES = [
 // Reachable in every account state: a user must be able to delete their
 // account without first agreeing to AI data sharing or paying for a trial.
 const ACCOUNT_DELETION_PATH = "/account/delete";
+// Set by /join for a signed-out visitor; once they have an account, whatever page they land
+// on first brings them back to the invite. Cleared when they join or tap "Not now".
+const PENDING_INVITE_COOKIE = "nura_pending_invite";
+const PENDING_INVITE_PATTERN = /^[A-Za-z0-9_-]{24,64}$/;
 const AUTH_PAGES = ["/login", "/signup", "/welcome", "/forgot-password", "/auth/check-email"];
 /** Surfaces that redirect expired/cancelled users to the lock screen. Free tier is allowed. */
 const PLUS_LOCK_PREFIXES = [
@@ -87,9 +91,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  const isAccountDeletion = pathname === ACCOUNT_DELETION_PATH || pathname.startsWith(`${ACCOUNT_DELETION_PATH}/`);
+  const pendingInvite = request.cookies.get(PENDING_INVITE_COOKIE)?.value ?? "";
+  if (user && PENDING_INVITE_PATTERN.test(pendingInvite) && !pathname.startsWith("/join") && !isAccountDeletion) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/join/${pendingInvite}`;
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   if (user && isAuthPage) {
     const url = request.nextUrl.clone();
-    url.pathname = postAuthPath(user);
+    // A signed-in person opening an invite's "sign in" link should reach the invite, not Today.
+    const requestedNext = request.nextUrl.searchParams.get("next") ?? "";
+    url.pathname = /^\/join\/[A-Za-z0-9_-]+$/.test(requestedNext) ? requestedNext : postAuthPath(user);
+    url.search = "";
     return NextResponse.redirect(url);
   }
 
@@ -97,7 +113,6 @@ export async function middleware(request: NextRequest) {
   // It sits ahead of the billing lock deliberately: the lock screen sends
   // nothing anywhere, whereas /summary and /plans/[id] call Anthropic during
   // their server render, so a client-side dialog could not have stopped them.
-  const isAccountDeletion = pathname === ACCOUNT_DELETION_PATH || pathname.startsWith(`${ACCOUNT_DELETION_PATH}/`);
   if (user && isProtected && !isAccountDeletion && !hasAiConsent(user)) {
     const url = request.nextUrl.clone();
     url.pathname = AI_CONSENT_PATH;

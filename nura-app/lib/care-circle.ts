@@ -137,3 +137,52 @@ export async function listSharedWithMe(supabase: SupabaseClient, userId: string)
   );
   return named;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Invites (owner side). Acceptance lives in lib/care-circle-admin.ts because the person
+// accepting is, by definition, not yet allowed to read anything about the plan.
+// ---------------------------------------------------------------------------------------------
+
+import { createHash, randomBytes } from "node:crypto";
+
+export const INVITE_TTL_DAYS = 7;
+/** Cookie that remembers which invite a visitor opened before they had an account. */
+export const PENDING_INVITE_COOKIE = "nura_pending_invite";
+/** What a raw invite token looks like: 24 random bytes, base64url. */
+export const INVITE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{24,64}$/;
+
+export function hashInviteToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export function inviteUrl(origin: string, token: string) {
+  return `${origin.replace(/\/$/, "")}/join/${token}`;
+}
+
+/** A wa.me link with no recipient: WhatsApp asks the sender who to send it to. */
+export function whatsappShareUrl(planTitle: string, url: string) {
+  const text =
+    `Hi — I'm using Nura to keep on top of "${planTitle}". ` +
+    `I'd like you to be able to see how it's going. Tap to join my Care circle: ${url}`;
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
+export type CreatedInvite = { token: string; expiresAt: string };
+
+/**
+ * Mints a single-use invite for a plan the caller owns. Only the hash is stored; the raw token
+ * exists in the link and nowhere else. The insert runs under owner_manages_invites, so a
+ * caller who doesn't own the plan gets an RLS error rather than an invite.
+ */
+export async function createInvite(supabase: SupabaseClient, userId: string, planId: string): Promise<CreatedInvite> {
+  const token = randomBytes(24).toString("base64url");
+  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60_000).toISOString();
+  const { error } = await supabase.from("nura_plan_invites").insert({
+    plan_id: planId,
+    token_hash: hashInviteToken(token),
+    created_by: userId,
+    expires_at: expiresAt,
+  });
+  if (error) throw new Error(error.message);
+  return { token, expiresAt };
+}

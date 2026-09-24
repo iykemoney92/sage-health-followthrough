@@ -14,6 +14,10 @@ const sections = [
     body: "Images, files, documents, and voice notes are treated as context for the relevant Care plan. Nura keeps media within what you shared or confirmed — it does not invent clinical advice from documents alone.",
   },
   {
+    title: "Sharing with your Care circle",
+    body: "Nothing is shared with anyone unless you invite them to a Care plan. A person you invite can see that plan’s title, pinned note, roadmap and check-in status so they can support you. They cannot see your messages with Nura, attachments, other Care plans or your contact details. You can see who has access on the Care plan itself and remove them at any time.",
+  },
+  {
     title: "What we don’t do with it",
     body: "We don’t sell your health context. We don’t use it for advertising. Providers that help run Nura only receive what they need for their function, and may not use your health context for their own purposes.",
   },
