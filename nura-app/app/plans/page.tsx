@@ -17,6 +17,7 @@ import { ThreadSearchToolbar } from "@/components/thread-search-toolbar";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { categoryLabel, channelLabel, formatCheckInWhen } from "@/lib/domain/journey-naming";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { listSharedWithMe } from "@/lib/care-circle";
 
 const TABS = ["active", "archived", "all"] as const;
 type Tab = (typeof TABS)[number];
@@ -133,6 +134,8 @@ export default async function ThreadsPage({
       };
     });
 
+  const sharedWithMe = user && tab !== "archived" ? await listSharedWithMe(supabase, user.id) : [];
+
   const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email;
   const avatarUrl = getUserAvatarUrl(user);
 
@@ -247,6 +250,27 @@ export default async function ThreadsPage({
                 </Link>
               </div>
             )}
+          </section>
+        )}
+
+        {sharedWithMe.length > 0 && (
+          <section className="shared-with-me" aria-label="Care plans shared with you">
+            <h2>Shared with you</h2>
+            <p>Care plans other people have let you keep an eye on. You can see the plan and its check-ins, not their conversation.</p>
+            <div className="shared-with-me-list">
+              {sharedWithMe.map((shared) => {
+                const meta = categoryLabel(shared.category);
+                return (
+                  <Link href={`/plans/${shared.id}`} className="shared-with-me-row" key={shared.id}>
+                    <span className={`journey-care-topic-tag ${meta.tone}`}>{meta.tag}</span>
+                    <span className="shared-with-me-who">
+                      <b>{shared.title}</b>
+                      <small>{shared.ownerName}&apos;s Care plan</small>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
           </section>
         )}
       </div>

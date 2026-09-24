@@ -8,9 +8,12 @@ import type { JourneyMilestone } from "@/lib/domain/plan-journey";
 export function PlanJourney({
   planId,
   milestones: initialMilestones,
+  readOnly = false,
 }: {
   planId: string;
   milestones: JourneyMilestone[];
+  /** Care-circle watchers see the journey but can't tick steps or start conversations. */
+  readOnly?: boolean;
 }) {
   const [milestones, setMilestones] = useState(initialMilestones);
   const [startingStepId, setStartingStepId] = useState<string | null>(null);
@@ -112,15 +115,21 @@ export function PlanJourney({
                   const isPrimary = primaryStep?.id === step.id;
                   return (
                     <li key={step.id} className={`journey-step-row ${step.status}`}>
-                      <button
-                        type="button"
-                        className="journey-step-check"
-                        aria-label={step.status === "done" ? "Mark step not done" : "Mark step done"}
-                        onClick={() => toggleStep(milestone.id, step.id)}
-                        disabled={togglingStepId === step.id}
-                      >
-                        {step.status === "done" ? <CheckCircle2 className="done" /> : <Circle />}
-                      </button>
+                      {readOnly ? (
+                        <span className="journey-step-check" aria-hidden="true">
+                          {step.status === "done" ? <CheckCircle2 className="done" /> : <Circle />}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="journey-step-check"
+                          aria-label={step.status === "done" ? "Mark step not done" : "Mark step done"}
+                          onClick={() => toggleStep(milestone.id, step.id)}
+                          disabled={togglingStepId === step.id}
+                        >
+                          {step.status === "done" ? <CheckCircle2 className="done" /> : <Circle />}
+                        </button>
+                      )}
                       <span
                         className={
                           step.status === "done" ? "journey-step-title done" : "journey-step-title"
@@ -128,7 +137,7 @@ export function PlanJourney({
                       >
                         {step.title}
                       </span>
-                      {isPrimary && (
+                      {isPrimary && !readOnly && (
                         <button
                           type="button"
                           className="journey-step-start"

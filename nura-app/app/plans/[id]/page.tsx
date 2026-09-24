@@ -11,6 +11,8 @@ import {
 import { NuraShell } from "@/components/nura-shell";
 import { RescheduleButton } from "@/components/nura-actions";
 import { PlanJourney } from "@/components/plan-journey";
+import { CareCircleCard } from "@/components/care-circle-card";
+import { getPlanAccess, listCircleMembers, readJourney } from "@/lib/care-circle";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { categoryLabel, channelLabel, formatCheckInWhen } from "@/lib/domain/journey-naming";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
@@ -29,16 +31,17 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
   const user = await getSessionUser();
   const supabase = await getSupabaseSessionClient();
 
-  const { data: plan } = user
-    ? await supabase.from("nura_plans").select("*").eq("id", id).eq("owner_id", user.id).maybeSingle()
-    : { data: null };
-
-  if (!plan) notFound();
-  const ownerId = user!.id;
+  // RLS decides whether this plan is visible at all: the owner sees it, an active care-circle
+  // member sees it read-only, everyone else gets nothing back and lands on 404.
+  const access = user ? await getPlanAccess(supabase, user.id, id) : null;
+  if (!access) notFound();
+  const { plan, role, ownerName } = access;
+  const isWatcher = role === "watcher";
+  const ownerId = plan.owner_id as string;
   const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email || "You";
   const avatarUrl = getUserAvatarUrl(user);
 
-  const [{ data: observations }, { data: nextCheckIn }, { data: sourceContexts }, { data: messages }, journey] =
+  const [{ data: observations }, { data: nextCheckIn }, { data: sourceContexts }, { data: messages }, journey, circleMembers] =
     await Promise.all([
       supabase
         .from("nura_observations")
@@ -54,20 +57,30 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
         .order("scheduled_for", { ascending: true })
         .limit(1)
         .maybeSingle(),
-      supabase
-        .from("nura_source_contexts")
-        .select("id, title, created_at")
-        .eq("plan_id", id)
-        .order("created_at", { ascending: false })
-        .limit(3),
-      supabase.from("nura_messages").select("id").eq("plan_id", id).limit(1),
-      ensureJourney(supabase, ownerId, {
-        id: plan.id as string,
-        title: plan.title as string,
-        why_this_exists: plan.why_this_exists as string,
-        current_focus: plan.current_focus as string,
-        next_step: plan.next_step as string,
-      }),
+      // Documents and the conversation are the owner's alone. RLS would return nothing to a
+      // watcher anyway; skipping the queries keeps that intent visible here, not just in SQL.
+      isWatcher
+        ? Promise.resolve({ data: null })
+        : supabase
+            .from("nura_source_contexts")
+            .select("id, title, created_at")
+            .eq("plan_id", id)
+            .order("created_at", { ascending: false })
+            .limit(3),
+      isWatcher
+        ? Promise.resolve({ data: null })
+        : supabase.from("nura_messages").select("id").eq("plan_id", id).limit(1),
+      // ensureJourney drafts milestones when there are none - an owner-only side effect.
+      isWatcher
+        ? readJourney(supabase, id)
+        : ensureJourney(supabase, ownerId, {
+            id: plan.id as string,
+            title: plan.title as string,
+            why_this_exists: plan.why_this_exists as string,
+            current_focus: plan.current_focus as string,
+            next_step: plan.next_step as string,
+          }),
+      isWatcher ? Promise.resolve([]) : listCircleMembers(supabase, id),
     ]);
 
   const meta = categoryLabel((plan.category as string) || "general_health");
@@ -108,9 +121,22 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
           </p>
           <p>
             Started {formatDay(plan.created_at as string)}
-            {hasConversation || hasDocs ? " · Built from what you’ve shared" : " · Nura is tracking this with you"}
+            {isWatcher
+              ? ` · Shared with you by ${ownerName ?? "someone"}`
+              : hasConversation || hasDocs
+                ? " · Built from what you’ve shared"
+                : " · Nura is tracking this with you"}
           </p>
         </header>
+
+        {isWatcher && (
+          <aside className="circle-banner" role="note">
+            <b>{ownerName ?? "Someone"} shared this Care plan with you.</b>
+            <span>
+              You can see the plan, its journey and check-ins. Their conversation with Nura stays private to them.
+            </span>
+          </aside>
+        )}
 
         <section className="journey-detail-hero">
           {nextCheckIn ? (
@@ -126,15 +152,27 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
                 </div>
               </div>
               <p className="journey-detail-prompt">{nextPrompt}</p>
-              <div className="button-row today-attention-actions">
-                <Link href={checkInHref} className="primary-cta">
-                  Do check-in
-                </Link>
-                <Link href={workspaceHref} className="secondary-cta">
-                  <MessageCircle /> Message Nura
-                </Link>
-                <RescheduleButton planId={plan.id as string} />
+              {!isWatcher && (
+                <div className="button-row today-attention-actions">
+                  <Link href={checkInHref} className="primary-cta">
+                    Do check-in
+                  </Link>
+                  <Link href={workspaceHref} className="secondary-cta">
+                    <MessageCircle /> Message Nura
+                  </Link>
+                  <RescheduleButton planId={plan.id as string} />
+                </div>
+              )}
+            </>
+          ) : isWatcher ? (
+            <>
+              <div className="today-attention-kicker">
+                <span>Check-ins</span>
               </div>
+              <h2>No check-in scheduled</h2>
+              <p className="journey-detail-prompt">
+                Nura will check in with {ownerName ?? "them"} when it&apos;s useful. You&apos;ll see the next one here.
+              </p>
             </>
           ) : (
             <>
@@ -168,7 +206,9 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
           ) : null}
         </article>
 
-        <PlanJourney planId={plan.id as string} milestones={journey} />
+        <PlanJourney planId={plan.id as string} milestones={journey} readOnly={isWatcher} />
+
+        {!isWatcher && <CareCircleCard planId={plan.id as string} initialMembers={circleMembers} />}
 
         {(hasUpdates || hasDocs) && (
           <section className="journey-detail-activity">
@@ -205,13 +245,15 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
           </section>
         )}
 
-        <Link href={workspaceHref} className="journey-share-row">
-          <UploadCloud aria-hidden />
-          <span>
-            <b>Share context</b>
-            <small>Images, voice notes, documents or notes</small>
-          </span>
-        </Link>
+        {!isWatcher && (
+          <Link href={workspaceHref} className="journey-share-row">
+            <UploadCloud aria-hidden />
+            <span>
+              <b>Share context</b>
+              <small>Images, voice notes, documents or notes</small>
+            </span>
+          </Link>
+        )}
       </div>
     </NuraShell>
   );
