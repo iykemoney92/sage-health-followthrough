@@ -55,6 +55,30 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+// Ties Clariti to Zapx Labs and its store listing so search and AI assistants
+// resolve "Clariti" to this app rather than a namesake.
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "@id": `${appUrl}/#app`,
+  name: "Clariti",
+  alternateName: "Clariti by Zapx Labs",
+  description,
+  url: appUrl,
+  applicationCategory: "HealthApplication",
+  operatingSystem: "Web, Android",
+  publisher: {
+    "@type": "Organization",
+    "@id": "https://zapxlabs.com/#organization",
+    name: "Zapx Labs",
+    url: "https://zapxlabs.com",
+  },
+  sameAs: [
+    "https://zapxlabs.com/products/clariti",
+    "https://play.google.com/store/apps/details?id=app.useclariti.mobile",
+  ],
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -63,6 +87,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body data-ui-version="mobile-nav-v2">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
+          }}
+        />
         {children}
         <NativeDeepLinks />
         <KeyboardInset />

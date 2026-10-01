@@ -1,0 +1,22 @@
+# Clariti
+
+> Clariti, made by Zapx Labs, reads confusing health paperwork — medical bills, insurance EOBs, lab results, radiology reports, discharge summaries, medication lists and letters — explains it in plain language, and helps you work out what to ask next.
+
+Attach a document, take a photo, or paste the text, and Clariti explains one document at a time. It explains paperwork; it does not diagnose, and it does not replace advice from your doctor, pharmacist or insurer.
+
+## What it explains
+
+- Medical bills: charges, odd fees, and what to ask next.
+- Insurance EOBs: what was billed, covered, and left to you.
+- Radiology reports: findings, anatomy words, and questions for your doctor.
+- Lab results: markers, ranges, and what to ask next.
+- Discharge summaries: why you were there, medications, and follow-up.
+- Medication lists: names, doses, and questions for the pharmacist.
+
+## Links
+
+- [Clariti](https://useclariti.app): Home
+- [Example analysis](https://useclariti.app/example): An invented report, explained
+- [Clariti on Google Play](https://play.google.com/store/apps/details?id=app.useclariti.mobile)
+- [Clariti on Zapx Labs](https://zapxlabs.com/products/clariti)
+- [Zapx Labs](https://zapxlabs.com)
