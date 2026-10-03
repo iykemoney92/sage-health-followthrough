@@ -58,7 +58,26 @@ export async function configureNativePurchases(userId: string) {
   });
   await Purchases.configure({ apiKey, appUserID: userId });
   configuredFor = userId;
+  await enableAppleAdsAttribution();
   return true;
+}
+
+/**
+ * Sends the AdServices token to RevenueCat so an install from an Apple Ads tap
+ * is tied to the campaign and keyword that produced it, and so a later Plus
+ * purchase can be credited to that keyword rather than just counted.
+ *
+ * iOS-only and best-effort: the SDK rejects it on iOS below 14.3, and a failed
+ * attribution call must never stop someone from buying. The shell loads this
+ * page live from usenura.app, so shipping this needs no App Store release.
+ */
+async function enableAppleAdsAttribution() {
+  if (Capacitor.getPlatform() !== "ios") return;
+  try {
+    await Purchases.enableAdServicesAttributionTokenCollection();
+  } catch {
+    // Unsupported OS or SDK not ready — attribution is optional.
+  }
 }
 
 export type PlusOffer = {
