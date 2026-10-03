@@ -39,7 +39,7 @@ export function isoFromMs(value: number | null | undefined) {
 export function getPlusProductIds() {
   return (
     process.env.REVENUECAT_PLUS_PRODUCT_IDS ??
-    "prod_UxrFQntebp8P6e,prod48328e2cc1,price_1TxvWrLRJZHcAjIaS9VlfzTM"
+    "prod_UxrFQntebp8P6e,prod48328e2cc1,price_1TxvWrLRJZHcAjIaS9VlfzTM,nura_plus_monthly"
   )
     .split(",")
     .map((value) => value.trim())

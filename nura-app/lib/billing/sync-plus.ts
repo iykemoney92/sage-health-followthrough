@@ -15,6 +15,7 @@ type RevenueCatSubscriberResponse = {
     subscriptions?: Record<
       string,
       {
+        store?: string | null;
         expires_date?: string | null;
         purchase_date?: string | null;
         period_type?: string | null;
@@ -24,6 +25,15 @@ type RevenueCatSubscriberResponse = {
     >;
   };
 };
+
+/** A declined renewal the store is still retrying, so the fix is a new card, not a new purchase. */
+export type PendingBillingIssue = {
+  store: string | null;
+  detectedAt: string;
+};
+
+/** Apple retries a declined renewal for up to 60 days; past that the subscription is simply over. */
+const BILLING_RETRY_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
 
 function getRevenueCatApiKey() {
   return (
@@ -41,6 +51,32 @@ function addDaysIso(from: Date, days: number) {
 
 function isFuture(value: string | null | undefined) {
   return Boolean(value && new Date(value).getTime() > Date.now());
+}
+
+type RevenueCatSubscription = NonNullable<
+  NonNullable<RevenueCatSubscriberResponse["subscriber"]>["subscriptions"]
+>[string];
+
+/**
+ * The most recent Plus subscription lapsed because the charge was declined,
+ * not because the person cancelled. RevenueCat clears billing_issues_detected_at
+ * once a retry succeeds, and a cancellation ends the store's retries, so either
+ * of those means there is nothing for a new card to fix.
+ */
+export function pendingBillingIssue(
+  plusSubscriptions: RevenueCatSubscription[],
+  now = Date.now(),
+): PendingBillingIssue | null {
+  const latest = [...plusSubscriptions]
+    .filter((sub) => sub.expires_date)
+    .sort((a, b) => new Date(b.expires_date!).getTime() - new Date(a.expires_date!).getTime())[0];
+  const detectedAt = latest?.billing_issues_detected_at;
+  if (!latest || !detectedAt || latest.unsubscribe_detected_at) return null;
+
+  const expiredAt = new Date(latest.expires_date!).getTime();
+  if (Number.isNaN(expiredAt) || now - expiredAt > BILLING_RETRY_WINDOW_MS) return null;
+
+  return { store: latest.store ?? null, detectedAt };
 }
 
 /**
@@ -82,17 +118,22 @@ export async function syncPlusFromRevenueCat(
   const plusEntitlement = entitlements[PLUS_ENTITLEMENT_ID];
   const plusProductIds = new Set(getPlusProductIds());
 
-  const activeSubscription = Object.entries(subscriptions).find(([productId, sub]) => {
-    const matchesProduct = plusProductIds.has(productId) || Boolean(plusEntitlement);
-    return matchesProduct && isFuture(sub.expires_date);
-  })?.[1];
+  const plusSubscriptions = Object.entries(subscriptions)
+    .filter(([productId]) => plusProductIds.has(productId) || Boolean(plusEntitlement))
+    .map(([, sub]) => sub);
+  const activeSubscription = plusSubscriptions.find((sub) => isFuture(sub.expires_date));
 
   const entitled =
     (plusEntitlement && isFuture(plusEntitlement.expires_date))
     || Boolean(activeSubscription);
 
   if (!entitled) {
-    return { ok: true as const, hasPlus: false, reason: "no_active_entitlement" as const };
+    return {
+      ok: true as const,
+      hasPlus: false,
+      reason: "no_active_entitlement" as const,
+      billingIssue: pendingBillingIssue(plusSubscriptions),
+    };
   }
 
   const purchaseDateRaw =
