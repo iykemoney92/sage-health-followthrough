@@ -1,0 +1,9 @@
+# Local-only material that must never be uploaded by `vercel --prod`.
+# tmp/ holds launch-QA Chrome profiles (cookies, saved sessions) and store
+# bundles; on its own it is ~1,250 files and was enough to make the CLI's
+# upload fail with an HTML error page instead of a deployment.
+/tmp
+/visuals
+/.claude
+*.aab
+*.apk
