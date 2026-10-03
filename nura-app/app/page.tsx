@@ -11,12 +11,45 @@ import { getSessionUser } from "@/lib/integrations/supabase-server";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
 import "./landing.css";
 
+// Ties Nura to Zapx Labs and its store listings so search and AI assistants
+// can tell this Nura apart from other products with the same name.
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "@id": "https://usenura.app/#app",
+  name: "Nura",
+  alternateName: "Nura by Zapx Labs",
+  description:
+    "Nura is care between clinical moments — a health and wellbeing companion that helps you follow through after you leave the GP, clinic, or hospital, alongside family, friends, and the people who support you. It does not diagnose, prescribe, or replace professional care.",
+  url: "https://usenura.app",
+  applicationCategory: "HealthApplication",
+  operatingSystem: "Web, iOS, Android",
+  publisher: {
+    "@type": "Organization",
+    "@id": "https://zapxlabs.com/#organization",
+    name: "Zapx Labs",
+    url: "https://zapxlabs.com",
+  },
+  sameAs: [
+    "https://zapxlabs.com/products/nura",
+    "https://apps.apple.com/app/id6804203569",
+    "https://play.google.com/store/apps/details?id=app.usenura.mobile",
+    "https://alternativeto.net/software/nura-zapx-labs-/",
+  ],
+};
+
 export default async function LandingPage() {
   const user = await getSessionUser();
   const isSignedIn = Boolean(user);
 
   return (
     <main className="landing-v2">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
       <LandingNavChrome>
         <NuraLogo />
         <nav aria-label="Landing">

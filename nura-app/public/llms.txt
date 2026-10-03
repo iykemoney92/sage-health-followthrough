@@ -1,0 +1,20 @@
+# Nura
+
+> Nura is care between clinical moments — a health and wellbeing companion, made by Zapx Labs, that helps you follow through after you leave the GP, clinic, or hospital, alongside family, friends, and the people who support you. Not to be confused with other products called Nura.
+
+Clinicians treat in the visit; most care after that is carried by you, family, friends, and carers. Nura stays in that space, within health and wellbeing. It organises, remembers, and follows up. It does not diagnose, prescribe, or replace professional care, and you decide what it remembers.
+
+## How it works
+
+1. Tell Nura what's going on in plain language: a message, a note from the visit, or something a carer or clinician asked you to watch.
+2. It becomes a Care plan, so context doesn't scatter across chats, paper, and memory.
+3. Care continues with check-ins: gentle follow-ups bring the next step back when life gets busy.
+
+## Links
+
+- [Nura](https://usenura.app): Home (web)
+- [Nura on the App Store](https://apps.apple.com/app/id6804203569)
+- [Nura on Google Play](https://play.google.com/store/apps/details?id=app.usenura.mobile)
+- [Privacy](https://usenura.app/privacy)
+- [Nura on Zapx Labs](https://zapxlabs.com/products/nura)
+- [Zapx Labs](https://zapxlabs.com)
