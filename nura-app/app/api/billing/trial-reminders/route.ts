@@ -70,8 +70,10 @@ async function runTrialLifecycle(request: NextRequest) {
   const now = Date.now();
   const reminderWindowStart = new Date(now).toISOString();
   const reminderWindowEnd = new Date(now + TRIAL_REMINDER_DAYS_BEFORE * 24 * 60 * 60 * 1000).toISOString();
-  // Only fire once users are inside the ~4-day window (not earlier).
-  const reminderEarliest = new Date(now + (TRIAL_REMINDER_DAYS_BEFORE - 0.5) * 24 * 60 * 60 * 1000).toISOString();
+  // A full day wide, because the cron runs once a day: a 12-hour window let
+  // every trial ending in the afternoon (UTC) slip between two runs unreminded.
+  // trial_reminder_4d_sent_at keeps the overlap from sending twice.
+  const reminderEarliest = new Date(now + (TRIAL_REMINDER_DAYS_BEFORE - 1) * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: reminderCandidates, error: reminderError } = await supabase
     .from("nura_profiles")
