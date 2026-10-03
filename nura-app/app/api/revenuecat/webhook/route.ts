@@ -21,6 +21,15 @@ function isUuid(value: string | undefined): value is string {
   return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
 }
 
+/**
+ * First 8 hex chars of the secret's SHA-256 — enough to tell two secrets apart
+ * in a log line without revealing either. Lengths alone can't: every delivery
+ * from July to October failed with matching 64/64 lengths and different values.
+ */
+function fingerprint(value: string) {
+  return createHash("sha256").update(value).digest("hex").slice(0, 8);
+}
+
 function eventIdFor(payloadText: string, event: RevenueCatEvent) {
   if (event.id) return event.id;
   return createHash("sha256").update(payloadText).digest("hex");
@@ -87,15 +96,21 @@ export async function POST(request: NextRequest) {
   }
 
   // RevenueCat sends the configured value verbatim. Accept it with or
-  // without a "Bearer " prefix on either side: every delivery since July had
-  // been failing with 401 while the secrets themselves matched, and the only
-  // difference a dashboard can introduce without anyone noticing is the
-  // prefix. Comparison stays constant-time on the normalised values.
+  // without a "Bearer " prefix on either side, since a dashboard can add one
+  // without anyone noticing. The July–October 401s were not the prefix,
+  // though: RevenueCat and Vercel held two different secrets, which the
+  // fingerprints below make visible. Comparison stays constant-time on the
+  // normalised values.
   const strip = (value: string) => value.trim().replace(/^Bearer\s+/i, "");
   const incomingAuth = strip(request.headers.get("authorization") ?? "");
   const expected = strip(expectedAuth);
   if (!incomingAuth || !safeEqual(incomingAuth, expected)) {
-    logger.warn("revenuecat_webhook.unauthorized", { incomingLength: incomingAuth.length, expectedLength: expected.length });
+    logger.warn("revenuecat_webhook.unauthorized", {
+      incomingLength: incomingAuth.length,
+      expectedLength: expected.length,
+      incomingFingerprint: incomingAuth ? fingerprint(incomingAuth) : null,
+      expectedFingerprint: fingerprint(expected),
+    });
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
