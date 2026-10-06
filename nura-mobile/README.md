@@ -97,3 +97,30 @@ Once this ships as a native iOS app with paid subscriptions, Apple's
 guideline 3.1.1 generally requires using RevenueCat's native IAP SDK instead
 of an external checkout link — factor that in before submitting to App
 Store review.
+
+## Firebase Analytics (Android sign-up conversion) — 1.0.2, 2026-10-06
+
+Google Ads App campaigns can only report and bid on in-app events that come
+from the app's own Firebase SDK, so the Android shell bundles
+`@capacitor-firebase/analytics` and `android/app/google-services.json`
+(Firebase project `nura-7bd62`, Analytics property under the "Zapx Labs" GA
+account). The web app logs a single `sign_up` event through it for a new
+account, after the cookie notice is accepted — see
+`nura-app/components/native-signup-conversion.tsx`. Every consent type defaults
+to denied in `AndroidManifest.xml`.
+
+The google-services plugin is now applied, so FCM push also has its config.
+
+**iOS is not wired.** The next `npx cap sync ios` will add the Firebase pod,
+but there is no `GoogleService-Info.plist` and no `FirebaseApp.configure()`.
+The web side only calls the plugin on Android, and the iOS shell hard-denies
+analytics anyway (App Review 5.1.2(i)), so either add the plist or leave the
+plugin out of the iOS build before shipping a new iOS version.
+
+Release builds need JDK 21 (the default JDK 25 fails in settings.gradle) and
+the SDK path:
+
+```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+export ANDROID_HOME=~/Library/Android/sdk
+```
