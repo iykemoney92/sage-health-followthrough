@@ -12,6 +12,7 @@ import "./design-refresh.css";
 import "./toast.css";
 import { CookieConsent } from "@/components/cookie-consent";
 import { GoogleAnalytics } from "@/components/google-analytics";
+import { NativeSignupConversion } from "@/components/native-signup-conversion";
 import { NativeDeepLinks } from "@/components/native-deep-links";
 import { ToastProvider } from "@/components/toast";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
@@ -54,6 +55,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <NativeDeepLinks />
           <CookieConsent />
           <GoogleAnalytics />
+          <NativeSignupConversion />
         </ToastProvider>
       </body>
     </html>

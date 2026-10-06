@@ -26,6 +26,37 @@ function isIosShell() {
   );
 }
 
+/**
+ * True inside an Android shell new enough (1.0.2+) to send the Google Ads
+ * sign-up conversion through Firebase. Read off the bridge for the same reason
+ * as `isIosShell`.
+ */
+function isAndroidAdsMeasurementShell() {
+  if (typeof window === "undefined") return false;
+  const bridge = (window as {
+    Capacitor?: {
+      isNativePlatform?: () => boolean;
+      getPlatform?: () => string;
+      isPluginAvailable?: (name: string) => boolean;
+    };
+  }).Capacitor;
+  return (
+    typeof bridge?.isNativePlatform === "function" &&
+    bridge.isNativePlatform() &&
+    bridge.getPlatform?.() === "android" &&
+    bridge.isPluginAvailable?.("FirebaseAnalytics") === true
+  );
+}
+
+/**
+ * Where the choice is stored. That Android shell asks a different question
+ * ("…and tell Google which ads led to a new account"), so an Accept given to
+ * the old "never for ads" notice must not carry over to it.
+ */
+function consentStorageKey() {
+  return isAndroidAdsMeasurementShell() ? `${ANALYTICS_CONSENT_KEY}:android-ads` : ANALYTICS_CONSENT_KEY;
+}
+
 export function getAnalyticsConsent(): AnalyticsConsent | null {
   // Hard "denied" in the iOS shell, never the stored value and never null.
   // App Review rejected the iOS build under guideline 5.1.2(i) for showing a
@@ -43,7 +74,7 @@ export function getAnalyticsConsent(): AnalyticsConsent | null {
   if (isIosShell()) return "denied";
 
   try {
-    const value = localStorage.getItem(ANALYTICS_CONSENT_KEY);
+    const value = localStorage.getItem(consentStorageKey());
     if (value === "granted" || value === "denied") return value;
   } catch {
     // Private browsing or storage disabled.
@@ -53,7 +84,7 @@ export function getAnalyticsConsent(): AnalyticsConsent | null {
 
 export function setAnalyticsConsent(value: AnalyticsConsent) {
   try {
-    localStorage.setItem(ANALYTICS_CONSENT_KEY, value);
+    localStorage.setItem(consentStorageKey(), value);
   } catch {
     // Private browsing or storage disabled — consent won't persist.
   }
