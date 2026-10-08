@@ -16,6 +16,8 @@ type LegalPageProps = {
   intro: string;
   sections: LegalSection[];
   active: "privacy" | "terms" | "data-use";
+  updated?: string;
+  children?: React.ReactNode;
 };
 
 const navItems = [
@@ -24,7 +26,7 @@ const navItems = [
   { href: "/data-use", id: "data-use" as const, label: "Data use" },
 ];
 
-export function LegalPage({ eyebrow, title, intro, sections, active }: LegalPageProps) {
+export function LegalPage({ eyebrow, title, intro, sections, active, updated = "July 29, 2026", children }: LegalPageProps) {
   return (
     <main className="legal-v2">
       <header className="legal-nav">
@@ -50,7 +52,7 @@ export function LegalPage({ eyebrow, title, intro, sections, active }: LegalPage
         <span className="legal-kicker">{eyebrow}</span>
         <h1>{title}</h1>
         <p>{intro}</p>
-        <small>Last updated July 29, 2026</small>
+        <small>Last updated {updated}</small>
       </section>
 
       <section className="legal-body">
@@ -60,6 +62,7 @@ export function LegalPage({ eyebrow, title, intro, sections, active }: LegalPage
             <p>{section.body}</p>
           </article>
         ))}
+        {children}
       </section>
 
       <footer className="legal-footer">

@@ -4,6 +4,7 @@ import { ArrowRight, Eye, EyeOff, ShieldCheck, X } from "lucide-react";
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import { AuthProviders } from "@/components/auth-providers";
 import { track } from "@/lib/analytics";
+import { quoraTrack } from "@/lib/quora-pixel";
 
 type AuthMode = "signin" | "signup";
 
@@ -139,10 +140,12 @@ export function ClaritiAuthModal({
       if (result.requiresEmailConfirmation) {
         setPendingConfirmation(true);
         track("sign_up_pending_confirmation");
+        quoraTrack("CompleteRegistration");
         return;
       }
 
       track(mode === "signup" ? "sign_up" : "sign_in");
+      if (mode === "signup") quoraTrack("CompleteRegistration");
       await onAuthenticated();
     } catch {
       setError("Sign-in is unavailable right now. Please try again shortly.");

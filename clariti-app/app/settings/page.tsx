@@ -32,6 +32,7 @@ import {
   isNativeShell,
   setAnalyticsConsent,
 } from "@/lib/analytics-consent";
+import { AD_CONSENT_EVENT, getAdConsent, setAdConsent } from "@/lib/quora-pixel";
 import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
 import "./settings.css";
 
@@ -85,14 +86,20 @@ type AnalyticsControlState = "unknown" | "native" | "granted" | "denied";
 
 function subscribeAnalyticsConsent(onChange: () => void) {
   window.addEventListener(ANALYTICS_CONSENT_EVENT, onChange);
-  return () => window.removeEventListener(ANALYTICS_CONSENT_EVENT, onChange);
+  window.addEventListener(AD_CONSENT_EVENT, onChange);
+  return () => {
+    window.removeEventListener(ANALYTICS_CONSENT_EVENT, onChange);
+    window.removeEventListener(AD_CONSENT_EVENT, onChange);
+  };
 }
 
 function readAnalyticsConsentState(): AnalyticsControlState {
   // The shells hard-deny analytics so the ATT requirement never applies (see
   // lib/analytics-consent.ts), which would make this a switch that cannot move.
   if (isNativeShell()) return "native";
-  return getAnalyticsConsent() === "granted" ? "granted" : "denied";
+  // One switch for both optional cookies, as on the cookie notice. It reads as
+  // on only when both are on, so turning it on always grants the pair.
+  return getAnalyticsConsent() === "granted" && getAdConsent() === "granted" ? "granted" : "denied";
 }
 
 /**
@@ -120,14 +127,18 @@ function AnalyticsConsentControl() {
       <button
         type="button"
         className="settings-signout"
-        onClick={() => setAnalyticsConsent(granted ? "denied" : "granted")}
+        onClick={() => {
+          const next = granted ? "denied" : "granted";
+          setAnalyticsConsent(next);
+          setAdConsent(next);
+        }}
       >
-        <ChartColumn /> {granted ? "Turn off usage analytics" : "Turn on usage analytics"}
+        <ChartColumn /> {granted ? "Turn off analytics and ad measurement" : "Turn on analytics and ad measurement"}
       </button>
       <p className="settings-footnote" style={{ textAlign: "left", marginTop: 8 }} role="status">
         {granted
-          ? "Analytics are on. Google Analytics sees which screens you open — never your documents or anything written in them."
-          : "Analytics are off. Only the cookies that keep you signed in are loaded."}
+          ? "Both are on. Google Analytics sees which screens you open, and the Quora Pixel sees visits to our public pages, store taps and sign-ups — never your documents or anything written in them."
+          : "Both are off. Only the cookies that keep you signed in are loaded."}
       </p>
     </div>
   );
