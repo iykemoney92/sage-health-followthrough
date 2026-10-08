@@ -5,6 +5,7 @@ import { AuthProviders } from "@/components/auth-providers";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { FormEvent, useState } from "react";
+import { quoraTrack } from "@/lib/quora-pixel";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -44,6 +45,8 @@ export default function SignupPage() {
         setError(result?.error ?? "Could not create account.");
         return;
       }
+
+      quoraTrack("CompleteRegistration");
 
       if (result.requiresEmailConfirmation) {
         setPendingConfirmation(true);

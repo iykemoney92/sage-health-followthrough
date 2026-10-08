@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description: "What Clariti collects when you upload a health document, who else processes it, and how to export or delete it.",
 };
 
-const LAST_UPDATED = "September 13, 2026";
+const LAST_UPDATED = "October 8, 2026";
 
 type Section = {
   title: string;
@@ -54,6 +54,7 @@ const sections: Section[] = [
       "ElevenLabs — the voice explanation call. This is switched off today, so no phone number and no document context reach ElevenLabs while it stays off. If it returns, this policy will say so first.",
       "Vercel — hosting and the ordinary request logs that come with it.",
       "Google Analytics — aggregated product usage: an event name for each action you take, the page paths you open, and the device and browser type Google reads off the request. Never document contents, and only while analytics is switched on.",
+      "Quora — ad measurement through the Quora Pixel, on our public web pages only (see Cookies). Never document contents, and only if you accept.",
     ],
   },
   {
@@ -82,7 +83,9 @@ const sections: Section[] = [
     title: "Cookies",
     body: [
       "Clariti sets essential cookies to keep you signed in and your session secure. Those cannot be turned off without breaking sign-in.",
-      "With your consent it also sets Google Analytics cookies to understand how the product is used. What leaves your browser is the name of what happened — a sign-in, an analysis finishing, a video being generated — the page path it happened on, and the device and browser type. Never the contents of a document, its file name, or anything Clariti wrote about it, and never anything used for advertising. Choose Essential only or Accept when the cookie notice appears, and change that choice whenever you like in Settings.",
+      "With your consent it also sets Google Analytics cookies to understand how the product is used. What leaves your browser is the name of what happened — a sign-in, an analysis finishing, a video being generated — the page path it happened on, and the device and browser type. Never the contents of a document, its file name, or anything Clariti wrote about it, and Google Analytics is never used for advertising.",
+      "The same Accept also turns on the Quora Pixel, which tells Quora when you visit a public page of this site (the home page, the example, sign-up and these policy pages), tap an App Store or Google Play link, or create an account on the web, so Quora can match those visits to people who saw our ads and we can tell which ads are worth running. It sets Quora's own cookies and sends Quora the page address, your browser and device details and your IP address. It never runs on the pages that show your documents or analyses, never inside the Clariti apps, and never receives a document, its file name or anything Clariti wrote about it. Nothing is sent to Quora unless you press Accept, wherever you live.",
+      "Choose Essential only or Accept when the cookie notice appears, and change that choice whenever you like in Settings, under Privacy & support.",
     ],
   },
   {
