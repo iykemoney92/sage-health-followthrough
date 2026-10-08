@@ -14,6 +14,7 @@ import { CookieConsent } from "@/components/cookie-consent";
 import { GoogleAnalytics } from "@/components/google-analytics";
 import { NativeSignupConversion } from "@/components/native-signup-conversion";
 import { NativeDeepLinks } from "@/components/native-deep-links";
+import { QuoraPixel } from "@/components/quora-pixel";
 import { ToastProvider } from "@/components/toast";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
 
@@ -55,6 +56,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <NativeDeepLinks />
           <CookieConsent />
           <GoogleAnalytics />
+          <QuoraPixel />
           <NativeSignupConversion />
         </ToastProvider>
       </body>

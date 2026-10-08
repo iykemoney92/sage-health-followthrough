@@ -1,3 +1,4 @@
+import { CookieChoiceButton } from "@/components/cookie-choice-button";
 import { LegalPage } from "../legal-content";
 
 function buildSections(supportEmail: string) {
@@ -8,7 +9,7 @@ function buildSections(supportEmail: string) {
     },
     {
       title: "Who else processes your data",
-      body: "Nura uses a small set of providers to operate: Supabase (database, authentication, and storage), Anthropic (models that help organise shared context), ElevenLabs (voice check-ins and transcription), Twilio and Meta’s WhatsApp Business Platform (calls and WhatsApp delivery), RevenueCat and Stripe (billing), Vercel (hosting), and — if you accept analytics cookies — Google Analytics (aggregated product usage) and, in the Android app, Google Analytics for Firebase (see Cookies). Each only receives what it needs for that job, and none may use your health context for their own purposes.",
+      body: "Nura uses a small set of providers to operate: Supabase (database, authentication, and storage), Anthropic (models that help organise shared context), ElevenLabs (voice check-ins and transcription), Twilio and Meta’s WhatsApp Business Platform (calls and WhatsApp delivery), RevenueCat and Stripe (billing), Vercel (hosting), and — if you accept cookies — Google Analytics (aggregated product usage), the Quora Pixel on our public web pages (ad measurement), and, in the Android app, Google Analytics for Firebase (see Cookies). Each only receives what it needs for that job, and none may use your health context for their own purposes.",
     },
     {
       title: "Your channels",
@@ -32,7 +33,7 @@ function buildSections(supportEmail: string) {
     },
     {
       title: "Cookies",
-      body: "Nura uses essential cookies to keep you signed in and your session secure. With your consent, we also use Google Analytics cookies to understand how people use Nura (pages visited, device type, and similar usage signals). On the web these are not used for advertising. In the Android app, Accept also lets Firebase tell Google Ads that an install from one of our ads went on to create an account, so we can see which ads work; that signal carries no health information and is never used for ad personalisation or remarketing. You can choose Essential only or Accept when the cookie notice appears.",
+      body: "Nura uses essential cookies to keep you signed in and your session secure. With your consent, we also use Google Analytics cookies to understand how people use Nura (pages visited, device type, and similar usage signals). Google Analytics on the web is not used for advertising. Also on the web, Accept turns on the Quora Pixel, which tells Quora when you visit a public page of this site (the home page, sign-up and these policy pages), tap an App Store, Google Play or Get started button, or create an account on the web, so Quora can match those visits to people who saw our ads and we can tell which ads are worth running. It sets Quora's own cookies and sends Quora the page address, your browser and device details and your IP address; it never runs on signed-in pages or inside the Nura apps, and never receives your health information. Nothing is sent to Quora unless you press Accept, wherever you live. In the Android app, Accept also lets Firebase tell Google Ads that an install from one of our ads went on to create an account, so we can see which ads work; that signal carries no health information and is never used for ad personalisation or remarketing. You can choose Essential only or Accept when the cookie notice appears, and change that choice at any time with the button below.",
     },
     {
       title: "Age requirement",
@@ -58,6 +59,9 @@ export default function PrivacyPage() {
       title="Your health context stays yours."
       intro="Nura helps care continue between appointments. It only uses the context you choose to share — and you stay in control of what it remembers."
       sections={buildSections(supportEmail)}
-    />
+      updated="October 8, 2026"
+    >
+      <CookieChoiceButton />
+    </LegalPage>
   );
 }
