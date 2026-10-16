@@ -1330,7 +1330,7 @@ function WorkspaceContent() {
       const response = await fetch("/api/messages", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sessionId: dbSessionId, content, analysis, followUpDraft: pendingDraft }),
+        body: JSON.stringify({ sessionId: dbSessionId, content, analysis, followUpDraft: pendingDraft ?? undefined }),
       });
       const payload = await response.json();
       if (response.status === 402 && isPlusRequiredPayload(payload)) {
