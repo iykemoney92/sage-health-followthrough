@@ -25,7 +25,7 @@ const requestSchema = z.object({
     email: z.string().optional(),
     phoneNumber: z.string().optional(),
     timingText: z.string().optional(),
-  }).optional(),
+  }).nullish(),
 });
 
 export async function POST(request: NextRequest) {
@@ -45,7 +45,9 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
 
   const supabase = await getSupabaseSessionClient();
-  const { analysis, content, followUpDraft, sessionId } = parsed.data;
+  const { analysis, content, sessionId } = parsed.data;
+  // The workspace sends null when no check-in draft is in progress.
+  const followUpDraft = parsed.data.followUpDraft ?? undefined;
   const [recoveredDraft, threadDocuments, savedArtifact] = await Promise.all([
     recoverFollowUpDraftFromSavedThread({
       analysis,
@@ -110,7 +112,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ok: true, messages: data, assistant: assistantContent });
 }
 
-type FollowUpDraft = z.infer<typeof requestSchema>["followUpDraft"];
+type FollowUpDraft = NonNullable<z.infer<typeof requestSchema>["followUpDraft"]>;
 
 async function recoverFollowUpDraftFromSavedThread({
   analysis,
@@ -124,7 +126,7 @@ async function recoverFollowUpDraftFromSavedThread({
   explicitDraft?: FollowUpDraft;
   sessionId: string;
   supabase: Awaited<ReturnType<typeof getSupabaseSessionClient>>;
-}): Promise<FollowUpDraft> {
+}): Promise<FollowUpDraft | undefined> {
   const { data } = await supabase
     .from("clariti_messages")
     .select("content")
