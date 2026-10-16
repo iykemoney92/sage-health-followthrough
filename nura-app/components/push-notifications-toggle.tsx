@@ -30,8 +30,26 @@ const isNative = Capacitor.isNativePlatform();
 const nativePlatform = Capacitor.getPlatform();
 const NATIVE_TOKEN_STORAGE_KEY = "nura_native_push_token";
 
+// The Android build currently has no google-services.json, so there is no default
+// FirebaseApp for this process. @capacitor/push-notifications' register() calls
+// FirebaseMessaging.getInstance() with no try/catch (PushNotificationsPlugin.java),
+// which throws IllegalStateException - and Capacitor's own Bridge.callPluginMethod
+// re-throws any plugin exception as a RuntimeException on the task handler, which
+// Android's default uncaught-exception handler then turns into a hard app crash.
+// This is NOT catchable from this file's try/catch - it never reaches JS as a
+// rejected promise. Gate registration behind an explicit "this platform's push
+// config is actually wired up" flag instead of trying to catch the uncatchable.
+// Flip NEXT_PUBLIC_ANDROID_PUSH_ENABLED=true once android/app/google-services.json
+// is in place and verified on a real device/build - no app-store release needed,
+// since this flag is read from the live web bundle the WebView loads.
+const ANDROID_PUSH_READY = process.env.NEXT_PUBLIC_ANDROID_PUSH_ENABLED === "true";
+const nativePushReady = nativePlatform !== "android" || ANDROID_PUSH_READY;
+
 async function checkNativeStatus(): Promise<Status> {
   if (nativePlatform !== "ios" && nativePlatform !== "android") return "unsupported";
+  // Reporting "unsupported" (rather than "off") here also keeps the autoRequest
+  // effect below from firing at all - it only triggers once status === "off".
+  if (!nativePushReady) return "unsupported";
   const result = await PushNotifications.checkPermissions().catch(() => null);
   if (!result) return "unsupported";
   if (result.receive === "denied") return "denied";
@@ -109,6 +127,14 @@ export function PushNotificationsToggle({ autoRequest = false }: { autoRequest?:
   }, [autoRequest, status]);
 
   async function enableNative() {
+    if (!nativePushReady) {
+      // Belt-and-suspenders: checkStatus() already reports "unsupported" so the
+      // button/autoRequest shouldn't reach here, but never let this fall through
+      // to PushNotifications.register() - see the nativePushReady comment above.
+      setStatus("unsupported");
+      toast({ tone: "info", message: "Notifications aren't available on this build yet. You can still use in-app check-ins." });
+      return;
+    }
     const permStatus = await PushNotifications.checkPermissions();
     let receive = permStatus.receive;
     if (receive === "prompt" || receive === "prompt-with-rationale") {
