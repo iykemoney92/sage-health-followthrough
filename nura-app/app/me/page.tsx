@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { NuraShell } from "@/components/nura-shell";
 import { SignOutButton } from "@/components/sign-out-button";
+import { WalkthroughButton } from "@/components/walkthrough-video";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { getSubscriptionAccess } from "@/lib/billing/subscription";
 import { getWhatsappConnectionStatus } from "@/lib/channel-links";
@@ -227,6 +228,13 @@ export default async function MePage() {
             </Link>
           </section>
         </div>
+
+        <section className="me-settings-group" aria-label="Getting started">
+          <div className="me-section-label">Getting started</div>
+          <div className="me-settings-grid">
+            <WalkthroughButton variant="tile" />
+          </div>
+        </section>
 
         <section className="me-settings-group" aria-label="Settings">
           <div className="me-section-label">Settings</div>

@@ -13,9 +13,12 @@ import { RescheduleButton } from "@/components/nura-actions";
 import { PlanJourney } from "@/components/plan-journey";
 import { CareCircleCard } from "@/components/care-circle-card";
 import { CircleUpdateCard } from "@/components/circle-update-card";
+import { CirclePassOnCard } from "@/components/circle-pass-on-card";
+import { CircleEmailToggle } from "@/components/circle-email-toggle";
 import { getPlanAccess, listCircleMembers, readJourney } from "@/lib/care-circle";
 import { getLatestCircleUpdate } from "@/lib/care-circle-updates";
 import { listCircleAlerts } from "@/lib/care-circle-alerts";
+import { listCircleNotes } from "@/lib/care-circle-notes";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { categoryLabel, channelLabel, formatCheckInWhen } from "@/lib/domain/journey-naming";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
@@ -44,7 +47,7 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
   const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email || "You";
   const avatarUrl = getUserAvatarUrl(user);
 
-  const [{ data: observations }, { data: nextCheckIn }, { data: sourceContexts }, { data: messages }, journey, circleMembers, circleUpdate, circleAlerts] =
+  const [{ data: observations }, { data: nextCheckIn }, { data: sourceContexts }, { data: messages }, journey, circleMembers, circleUpdate, circleAlerts, circleNotes, myMembership] =
     await Promise.all([
       supabase
         .from("nura_observations")
@@ -86,6 +89,11 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
       isWatcher ? Promise.resolve([]) : listCircleMembers(supabase, id),
       getLatestCircleUpdate(supabase, id),
       listCircleAlerts(supabase, id),
+      // RLS already hides withdrawn notes from watchers; the owner sees what they took back.
+      listCircleNotes(supabase, id, { includeWithdrawn: !isWatcher }),
+      isWatcher && user
+        ? supabase.from("nura_plan_members").select("email_updates").eq("plan_id", id).eq("member_id", user.id).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
   const ownerFirstName = (ownerName ?? (displayName as string)).trim().split(/\s+/)[0] || "them";
 
@@ -157,6 +165,27 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
 
         {isWatcher && (
           <CircleUpdateCard planId={plan.id as string} role="watcher" ownerFirstName={ownerFirstName} initial={circleUpdate} />
+        )}
+
+        {isWatcher && circleNotes.length > 0 && (
+          <section className="detail-card circle-notes" aria-label={`In ${ownerFirstName}'s words`}>
+            <h3>In {ownerFirstName}&apos;s words</h3>
+            <ul>
+              {circleNotes.map((note) => (
+                <li key={note.id}>
+                  <p>&ldquo;{note.body}&rdquo;</p>
+                  <small>
+                    {formatDay(note.createdAt)}
+                    {note.source === "voice_call" ? " · passed on during a call with Nura" : ""}
+                  </small>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {isWatcher && (
+          <CircleEmailToggle planId={plan.id as string} initialEnabled={myMembership.data?.email_updates !== false} />
         )}
 
         <section className="journey-detail-hero">
@@ -232,6 +261,7 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
         {!isWatcher && circleMembers.length > 0 && (
           <CircleUpdateCard planId={plan.id as string} role="owner" ownerFirstName={ownerFirstName} initial={circleUpdate} />
         )}
+        {!isWatcher && circleMembers.length > 0 && <CirclePassOnCard planId={plan.id as string} initialNotes={circleNotes} />}
         {!isWatcher && circleAlerts.length > 0 && (
           <aside className="circle-alerts owner" aria-label="What your circle was told">
             <small>Your circle was told</small>

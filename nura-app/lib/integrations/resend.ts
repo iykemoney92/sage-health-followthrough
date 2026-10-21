@@ -481,6 +481,146 @@ usenura.app
 `;
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+type CircleEmailBase = {
+  /** The watcher's own first name, when known. */
+  recipientFirstName?: string;
+  /** The person whose Care plan this is. */
+  ownerFirstName: string;
+  planUrl: string;
+  /** One-click page to stop these emails for this plan. */
+  stopEmailsUrl: string;
+};
+
+export type CircleEmailNote = { body: string; when: string; viaCall: boolean };
+
+function circleFooterHtml(ownerFirstName: string, stopEmailsUrl: string) {
+  const name = escapeHtml(ownerFirstName);
+  return `You're getting this because ${name} added you to their Care circle in Nura. You can see their plan and check-ins, never their conversations with Nura.<br/><a href="${escapeHtml(stopEmailsUrl)}" style="color:#2f6847;font-weight:600;">Stop these emails</a>`;
+}
+
+function circleFooterText(ownerFirstName: string, stopEmailsUrl: string) {
+  return `You're getting this because ${ownerFirstName} added you to their Care circle in Nura. You can see their plan and check-ins, never their conversations with Nura.
+
+Stop these emails: ${stopEmailsUrl}`;
+}
+
+function notesHtml(ownerFirstName: string, notes: CircleEmailNote[]) {
+  if (notes.length === 0) return "";
+  const items = notes
+    .map(
+      (note) =>
+        `<div style="margin:10px 0 0;padding:12px 14px;border-left:3px solid #3f7b57;background:#f3f7f1;border-radius:0 10px 10px 0;color:#183129;">&ldquo;${escapeHtml(note.body)}&rdquo;<div style="padding-top:6px;font-size:12px;color:#7a8781;">${escapeHtml(note.when)}${note.viaCall ? " · passed on during a call with Nura" : ""}</div></div>`,
+    )
+    .join("");
+  return `<br/><br/><strong style="color:#183129;">In ${escapeHtml(ownerFirstName)}'s words</strong>${items}`;
+}
+
+function notesText(ownerFirstName: string, notes: CircleEmailNote[]) {
+  if (notes.length === 0) return "";
+  return `\n\nIn ${ownerFirstName}'s words:\n${notes
+    .map((note) => `"${note.body}" (${note.when}${note.viaCall ? ", passed on during a call with Nura" : ""})`)
+    .join("\n")}`;
+}
+
+/** The weekly update Nura writes for a Care circle, plus any notes the owner chose to pass on. */
+export function circleUpdateEmailHtml({
+  recipientFirstName,
+  ownerFirstName,
+  planUrl,
+  stopEmailsUrl,
+  updateBody,
+  notes,
+}: CircleEmailBase & { updateBody: string; notes: CircleEmailNote[] }) {
+  const greeting = recipientFirstName ? `Hi ${escapeHtml(recipientFirstName)},` : "Hi,";
+  const name = escapeHtml(ownerFirstName);
+  return nuraEmailShell({
+    preview: updateBody.slice(0, 120),
+    eyebrow: "Care circle update",
+    title: `How ${name} is getting on`,
+    bodyHtml: `${greeting}<br/><br/>${escapeHtml(updateBody).replace(/\n/g, "<br/>")}${notesHtml(ownerFirstName, notes)}`,
+    ctaLabel: `See ${name}'s Care plan`,
+    ctaUrl: escapeHtml(planUrl),
+    footerNote: circleFooterHtml(ownerFirstName, stopEmailsUrl),
+  });
+}
+
+export function circleUpdateEmailText({
+  recipientFirstName,
+  ownerFirstName,
+  planUrl,
+  stopEmailsUrl,
+  updateBody,
+  notes,
+}: CircleEmailBase & { updateBody: string; notes: CircleEmailNote[] }) {
+  const greeting = recipientFirstName ? `Hi ${recipientFirstName},` : "Hi,";
+  return `Nura - Care circle update
+
+${greeting}
+
+${updateBody}${notesText(ownerFirstName, notes)}
+
+See ${ownerFirstName}'s Care plan:
+${planUrl}
+
+${circleFooterText(ownerFirstName, stopEmailsUrl)}
+
+usenura.app
+`;
+}
+
+/** "Tell my circle if I miss a check-in" - the email twin of the push and the in-app notice. */
+export function circleMissedCheckInEmailHtml({
+  recipientFirstName,
+  ownerFirstName,
+  planUrl,
+  stopEmailsUrl,
+  alertBody,
+}: CircleEmailBase & { alertBody: string }) {
+  const greeting = recipientFirstName ? `Hi ${escapeHtml(recipientFirstName)},` : "Hi,";
+  const name = escapeHtml(ownerFirstName);
+  return nuraEmailShell({
+    preview: alertBody.slice(0, 120),
+    eyebrow: "Care circle",
+    title: `${name} missed a check-in`,
+    bodyHtml: `${greeting}<br/><br/>${escapeHtml(alertBody)}`,
+    ctaLabel: `See ${name}'s Care plan`,
+    ctaUrl: escapeHtml(planUrl),
+    footerNote: circleFooterHtml(ownerFirstName, stopEmailsUrl),
+  });
+}
+
+export function circleMissedCheckInEmailText({
+  recipientFirstName,
+  ownerFirstName,
+  planUrl,
+  stopEmailsUrl,
+  alertBody,
+}: CircleEmailBase & { alertBody: string }) {
+  const greeting = recipientFirstName ? `Hi ${recipientFirstName},` : "Hi,";
+  return `Nura - Care circle
+
+${greeting}
+
+${alertBody}
+
+See ${ownerFirstName}'s Care plan:
+${planUrl}
+
+${circleFooterText(ownerFirstName, stopEmailsUrl)}
+
+usenura.app
+`;
+}
+
 /** Attach the Nura mark as an inline CID image for branded auth emails. */
 export function nuraEmailLogoAttachment() {
   const content = getEmailLogoBase64();

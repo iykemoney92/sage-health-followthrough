@@ -9,7 +9,7 @@ import {
   sendAuthEmail,
 } from "@/lib/integrations/resend";
 import { composeMissedCallFollowup } from "@/lib/domain/message-intake";
-import { buildVoiceCheckinContext } from "@/lib/domain/voice-checkin-context";
+import { buildVoiceCheckinContext, NO_CIRCLE_PASS_ON } from "@/lib/domain/voice-checkin-context";
 
 function appBaseUrl() {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://usenura.app").replace(
@@ -194,6 +194,7 @@ async function redialCheckIn(supabase: SupabaseClient, checkIn: ResolvableCheckI
         plan_id: checkIn.plan_id,
         thread_title: checkIn.nura_plans?.title ?? "your Care plan",
         thread_context: "",
+        circle_pass_on: NO_CIRCLE_PASS_ON,
         checkin_goal: checkIn.prompt,
       }),
       checkin_goal: checkIn.prompt || context?.dynamicVariables.checkin_goal || "",

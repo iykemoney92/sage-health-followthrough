@@ -4,6 +4,49 @@ import { NURA_CORE_IDENTITY, NURA_SAFETY_BOUNDARIES } from "@/lib/domain/nura-pe
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { describeNowForTimeZone } from "@/lib/timezone";
 
+export const NO_CIRCLE_PASS_ON = "No Care circle on this Journey. Never offer to pass anything on to anyone.";
+
+function joinNames(names: string[]) {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * The end-of-call "anything to pass on?" instruction, sent as the circle_pass_on dynamic
+ * variable. The agent's prompt carries the general rule; this names who is in the circle and
+ * restates the consent steps so they hold even if the dashboard prompt drifts.
+ */
+export function circlePassOnBrief(memberFirstNames: string[] | null) {
+  if (memberFirstNames && memberFirstNames.length === 0) return NO_CIRCLE_PASS_ON;
+  // null = there is a circle but we couldn't read their names (session client).
+  const who = !memberFirstNames
+    ? "your Care circle"
+    : memberFirstNames.length > 3
+      ? `${memberFirstNames.slice(0, 3).join(", ")} and the others in your Care circle`
+      : joinNames(memberFirstNames);
+  return [
+    `The user has shared this Journey with their Care circle${memberFirstNames ? ` (${joinNames(memberFirstNames)})` : ""}. The circle can see the plan and check-ins, never this conversation.`,
+    `Near the end of the call, after you've confirmed what you heard, ask once and lightly: "Before I go, is there anything you'd like me to pass on to ${who} this week?"`,
+    "If they say no or hesitate, say that's completely fine and move on. Never ask twice and never suggest what they could say.",
+    `If they give you a message, read it back in their own words and ask "Shall I send that to ${who}?". Only after a clear yes, call the pass_on_to_circle tool with exactly that message, in their words.`,
+    "Never add anything else from this call: no symptoms, moods, scores or details they didn't ask you to pass on.",
+    "Skip this entirely if they mentioned feeling unsafe, a crisis, or anything that needed urgent help on this call.",
+  ].join(" ");
+}
+
+async function circleMemberFirstNames(supabase: SupabaseClient, planId: string): Promise<string[] | null> {
+  const { data: members } = await supabase.from("nura_plan_members").select("member_id").eq("plan_id", planId).is("revoked_at", null);
+  if (!members || members.length === 0) return [];
+  const ids = members.map((m) => m.member_id as string);
+  // Profiles of other people are only readable with the service role (the scheduled call path).
+  // A session client gets nothing back here, and the brief falls back to "your Care circle".
+  const { data: profiles } = await supabase.from("nura_profiles").select("id, display_name").in("id", ids);
+  const names = (profiles ?? [])
+    .map((p) => ((p.display_name as string | null) ?? "").trim().split(/\s+/)[0])
+    .filter(Boolean);
+  return names.length === ids.length ? names : null;
+}
+
 export async function buildVoiceCheckinContext(
   supabase: SupabaseClient,
   ownerId: string,
@@ -19,11 +62,12 @@ export async function buildVoiceCheckinContext(
 
   if (!plan) return null;
 
-  const [{ data: observations }, { data: contexts }, { data: nextCheckIn }, timeZone] = await Promise.all([
+  const [{ data: observations }, { data: contexts }, { data: nextCheckIn }, timeZone, circleNames] = await Promise.all([
     supabase.from("nura_observations").select("label, value, recorded_at").eq("owner_id", ownerId).eq("plan_id", planId).order("recorded_at", { ascending: false }).limit(8),
     supabase.from("nura_source_contexts").select("kind, title, summary, requires_user_confirmation").eq("owner_id", ownerId).eq("plan_id", planId).order("created_at", { ascending: false }).limit(8),
     supabase.from("nura_check_ins").select("scheduled_for, prompt, channel").eq("owner_id", ownerId).eq("plan_id", planId).is("completed_at", null).order("scheduled_for", { ascending: true }).limit(1).maybeSingle(),
     resolveUserTimeZone(supabase, ownerId),
+    circleMemberFirstNames(supabase, planId).catch(() => [] as string[]),
   ]);
 
   const nowInfo = describeNowForTimeZone(timeZone);
@@ -71,6 +115,7 @@ export async function buildVoiceCheckinContext(
       journey_category: String(plan.category ?? "general_health"),
       user_timezone: timeZone,
       user_local_now: nowInfo.localLabel,
+      circle_pass_on: circlePassOnBrief(circleNames),
     },
     systemPrompt,
     elevenLabsAgentId: agentContext.elevenLabsAgentId,

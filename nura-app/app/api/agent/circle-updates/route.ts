@@ -7,6 +7,8 @@ import {
   writeCircleUpdate,
 } from "@/lib/care-circle-updates";
 import { sendPushToOwner } from "@/lib/integrations/push";
+import { emailCircleUpdate } from "@/lib/care-circle-email";
+import { listCircleNotes, planOwnerFirstName } from "@/lib/care-circle-notes";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -53,6 +55,7 @@ async function run(request: NextRequest) {
 
   let written = 0;
   let notified = 0;
+  let emailed = 0;
   const results: Record<string, unknown>[] = [];
 
   for (const plan of (plans ?? []).slice(0, BATCH_LIMIT)) {
@@ -66,8 +69,8 @@ async function run(request: NextRequest) {
       const update = await writeCircleUpdate(admin, admin, planId, "schedule");
       if (!update) continue;
       written += 1;
-      const { data: ownerName } = await admin.rpc("nura_circle_owner_name", { target_plan: planId });
-      const firstName = ((ownerName as string | null) ?? "").trim().split(/\s+/)[0] || "Someone";
+      // Not nura_circle_owner_name: it checks auth.uid() and returns null to the service role.
+      const firstName = await planOwnerFirstName(admin, planId);
       for (const memberId of membersByPlan.get(planId) ?? []) {
         const push = await sendPushToOwner(memberId, {
           title: `How ${firstName} is getting on`,
@@ -76,13 +79,22 @@ async function run(request: NextRequest) {
         }).catch(() => null);
         if (push && push.sent > 0) notified += 1;
       }
-      results.push({ planId, status: "written" });
+      // Email reaches the watchers push can't: no app installed, or notifications turned off.
+      const notes = await listCircleNotes(admin, planId, { since: new Date(Date.now() - CIRCLE_UPDATE_SCHEDULE_DAYS * 24 * 60 * 60_000) });
+      const email = await emailCircleUpdate(admin, { planId, updateId: update.id, ownerFirstName: firstName, updateBody: update.body, notes }).catch(
+        (err) => {
+          console.error("[circle-updates] email failed", planId, err);
+          return { emailed: 0, failed: 1 };
+        },
+      );
+      emailed += email.emailed;
+      results.push({ planId, status: "written", emailed: email.emailed });
     } catch (err) {
       results.push({ planId, status: "failed", error: err instanceof Error ? err.message : String(err) });
     }
   }
 
-  return NextResponse.json({ ok: true, considered: plans?.length ?? 0, written, notified, results });
+  return NextResponse.json({ ok: true, considered: plans?.length ?? 0, written, notified, emailed, results });
 }
 
 export async function GET(request: NextRequest) {

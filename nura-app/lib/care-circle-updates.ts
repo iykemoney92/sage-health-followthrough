@@ -99,6 +99,15 @@ export async function collectCircleFacts(supabase: SupabaseClient, planId: strin
         .limit(6),
     ]);
 
+  // nura_circle_owner_name checks auth.uid(), so the scheduled job (service role, no user) gets
+  // null back and every weekly update used to say "They". The service role can read the profile
+  // directly; a watcher's session can't, but for them the RPC above already answered.
+  let ownerDisplayName = (ownerName as string | null) ?? null;
+  if (!ownerDisplayName) {
+    const { data: profile } = await supabase.from("nura_profiles").select("display_name").eq("id", plan.owner_id).maybeSingle();
+    ownerDisplayName = (profile?.display_name as string | null) ?? null;
+  }
+
   const stepRows = steps ?? [];
   const milestoneFacts = (milestones ?? []).map((m) => {
     const mine = stepRows.filter((s) => s.milestone_id === m.id);
@@ -119,7 +128,7 @@ export async function collectCircleFacts(supabase: SupabaseClient, planId: strin
   }
 
   return {
-    ownerFirstName: ((ownerName as string | null) ?? "").trim().split(/\s+/)[0] || "They",
+    ownerFirstName: (ownerDisplayName ?? "").trim().split(/\s+/)[0] || "They",
     planTitle: plan.title as string,
     why: ((plan.why_this_exists as string) || "").trim(),
     focus: ((plan.current_focus as string) || "").trim(),

@@ -119,3 +119,23 @@ export async function getConversationOutcome(conversationId: string): Promise<Co
     return null;
   }
 }
+
+/**
+ * Permanently deletes one conversation (audio and transcript) from ElevenLabs. Used when a
+ * person deletes their Nura account, so their call recordings go with the rest of their data.
+ * Returns true when it's gone, including when ElevenLabs no longer has it.
+ */
+export async function deleteConversation(conversationId: string): Promise<boolean> {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey || !conversationId) return false;
+
+  try {
+    const response = await fetch(`https://api.elevenlabs.io/v1/convai/conversations/${encodeURIComponent(conversationId)}`, {
+      method: "DELETE",
+      headers: { "xi-api-key": apiKey },
+    });
+    return response.ok || response.status === 404;
+  } catch {
+    return false;
+  }
+}

@@ -18,12 +18,14 @@ import { NuraShell } from "@/components/nura-shell";
 import { CareDisclaimer } from "@/components/care-disclaimer";
 import { NuraActions, RescheduleButton } from "@/components/nura-actions";
 import { WhatsAppOpenButton } from "@/components/whatsapp-open-button";
+import { WalkthroughButton, WelcomeWalkthrough } from "@/components/walkthrough-video";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { categoryLabel, channelLabel, displayJourneyFocus, formatCheckInWhen, isUsefulDisplayText } from "@/lib/domain/journey-naming";
 import { getOrCreateWhatsappLink } from "@/lib/channel-links";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { listSharedWithMe } from "@/lib/care-circle";
 import { createWhatsappHref } from "@/lib/whatsapp-link";
+import { hasSeenWalkthrough } from "@/lib/walkthrough";
 
 function greeting(hour: number) {
   if (hour < 12) return "Good morning";
@@ -233,8 +235,10 @@ export default async function TodayPage({
             {greeting(today.getHours())}, {firstName} <SunMedium />
           </h1>
           <p>{attentionLine}</p>
+          <WalkthroughButton />
           <CareDisclaimer compact />
         </header>
+        <WelcomeWalkthrough show={Boolean(user) && !hasSeenWalkthrough(user)} firstName={firstName} />
 
         <div className="today-layout">
           <section className="today-main-column">

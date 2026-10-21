@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSubscriptionAccess } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { placeOutboundCall, isElevenLabsCallingConfigured, getConversationOutcome } from "@/lib/integrations/elevenlabs";
-import { buildVoiceCheckinContext } from "@/lib/domain/voice-checkin-context";
+import { buildVoiceCheckinContext, NO_CIRCLE_PASS_ON } from "@/lib/domain/voice-checkin-context";
 import { sendPushToOwner } from "@/lib/integrations/push";
 import { sendWhatsappText } from "@/lib/integrations/whatsapp";
 import { composeCheckinOpener, composeMissedCallFollowup } from "@/lib/domain/message-intake";
@@ -631,6 +631,7 @@ async function runTriggerCheckIns(request: NextRequest) {
           plan_id: primary.plan_id,
           thread_title: planTitle,
           thread_context: "",
+          circle_pass_on: NO_CIRCLE_PASS_ON,
           checkin_goal: primary.prompt,
         }),
         checkin_goal: primary.prompt || context?.dynamicVariables.checkin_goal || "",

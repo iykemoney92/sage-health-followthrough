@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendPushToOwner } from "@/lib/integrations/push";
+import { emailCircleMissedCheckIn } from "@/lib/care-circle-email";
 
 /**
  * "Tell my circle if I miss a check-in."
@@ -71,6 +72,7 @@ export type CircleAlertRun = {
   considered: number;
   alerted: number;
   notified: number;
+  emailed: number;
   results: Record<string, unknown>[];
 };
 
@@ -84,7 +86,7 @@ export async function runCircleAlerts(admin: SupabaseClient, now = new Date()): 
     .eq("circle_alert_missed", true)
     .neq("status", "archived");
   if (plansError) throw new Error(plansError.message);
-  if (!plans || plans.length === 0) return { considered: 0, alerted: 0, notified: 0, results };
+  if (!plans || plans.length === 0) return { considered: 0, alerted: 0, notified: 0, emailed: 0, results };
 
   const planIds = plans.map((p) => p.id as string);
   const { data: memberships } = await admin
@@ -121,6 +123,7 @@ export async function runCircleAlerts(admin: SupabaseClient, now = new Date()): 
 
   let alerted = 0;
   let notified = 0;
+  let emailed = 0;
 
   for (const checkIn of missed ?? []) {
     const planId = checkIn.plan_id as string;
@@ -170,8 +173,18 @@ export async function runCircleAlerts(admin: SupabaseClient, now = new Date()): 
       }).catch(() => null);
       if (push && push.sent > 0) notified += 1;
     }
-    results.push({ checkInId: checkIn.id, planId, status: "alerted", members: members.length });
+    const email = await emailCircleMissedCheckIn(admin, {
+      planId,
+      checkInId: checkIn.id as string,
+      ownerFirstName: firstName,
+      alertBody: body,
+    }).catch((err) => {
+      console.error("[circle-alerts] email failed", planId, err);
+      return { emailed: 0, failed: 1 };
+    });
+    emailed += email.emailed;
+    results.push({ checkInId: checkIn.id, planId, status: "alerted", members: members.length, emailed: email.emailed });
   }
 
-  return { considered: missed?.length ?? 0, alerted, notified, results };
+  return { considered: missed?.length ?? 0, alerted, notified, emailed, results };
 }

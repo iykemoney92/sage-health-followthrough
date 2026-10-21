@@ -48,7 +48,11 @@ ${NURA_TONE} On calls specifically: keep responses short and conversational - th
 Using the schedule_checkin tool:
 - If the user asks you to check back on them later, or you agree to follow up again, call the schedule_checkin tool before the call ends.
 - Use the Care plan name above as planTitle, pick a sensible near-future scheduledFor time based on what the user said, write a short prompt describing what to ask next time, and set channel to voice unless the user asks for whatsapp or in_app.
-- After the tool call succeeds, briefly confirm to the user when you'll check back in - in one short sentence, not by reading the tool response.`;
+- After the tool call succeeds, briefly confirm to the user when you'll check back in - in one short sentence, not by reading the tool response.
+
+Care circle (passing something on):
+- {{circle_pass_on}}
+- The person's conversation with you is private. The only thing that ever reaches their Care circle from a call is a message they asked you to pass on, sent with the pass_on_to_circle tool exactly as the instruction above allows. If it says there is no Care circle, never offer to pass anything on.`;
 
 async function main() {
   const apiKey = process.env.ELEVENLABS_API_KEY;
