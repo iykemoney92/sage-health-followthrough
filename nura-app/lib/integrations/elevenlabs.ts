@@ -22,6 +22,8 @@ export type ConversationOutcome = {
   callSuccessful: string | null;
   durationSecs: number;
   hasTranscript: boolean;
+  /** ElevenLabs' own short summary of the conversation, once it has finished processing. */
+  summary?: string | null;
 };
 
 export function isElevenLabsCallingConfigured() {
@@ -73,7 +75,7 @@ export type RawConversationBody = {
   status?: string;
   call_successful?: string | boolean | null;
   metadata?: { call_duration_secs?: number; duration_secs?: number } | null;
-  analysis?: { call_successful?: string | boolean | null } | null;
+  analysis?: { call_successful?: string | boolean | null; transcript_summary?: string | null } | null;
   transcript?: unknown[] | null;
 };
 
@@ -105,6 +107,7 @@ export function parseConversationOutcome(body: RawConversationBody | null): Conv
     callSuccessful,
     durationSecs,
     hasTranscript,
+    summary: body.analysis?.transcript_summary?.trim() || null,
   };
 }
 

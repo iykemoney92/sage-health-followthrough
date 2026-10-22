@@ -10,9 +10,11 @@ import {
   normalizeRecipientPhone,
   recipientCallBrief,
   recipientOpeningLine,
+  recipientCallSummaryText,
   recipientThreadContext,
   type CareRecipient,
 } from "@/lib/care-recipient";
+import { missedRecipientCallBody } from "@/lib/care-circle-alerts";
 import { buildVoiceCheckinContext } from "@/lib/domain/voice-checkin-context";
 import { getZonedParts } from "@/lib/timezone";
 
@@ -186,5 +188,26 @@ describe("buildVoiceCheckinContext for a call to someone else", () => {
     expect(JSON.stringify(vars)).not.toContain("PRIVATE");
     expect(vars.circle_pass_on).toContain("pass on to Sarah");
     expect(context!.firstMessage).toContain("Hi Margaret, it's Nura, the assistant Sarah set up");
+  });
+});
+
+describe("after a call to someone else", () => {
+  it("names the people in ElevenLabs' summary", () => {
+    expect(
+      recipientCallSummaryText(
+        "The agent called the user to check on their walks. The user said the user's knee was sore and asked the agent to stop calling.",
+        "Margaret",
+      ),
+    ).toBe("Nura called Margaret to check on their walks. Margaret said Margaret's knee was sore and asked Nura to stop calling.");
+  });
+
+  it("treats a missing summary as empty", () => {
+    expect(recipientCallSummaryText(null, "Margaret")).toBe("");
+  });
+
+  it("tells the circle Nura couldn't reach them, not that the owner missed something", () => {
+    const body = missedRecipientCallBody("Margaret", "Heart follow-up", "2026-10-22T09:00:00Z");
+    expect(body).toContain("Nura couldn't reach Margaret");
+    expect(body).toContain('"Heart follow-up"');
   });
 });

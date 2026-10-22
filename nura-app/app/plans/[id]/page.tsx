@@ -5,6 +5,7 @@ import {
   CalendarDays,
   FileText,
   MessageCircle,
+  Phone,
   Pin,
   UploadCloud,
 } from "lucide-react";
@@ -14,13 +15,14 @@ import { PlanJourney } from "@/components/plan-journey";
 import { CareCircleCard } from "@/components/care-circle-card";
 import { CareRecipientCard } from "@/components/care-recipient-card";
 import { loadRecipientForPlan, maskPhone } from "@/lib/care-recipient";
+import { recipientFirstNameForPlan } from "@/lib/care-recipient-admin";
 import { CircleUpdateCard } from "@/components/circle-update-card";
 import { CirclePassOnCard } from "@/components/circle-pass-on-card";
 import { CircleEmailToggle } from "@/components/circle-email-toggle";
 import { getPlanAccess, listCircleMembers, readJourney } from "@/lib/care-circle";
 import { getLatestCircleUpdate } from "@/lib/care-circle-updates";
 import { listCircleAlerts } from "@/lib/care-circle-alerts";
-import { listCircleNotes } from "@/lib/care-circle-notes";
+import { listCircleNotes, type CircleNote } from "@/lib/care-circle-notes";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { categoryLabel, channelLabel, formatCheckInWhen } from "@/lib/domain/journey-naming";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
@@ -48,6 +50,9 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
   const ownerId = plan.owner_id as string;
   const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email || "You";
   const avatarUrl = getUserAvatarUrl(user);
+  // A plan about someone else: its check-ins are calls to them, so "next" means the next call
+  // still to go out - a call that already happened (or was cancelled) is never "next".
+  const isRecipientPlan = Boolean(plan.care_recipient_id);
 
   const [{ data: observations }, { data: nextCheckIn }, { data: sourceContexts }, { data: messages }, journey, circleMembers, circleUpdate, circleAlerts, circleNotes, myMembership] =
     await Promise.all([
@@ -57,11 +62,19 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
         .eq("plan_id", id)
         .order("recorded_at", { ascending: false })
         .limit(6),
-      supabase
-        .from("nura_check_ins")
-        .select("id, scheduled_for, channel, prompt")
-        .eq("plan_id", id)
-        .is("completed_at", null)
+      (isRecipientPlan
+        ? supabase
+            .from("nura_check_ins")
+            .select("id, scheduled_for, channel, prompt")
+            .eq("plan_id", id)
+            .is("completed_at", null)
+            .is("triggered_at", null)
+        : supabase
+            .from("nura_check_ins")
+            .select("id, scheduled_for, channel, prompt")
+            .eq("plan_id", id)
+            .is("completed_at", null)
+      )
         .order("scheduled_for", { ascending: true })
         .limit(1)
         .maybeSingle(),
@@ -100,7 +113,21 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
 
   // A plan about someone else. RLS only returns this to the owner; watchers never see who is
   // called or on what number.
-  const careRecipient = !isWatcher && plan.care_recipient_id ? await loadRecipientForPlan(supabase, id) : null;
+  const careRecipient = !isWatcher && isRecipientPlan ? await loadRecipientForPlan(supabase, id) : null;
+  const recipientFirstName = careRecipient?.first_name ?? (isRecipientPlan ? await recipientFirstNameForPlan(id) : null);
+  const { data: lastRecipientCall } = careRecipient
+    ? await supabase
+        .from("nura_check_ins")
+        .select("triggered_at, call_summary")
+        .eq("plan_id", id)
+        .eq("call_status", "completed")
+        .order("triggered_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+  // Words the person a plan is about asked Nura to pass on are theirs, not the owner's.
+  const recipientNotes = recipientFirstName ? circleNotes.filter((note) => note.source === "voice_call") : [];
+  const ownNotes = recipientFirstName ? circleNotes.filter((note) => note.source !== "voice_call") : circleNotes;
   const ownerFirstName = (ownerName ?? (displayName as string)).trim().split(/\s+/)[0] || "them";
 
   const meta = categoryLabel((plan.category as string) || "general_health");
@@ -173,11 +200,15 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
           <CircleUpdateCard planId={plan.id as string} role="watcher" ownerFirstName={ownerFirstName} initial={circleUpdate} />
         )}
 
-        {isWatcher && circleNotes.length > 0 && (
+        {isWatcher && recipientFirstName && recipientNotes.length > 0 && (
+          <RecipientNotesCard name={recipientFirstName} notes={recipientNotes} />
+        )}
+
+        {isWatcher && ownNotes.length > 0 && (
           <section className="detail-card circle-notes" aria-label={`In ${ownerFirstName}'s words`}>
             <h3>In {ownerFirstName}&apos;s words</h3>
             <ul>
-              {circleNotes.map((note) => (
+              {ownNotes.map((note) => (
                 <li key={note.id}>
                   <p>&ldquo;{note.body}&rdquo;</p>
                   <small>
@@ -195,7 +226,64 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
         )}
 
         <section className="journey-detail-hero">
-          {nextCheckIn ? (
+          {recipientFirstName ? (
+            nextCheckIn && (!careRecipient || careRecipient.consent_status === "granted") ? (
+              <>
+                <div className="today-attention-kicker">
+                  <span>Next call to {recipientFirstName}</span>
+                </div>
+                <div className="today-attention-when">
+                  <Phone aria-hidden />
+                  <div>
+                    <b>{nextWhen}</b>
+                    <small>{careRecipient ? `Nura calls ${maskPhone(careRecipient.phone)} in their daytime` : "Phone call"}</small>
+                  </div>
+                </div>
+                <p className="journey-detail-prompt">{nextPrompt}</p>
+                {!isWatcher && (
+                  <div className="button-row today-attention-actions">
+                    <Link href={workspaceHref} className="secondary-cta">
+                      <MessageCircle /> Message Nura
+                    </Link>
+                    <RescheduleButton planId={plan.id as string} />
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="today-attention-kicker">
+                  <span>Calls to {recipientFirstName}</span>
+                </div>
+                <h2>
+                  {careRecipient?.consent_status === "pending"
+                    ? `Waiting for ${recipientFirstName} to say yes`
+                    : careRecipient?.consent_status === "declined"
+                      ? `${recipientFirstName} said no thanks`
+                      : careRecipient?.consent_status === "revoked"
+                        ? `Calls to ${recipientFirstName} are stopped`
+                        : "No call booked"}
+                </h2>
+                <p className="journey-detail-prompt">
+                  {isWatcher
+                    ? `You'll see the next call to ${recipientFirstName} here.`
+                    : careRecipient?.consent_status === "granted"
+                      ? `Message Nura to book the next call to ${recipientFirstName}.`
+                      : careRecipient?.consent_status === "revoked"
+                        ? `${recipientFirstName} asked Nura to stop calling. If they change their mind, send them the link again or accept for them below.`
+                        : careRecipient?.consent_status === "declined"
+                          ? `If ${recipientFirstName} changes their mind, send them the link again or accept for them below.`
+                          : `Nura won't call ${recipientFirstName} until they say yes. Send them the link or accept for them below.`}
+                </p>
+                {!isWatcher && careRecipient?.consent_status === "granted" && (
+                  <div className="button-row today-attention-actions">
+                    <Link href={workspaceHref} className="primary-cta">
+                      <MessageCircle /> Message Nura
+                    </Link>
+                  </div>
+                )}
+              </>
+            )
+          ) : nextCheckIn ? (
             <>
               <div className="today-attention-kicker">
                 <span>Next check-in</span>
@@ -276,15 +364,20 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
               consentMethod: careRecipient.consent_method,
               consentAt: careRecipient.consent_at,
             }}
+            lastCall={
+              lastRecipientCall?.triggered_at
+                ? { at: lastRecipientCall.triggered_at as string, summary: (lastRecipientCall.call_summary as string | null) ?? null }
+                : null
+            }
           />
         )}
+
+        {careRecipient && recipientNotes.length > 0 && <RecipientNotesCard name={careRecipient.first_name} notes={recipientNotes} />}
 
         {!isWatcher && circleMembers.length > 0 && (
           <CircleUpdateCard planId={plan.id as string} role="owner" ownerFirstName={ownerFirstName} initial={circleUpdate} />
         )}
-        {!isWatcher && (circleMembers.length > 0 || careRecipient) && (
-          <CirclePassOnCard planId={plan.id as string} initialNotes={circleNotes} />
-        )}
+        {!isWatcher && circleMembers.length > 0 && <CirclePassOnCard planId={plan.id as string} initialNotes={ownNotes} />}
         {!isWatcher && circleAlerts.length > 0 && (
           <aside className="circle-alerts owner" aria-label="What your circle was told">
             <small>Your circle was told</small>
@@ -300,6 +393,7 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
             planId={plan.id as string}
             initialMembers={circleMembers}
             initialAlertMissed={Boolean(plan.circle_alert_missed)}
+            recipientFirstName={careRecipient?.first_name}
           />
         )}
 
@@ -349,5 +443,24 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
         )}
       </div>
     </NuraShell>
+  );
+}
+
+/** What the person a plan is about asked Nura to pass on during a call - in their words, not the owner's. */
+function RecipientNotesCard({ name, notes }: { name: string; notes: CircleNote[] }) {
+  return (
+    <section className="detail-card circle-notes recipient-notes" aria-label={`Messages from ${name}`}>
+      <h3>
+        <Phone aria-hidden /> Messages from {name}
+      </h3>
+      <ul>
+        {notes.map((note) => (
+          <li key={note.id}>
+            <p>{`“${note.body}”`}</p>
+            <small>{`${formatDay(note.createdAt)} · asked Nura to pass this on during a call`}</small>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

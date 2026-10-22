@@ -10,7 +10,12 @@ import {
 } from "@/lib/integrations/resend";
 import { composeMissedCallFollowup } from "@/lib/domain/message-intake";
 import { buildVoiceCheckinContext, NO_CIRCLE_PASS_ON } from "@/lib/domain/voice-checkin-context";
-import { hasCalledRecipientBefore, loadRecipientForPlan, type CareRecipient } from "@/lib/care-recipient";
+import {
+  hasCalledRecipientBefore,
+  loadRecipientForPlan,
+  recipientCallSummaryText,
+  type CareRecipient,
+} from "@/lib/care-recipient";
 
 function appBaseUrl() {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://usenura.app").replace(
@@ -231,6 +236,35 @@ async function escalateRecipientCheckIn(
     .eq("id", checkIn.id);
 }
 
+/**
+ * A call to someone the owner cares for went through. The check-in is done (there's nothing for
+ * the owner to "do"), and the owner gets the summary of how it went - in the plan's conversation,
+ * on the plan page, and by push.
+ */
+async function recordRecipientCall(
+  supabase: SupabaseClient,
+  checkIn: ResolvableCheckIn,
+  recipient: CareRecipient,
+  rawSummary: string | null,
+) {
+  const summary = recipientCallSummaryText(rawSummary, recipient.first_name);
+  const planTitle = checkIn.nura_plans?.title ?? "your Care plan";
+  await supabase
+    .from("nura_check_ins")
+    .update({ call_status: "completed", completed_at: new Date().toISOString(), call_summary: summary || null })
+    .eq("id", checkIn.id);
+
+  const message = summary
+    ? `How today's call with ${recipient.first_name} went: ${summary}`
+    : `Nura spoke with ${recipient.first_name} about ${planTitle} today.`;
+  await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, message);
+  await sendPushToOwner(checkIn.owner_id, {
+    title: `How the call with ${recipient.first_name} went`,
+    body: message.slice(0, 180),
+    url: `/plans/${checkIn.plan_id}`,
+  }).catch(() => null);
+}
+
 /** Places the redial itself - same call shape as the original outbound dial. */
 async function redialCheckIn(supabase: SupabaseClient, checkIn: ResolvableCheckIn, attempts: number) {
   // A plan about someone else always redials them (and only while they still agree).
@@ -320,6 +354,11 @@ export async function resolveCallForCheckIn(
   if (decision.kind === "pending") return "pending";
 
   if (decision.kind === "connected") {
+    const recipient = await loadRecipientForPlan(supabase, checkIn.plan_id);
+    if (recipient) {
+      await recordRecipientCall(supabase, checkIn, recipient, outcome?.summary ?? null);
+      return "completed";
+    }
     await supabase.from("nura_check_ins").update({ call_status: "completed" }).eq("id", checkIn.id);
     return "completed";
   }

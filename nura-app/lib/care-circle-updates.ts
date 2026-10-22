@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { recipientFirstNameForPlan } from "@/lib/care-recipient-admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NURA_CORE_IDENTITY } from "@/lib/domain/nura-persona";
 
@@ -128,7 +129,9 @@ export async function collectCircleFacts(supabase: SupabaseClient, planId: strin
   }
 
   return {
-    ownerFirstName: (ownerDisplayName ?? "").trim().split(/\s+/)[0] || "They",
+    // On a plan about someone else, the circle wants to hear how THEY are getting on.
+    ownerFirstName:
+      (await recipientFirstNameForPlan(planId)) || (ownerDisplayName ?? "").trim().split(/\s+/)[0] || "They",
     planTitle: plan.title as string,
     why: ((plan.why_this_exists as string) || "").trim(),
     focus: ((plan.current_focus as string) || "").trim(),

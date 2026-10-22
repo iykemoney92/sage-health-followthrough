@@ -268,3 +268,13 @@ export async function stopCallsFromCall(conversationId: string | null, planIdHin
   }
   return { ok: true, recipientFirstName: row.first_name };
 }
+
+/**
+ * Just the first name of the person a plan is about, for care-circle watchers: they can't read
+ * nura_care_recipients (owner-only), but need to know whose words a passed-on message is.
+ */
+export async function recipientFirstNameForPlan(planId: string): Promise<string | null> {
+  const admin = getSupabaseAdminClient();
+  const { data } = await admin.from("nura_care_recipients").select("first_name").eq("plan_id", planId).maybeSingle();
+  return (data?.first_name as string | undefined) ?? null;
+}

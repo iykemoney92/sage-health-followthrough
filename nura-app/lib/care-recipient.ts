@@ -190,6 +190,20 @@ export function recipientThreadContext(plan: {
     .join("\n\n");
 }
 
+/**
+ * ElevenLabs writes call summaries about "the user" and "the agent". For the owner reading about a
+ * call with someone they care for, name the people instead.
+ */
+export function recipientCallSummaryText(raw: string | null | undefined, recipientFirstName: string) {
+  const cleaned = (raw ?? "")
+    .replace(/\bthe user's\b/gi, `${recipientFirstName}'s`)
+    .replace(/\bthe user\b/gi, recipientFirstName)
+    .replace(/\bthe (AI )?agent\b/gi, "Nura")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.replace(/^([a-z])/, (letter) => letter.toUpperCase());
+}
+
 export async function loadRecipientForPlan(supabase: SupabaseClient, planId: string): Promise<CareRecipient | null> {
   const { data } = await supabase.from("nura_care_recipients").select(RECIPIENT_COLUMNS).eq("plan_id", planId).maybeSingle();
   return (data as CareRecipient | null) ?? null;
