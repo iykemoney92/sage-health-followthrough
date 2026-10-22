@@ -16,10 +16,13 @@ export function CareCircleCard({
   planId,
   initialMembers,
   initialAlertMissed = false,
+  recipientFirstName,
 }: {
   planId: string;
   initialMembers: CircleMember[];
   initialAlertMissed?: boolean;
+  /** Set on a plan about someone else: alerts are about Nura not reaching them, not the owner. */
+  recipientFirstName?: string;
 }) {
   const [members, setMembers] = useState(initialMembers);
   const [alertMissed, setAlertMissed] = useState(initialAlertMissed);
@@ -185,10 +188,13 @@ export function CareCircleCard({
         />
         <span className="care-circle-toggle-text">
           <b>
-            <BellRing aria-hidden /> Tell my circle if I miss a check-in
+            <BellRing aria-hidden />{" "}
+            {recipientFirstName ? `Tell my circle if Nura can't reach ${recipientFirstName}` : "Tell my circle if I miss a check-in"}
           </b>
           <small>
-            If a check-in is still not done a day later, the people here get a gentle nudge. Off unless you switch it on.
+            {recipientFirstName
+              ? `If Nura can't get through to ${recipientFirstName} on a call, the people here get a gentle nudge the next day. You're always told straight away.`
+              : "If a check-in is still not done a day later, the people here get a gentle nudge. Off unless you switch it on."}
           </small>
         </span>
       </label>

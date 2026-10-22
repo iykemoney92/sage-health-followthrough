@@ -130,12 +130,12 @@ export async function emailCircleUpdate(
 
 export async function emailCircleMissedCheckIn(
   admin: SupabaseClient,
-  input: { planId: string; checkInId: string; ownerFirstName: string; alertBody: string },
+  input: { planId: string; checkInId: string; ownerFirstName: string; alertBody: string; subject?: string },
 ) {
   return sendToEach(admin, input.planId, `circle-alert:${input.checkInId}`, (recipient, links) => {
     const args = { recipientFirstName: recipient.firstName, ownerFirstName: input.ownerFirstName, ...links, alertBody: input.alertBody };
     return {
-      subject: `${input.ownerFirstName} missed a check-in`,
+      subject: input.subject ?? `${input.ownerFirstName} missed a check-in`,
       html: circleMissedCheckInEmailHtml(args),
       text: circleMissedCheckInEmailText(args),
     };

@@ -21,7 +21,21 @@ export type ConsentShareLinks = { url: string; text: string; whatsappUrl: string
  * three things the owner can do - send them the link to agree, confirm they agree on their
  * behalf, or stop the calls.
  */
-export function CareRecipientCard({ planId, initial }: { planId: string; initial: RecipientSummary }) {
+export type LastRecipientCall = { at: string; summary: string | null };
+
+function formatCallWhen(iso: string) {
+  return new Date(iso).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
+export function CareRecipientCard({
+  planId,
+  initial,
+  lastCall = null,
+}: {
+  planId: string;
+  initial: RecipientSummary;
+  lastCall?: LastRecipientCall | null;
+}) {
   const [recipient, setRecipient] = useState(initial);
   const [share, setShare] = useState<ConsentShareLinks | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -93,6 +107,13 @@ export function CareRecipientCard({ planId, initial }: { planId: string; initial
       <p className={`care-recipient-status ${recipient.consentStatus}`} role="status">
         {statusLine}
       </p>
+
+      {lastCall && (
+        <div className="care-recipient-last-call">
+          <small>{`Last call · ${formatCallWhen(lastCall.at)}`}</small>
+          <p>{lastCall.summary || `Nura spoke with ${name}. No summary was available for this call.`}</p>
+        </div>
+      )}
 
       {needsPlus ? (
         <div className="care-circle-invite care-circle-upsell">

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { recipientFirstNameForPlan } from "@/lib/care-recipient-admin";
 import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
 import {
   CIRCLE_UPDATE_SCHEDULE_DAYS,
@@ -70,7 +71,8 @@ async function run(request: NextRequest) {
       if (!update) continue;
       written += 1;
       // Not nura_circle_owner_name: it checks auth.uid() and returns null to the service role.
-      const firstName = await planOwnerFirstName(admin, planId);
+      // A plan about someone else is about how they're getting on, so the email is too.
+      const firstName = (await recipientFirstNameForPlan(planId)) ?? (await planOwnerFirstName(admin, planId));
       for (const memberId of membersByPlan.get(planId) ?? []) {
         const push = await sendPushToOwner(memberId, {
           title: `How ${firstName} is getting on`,

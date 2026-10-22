@@ -328,3 +328,9 @@
 .recipient-consent b{display:block;font-size:14px;color:#24372c}
 .recipient-consent small{display:block;margin-top:3px;font-size:12px;line-height:1.45;color:#718078}
 .recipient-share-step .care-circle-invite{margin-top:8px}
+/* Last call with the person a plan is about, and the messages they passed on. */
+.care-recipient-last-call{margin:0 0 12px;padding:12px 14px;border-radius:12px;background:#f7f8f4;border:1px solid #e3e8df;display:grid;gap:4px}
+.care-recipient-last-call small{font-size:12px;font-weight:700;color:#4b7558;letter-spacing:.02em}
+.care-recipient-last-call p{margin:0;font-size:14px;line-height:1.55;color:#2f4a3a}
+.recipient-notes h3{display:flex;align-items:center;gap:8px}
+.recipient-notes h3 svg{width:18px;height:18px;color:#4b7558}

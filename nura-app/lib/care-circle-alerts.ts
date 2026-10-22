@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendPushToOwner } from "@/lib/integrations/push";
 import { emailCircleMissedCheckIn } from "@/lib/care-circle-email";
+import { loadRecipientsForPlans } from "@/lib/care-recipient";
 
 /**
  * "Tell my circle if I miss a check-in."
@@ -18,7 +19,16 @@ export const MISSED_AFTER_HOURS = 24;
 /** Don't dredge up misses older than this on the first run after the toggle is switched on. */
 const LOOKBACK_DAYS = 14;
 /** Delivery outcomes that mean the check-in never reached the owner in the first place. */
-const NOT_THE_OWNERS_MISS = new Set(["skipped_plus_required", "missed_consolidated", "processing", "placed", "redial_pending"]);
+const NOT_THE_OWNERS_MISS = new Set([
+  "skipped_plus_required",
+  "missed_consolidated",
+  "processing",
+  "placed",
+  "redial_pending",
+  // Calls to someone the owner cares for that never went out because they hadn't agreed (or stopped).
+  "skipped_no_consent",
+  "cancelled_no_consent",
+]);
 
 export type CircleAlert = {
   id: string;
@@ -30,6 +40,14 @@ export type CircleAlert = {
 
 function formatWhen(iso: string) {
   return new Date(iso).toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+}
+
+/** The same alert for a plan about someone else: it's Nura that couldn't reach them. */
+export function missedRecipientCallBody(recipientFirstName: string, planTitle: string, scheduledFor: string) {
+  return (
+    `Nura couldn't reach ${recipientFirstName} for their check-in call about "${planTitle}" on ${formatWhen(scheduledFor)}. ` +
+    "It might be nothing - a quick call or message to see how they are could put everyone's mind at rest."
+  );
 }
 
 export function missedCheckInBody(firstName: string, planTitle: string, scheduledFor: string) {
@@ -120,6 +138,7 @@ export async function runCircleAlerts(admin: SupabaseClient, now = new Date()): 
     (profiles ?? []).map((p) => [p.id as string, ((p.display_name as string | null) ?? "").trim().split(/\s+/)[0] || "They"]),
   );
   const planById = new Map(plans.map((p) => [p.id as string, p]));
+  const recipientsByPlan = await loadRecipientsForPlans(admin, planIds);
 
   let alerted = 0;
   let notified = 0;
@@ -140,8 +159,12 @@ export async function runCircleAlerts(admin: SupabaseClient, now = new Date()): 
     }
 
     const plan = planById.get(planId)!;
-    const firstName = firstNameByOwner.get(plan.owner_id as string) ?? "They";
-    const body = missedCheckInBody(firstName, plan.title as string, checkIn.scheduled_for as string);
+    const recipient = recipientsByPlan.get(planId);
+    // On a plan about someone else, the alert is about them, not the owner.
+    const firstName = recipient?.first_name ?? firstNameByOwner.get(plan.owner_id as string) ?? "They";
+    const body = recipient
+      ? missedRecipientCallBody(recipient.first_name, plan.title as string, checkIn.scheduled_for as string)
+      : missedCheckInBody(firstName, plan.title as string, checkIn.scheduled_for as string);
 
     // Stamp first: if anything below fails we would rather under-report than nag twice.
     const { data: stamped } = await admin
@@ -167,7 +190,7 @@ export async function runCircleAlerts(admin: SupabaseClient, now = new Date()): 
 
     for (const memberId of members) {
       const push = await sendPushToOwner(memberId, {
-        title: `${firstName} missed a check-in`,
+        title: recipient ? `Nura couldn't reach ${firstName}` : `${firstName} missed a check-in`,
         body: body.slice(0, 160),
         url: `/plans/${planId}`,
       }).catch(() => null);
@@ -178,6 +201,7 @@ export async function runCircleAlerts(admin: SupabaseClient, now = new Date()): 
       checkInId: checkIn.id as string,
       ownerFirstName: firstName,
       alertBody: body,
+      subject: recipient ? `Nura couldn't reach ${firstName}` : undefined,
     }).catch((err) => {
       console.error("[circle-alerts] email failed", planId, err);
       return { emailed: 0, failed: 1 };
