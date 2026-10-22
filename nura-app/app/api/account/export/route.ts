@@ -22,6 +22,7 @@ export async function GET() {
     { data: calendarEvents },
     { data: appointmentSummaries },
     { data: channelLinks },
+    { data: careRecipients },
   ] = await Promise.all([
     supabase.from("nura_profiles").select("*").eq("id", ownerId).maybeSingle(),
     supabase.from("nura_plans").select("*").eq("owner_id", ownerId),
@@ -34,6 +35,10 @@ export async function GET() {
     supabase.from("nura_calendar_events").select("*").eq("owner_id", ownerId),
     supabase.from("nura_appointment_summaries").select("*").eq("owner_id", ownerId),
     supabase.from("nura_channel_links").select("*").eq("owner_id", ownerId),
+    supabase
+      .from("nura_care_recipients")
+      .select("plan_id, first_name, relationship, phone, time_zone, consent_status, consent_method, consent_at, revoked_at, revoke_reason, created_at")
+      .eq("owner_id", ownerId),
   ]);
 
   const payload = {
@@ -50,6 +55,7 @@ export async function GET() {
     calendarEvents: calendarEvents ?? [],
     appointmentSummaries: appointmentSummaries ?? [],
     connectedChannels: channelLinks ?? [],
+    peopleYouCareFor: careRecipients ?? [],
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

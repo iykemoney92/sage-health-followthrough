@@ -6,6 +6,7 @@ import { rerouteChannel, type CheckinChannel } from "@/lib/domain/checkin-channe
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { wallTimeInTimeZoneToUtcIso } from "@/lib/timezone";
+import { loadRecipientForPlan } from "@/lib/care-recipient";
 
 const requestSchema = z
   .object({
@@ -124,9 +125,14 @@ export async function POST(request: NextRequest) {
   const paywall = await requirePlusAccess(supabase, resolvedOwnerId, channel === "voice" ? "voice" : "whatsapp");
   if (paywall) return paywall;
 
-  const timeZone = await resolveUserTimeZone(supabase, resolvedOwnerId, {
-    phoneDigits: contactPhone,
-  });
+  // On a call to someone the owner cares for, "call me Thursday at 3" is their Thursday at 3,
+  // and the follow-up is another call to them.
+  const recipient = planId ? await loadRecipientForPlan(supabase, planId) : null;
+  const timeZone = recipient
+    ? recipient.time_zone
+    : await resolveUserTimeZone(supabase, resolvedOwnerId, {
+        phoneDigits: contactPhone,
+      });
   const scheduledForUtc = wallTimeInTimeZoneToUtcIso(scheduledFor, timeZone);
 
   if (!planId) {
@@ -170,7 +176,7 @@ export async function POST(request: NextRequest) {
     "whatsapp",
     "in_app",
   ];
-  const effectiveChannel = rerouteChannel(channel, allowedChannels);
+  const effectiveChannel = recipient ? "voice" : rerouteChannel(channel, allowedChannels);
 
   const { data: checkIn, error: checkInError } = await supabase
     .from("nura_check_ins")
@@ -180,7 +186,7 @@ export async function POST(request: NextRequest) {
       channel: effectiveChannel,
       prompt,
       scheduled_for: scheduledForUtc,
-      contact_phone: contactPhone,
+      contact_phone: recipient ? recipient.phone : contactPhone,
     })
     .select("id, plan_id, channel, prompt, scheduled_for, created_at, contact_phone")
     .single();

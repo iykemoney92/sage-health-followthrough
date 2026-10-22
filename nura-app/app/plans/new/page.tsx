@@ -6,17 +6,23 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  Copy,
   FolderHeart,
   Loader2,
   MessageCircle,
   Mic,
   Paperclip,
+  MessageSquareText,
   Phone,
   Smartphone,
+  User,
+  UserRound,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NuraLogo } from "@/components/nura-logo";
+import { PhoneNumberInput } from "@/components/phone-number-input";
+import { guessTimeZoneFromPhoneDigits } from "@/lib/timezone";
 import { useToast } from "@/components/toast";
 import { TrackedLink } from "@/components/tracked-link";
 import { track } from "@/lib/analytics";
@@ -38,6 +44,60 @@ type IntakeAttachment = {
 };
 
 type CheckInChannel = "whatsapp" | "in_app" | "voice";
+type PlanFor = "me" | "someone";
+type RecipientConsent = "link" | "on_behalf";
+type ConsentShare = { url: string; text: string; whatsappUrl: string; smsUrl: string; expiresAt: string };
+
+const RELATIONSHIP_OPTIONS = [
+  ["parent", "Parent"],
+  ["partner", "Partner"],
+  ["grandparent", "Grandparent"],
+  ["child", "Son or daughter"],
+  ["friend", "Friend"],
+  ["other", "Someone else"],
+] as const;
+
+/** Zones people most often pick, shown first; every other zone follows. */
+const COMMON_TIME_ZONES = [
+  "Europe/London",
+  "Europe/Dublin",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Phoenix",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+  "America/Toronto",
+  "America/Vancouver",
+  "Africa/Lagos",
+  "Africa/Johannesburg",
+  "Africa/Nairobi",
+  "Asia/Kolkata",
+  "Asia/Dubai",
+  "Asia/Manila",
+  "Australia/Sydney",
+  "Australia/Perth",
+  "Pacific/Auckland",
+];
+
+function allTimeZones(): string[] {
+  try {
+    const supported = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.("timeZone");
+    if (supported?.length) return supported.filter((zone) => !COMMON_TIME_ZONES.includes(zone));
+  } catch {
+    // Older browsers: the common list is enough.
+  }
+  return [];
+}
+
+function browserTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/London";
+  } catch {
+    return "Europe/London";
+  }
+}
 
 const TOTAL_STEPS = 3;
 const MAX_INTAKE_ATTACHMENT_BYTES = 4 * 1024 * 1024;
@@ -103,6 +163,16 @@ export default function NewCarePlanPage() {
   const [channelError, setChannelError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [planFor, setPlanFor] = useState<PlanFor>("me");
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientRelationship, setRecipientRelationship] = useState<(typeof RELATIONSHIP_OPTIONS)[number][0]>("parent");
+  const [recipientPhone, setRecipientPhone] = useState("");
+  const [recipientTimeZone, setRecipientTimeZone] = useState<string>(() => browserTimeZone());
+  const [timeZoneTouched, setTimeZoneTouched] = useState(false);
+  const [recipientConsent, setRecipientConsent] = useState<RecipientConsent>("link");
+  const [recipientError, setRecipientError] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ planId: string; firstName: string; share: ConsentShare | null } | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -276,13 +346,34 @@ export default function NewCarePlanPage() {
     void submitCarePlan();
   };
 
+  const updateRecipientPhone = (digits: string) => {
+    setRecipientPhone(digits);
+    setRecipientError(null);
+    // Follow the number's country until they pick a zone themselves.
+    if (!timeZoneTouched) {
+      const guessed = guessTimeZoneFromPhoneDigits(digits);
+      if (guessed) setRecipientTimeZone(guessed);
+    }
+  };
+
   const submitCarePlan = async () => {
     if (submitting) return;
-    if (checkinChannels.length === 0) {
+    const forSomeone = planFor === "someone";
+    if (forSomeone) {
+      if (!recipientName.trim()) {
+        setRecipientError("Add their first name.");
+        return;
+      }
+      if (recipientPhone.replace(/[^\d]/g, "").length < 8) {
+        setRecipientError("Add their phone number so Nura can call them.");
+        return;
+      }
+    } else if (checkinChannels.length === 0) {
       setChannelError("Pick at least one check-in channel.");
       return;
     }
     setChannelError(null);
+    setRecipientError(null);
     setSubmitting(true);
     setSubmitError(null);
     track("care_plan_create_start");
@@ -293,7 +384,16 @@ export default function NewCarePlanPage() {
         body: JSON.stringify({
           interests: selected,
           intake,
-          checkinChannels,
+          checkinChannels: forSomeone ? ["voice"] : checkinChannels,
+          careRecipient: forSomeone
+            ? {
+                firstName: recipientName.trim(),
+                relationship: recipientRelationship,
+                phone: recipientPhone,
+                timeZone: recipientTimeZone,
+                consent: recipientConsent,
+              }
+            : undefined,
           attachments: intakeAttachments.map(({ name, type, kind, text, base64 }) => ({
             name,
             type,
@@ -316,11 +416,23 @@ export default function NewCarePlanPage() {
         setSubmitting(false);
         return;
       }
+      if (data?.error === "recipient_phone_invalid" || data?.error === "recipient_timezone_invalid") {
+        track("care_plan_create_fail", { error: data.error });
+        setRecipientError(data.message ?? "Check their details.");
+        setSubmitting(false);
+        return;
+      }
       if (!res.ok || !data?.planId) {
         throw new Error(data?.error ?? "create_failed");
       }
-      track("care_plan_create_success", { source: "plans_new" });
+      track("care_plan_create_success", { source: "plans_new", plan_for: forSomeone ? "someone" : "me" });
       toast({ tone: "success", title: "Care plan ready", message: data.plan?.title ?? "Opened" });
+      if (data.careRecipient?.share) {
+        // One more screen: send them the link to agree, from the owner's own phone.
+        setCreated({ planId: data.planId, firstName: data.careRecipient.firstName, share: data.careRecipient.share });
+        setSubmitting(false);
+        return;
+      }
       router.push(`/plans/${data.planId}`);
     } catch {
       track("care_plan_create_fail", { error: "create_failed" });
@@ -457,12 +569,175 @@ export default function NewCarePlanPage() {
         </section>
       )}
 
-      {step === 3 && (
+      {created?.share && (
+        <section className="onboarding-card recipient-share-step">
+          <span className="auth-kicker">ONE LAST STEP</span>
+          <h1>Send {created.firstName} the link</h1>
+          <p className="onboarding-intro">
+            {`Nura only calls ${created.firstName} once they tap Yes. Send this from your phone so they know it’s from you.`}
+          </p>
+          <div className="care-circle-invite">
+            <label>
+              <span>Your message</span>
+              <textarea readOnly rows={5} value={created.share.text} onFocus={(event) => event.currentTarget.select()} />
+            </label>
+            <div className="button-row">
+              <a href={created.share.whatsappUrl} target="_blank" rel="noopener noreferrer" className="primary-cta">
+                <MessageCircle /> WhatsApp
+              </a>
+              <a href={created.share.smsUrl} className="secondary-cta">
+                <MessageSquareText /> Text message
+              </a>
+              <button
+                type="button"
+                className="secondary-cta"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(created.share!.text);
+                    setShareCopied(true);
+                  } catch {
+                    // Long-press the message to copy it instead.
+                  }
+                }}
+              >
+                {shareCopied ? <Check /> : <Copy />} {shareCopied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <small>The link works for 7 days. You can send a new one, or accept for them, from the Care plan.</small>
+          </div>
+        </section>
+      )}
+
+      {step === 3 && !created && (
         <section className="onboarding-card">
           <span className="auth-kicker">CHECK-INS</span>
-          <h1>How should Nura check in?</h1>
+          <h1>Who is this Care plan for?</h1>
+          <div className="channel-options mobile-channel-options plan-for-options" role="group" aria-label="Who this Care plan is for">
+            {(
+              [
+                ["me", "Me", "Nura checks in with you.", User],
+                ["someone", "Someone I care for", "Nura calls them, with their OK, and tells you how it went.", UserRound],
+              ] as const
+            ).map(([value, title, copy, Icon]) => (
+              <button
+                key={value}
+                type="button"
+                className={planFor === value ? "selected" : ""}
+                aria-pressed={planFor === value}
+                onClick={() => {
+                  setPlanFor(value);
+                  setRecipientError(null);
+                  setChannelError(null);
+                }}
+              >
+                <span className="channel-icon" aria-hidden="true">
+                  <Icon size={18} />
+                </span>
+                <div>
+                  <b>{title}</b>
+                  <span>{copy}</span>
+                </div>
+                <span className="selection-check" aria-hidden="true">
+                  {planFor === value ? <Check size={13} strokeWidth={3} /> : null}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {planFor === "someone" ? (
+            <div className="recipient-fields">
+              <label>
+                <span>Their first name</span>
+                <input
+                  type="text"
+                  value={recipientName}
+                  maxLength={60}
+                  autoComplete="off"
+                  placeholder="e.g. Margaret, or Mum"
+                  onChange={(event) => {
+                    setRecipientName(event.target.value);
+                    setRecipientError(null);
+                  }}
+                />
+              </label>
+              <label>
+                <span>They are my</span>
+                <select
+                  value={recipientRelationship}
+                  onChange={(event) => setRecipientRelationship(event.target.value as typeof recipientRelationship)}
+                >
+                  {RELATIONSHIP_OPTIONS.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label htmlFor="recipient-phone">
+                <span>Their phone number</span>
+              </label>
+              <PhoneNumberInput id="recipient-phone" value={recipientPhone} onChange={updateRecipientPhone} />
+              <label>
+                <span>Their time zone (Nura only calls in their daytime)</span>
+                <select
+                  value={recipientTimeZone}
+                  onChange={(event) => {
+                    setRecipientTimeZone(event.target.value);
+                    setTimeZoneTouched(true);
+                  }}
+                >
+                  {!COMMON_TIME_ZONES.includes(recipientTimeZone) && (
+                    <option value={recipientTimeZone}>{recipientTimeZone.replace(/_/g, " ")}</option>
+                  )}
+                  <optgroup label="Common">
+                    {COMMON_TIME_ZONES.map((zone) => (
+                      <option key={zone} value={zone}>
+                        {zone.replace(/_/g, " ")}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="All time zones">
+                    {allTimeZones().map((zone) => (
+                      <option key={zone} value={zone}>
+                        {zone.replace(/_/g, " ")}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </label>
+              <fieldset className="recipient-consent">
+                <legend>How will {recipientName.trim() || "they"} agree to the calls?</legend>
+                <label>
+                  <input
+                    type="radio"
+                    name="recipient-consent"
+                    checked={recipientConsent === "link"}
+                    onChange={() => setRecipientConsent("link")}
+                  />
+                  <span>
+                    <b>I&apos;ll send them a link to say yes</b>
+                    <small>Recommended. Nura calls once they tap Yes.</small>
+                  </span>
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="recipient-consent"
+                    checked={recipientConsent === "on_behalf"}
+                    onChange={() => setRecipientConsent("on_behalf")}
+                  />
+                  <span>
+                    <b>They&apos;re with me and agree - I&apos;ll accept for them</b>
+                    <small>Only if they know about Nura and are happy to get calls. They can say &ldquo;stop&rdquo; on any call.</small>
+                  </span>
+                </label>
+              </fieldset>
+              {recipientError ? <p className="field-error" role="alert">{recipientError}</p> : null}
+            </div>
+          ) : (
+            <>
           <p className="onboarding-intro channel-intro">
-            Uses your saved preferences — change them for this Care plan if you like.
+            How should Nura check in? Uses your saved preferences — change them for this Care plan if you like.
           </p>
           <div className="channel-options mobile-channel-options channel-flow" role="group" aria-label="Check-in channels">
             {CHECKIN_OPTIONS.map(([value, title, copy, Icon]) => {
@@ -493,6 +768,8 @@ export default function NewCarePlanPage() {
             })}
           </div>
           {channelError ? <p className="field-error channel-error" role="alert">{channelError}</p> : null}
+            </>
+          )}
           {submitError ? <p className="auth-error" role="alert">{submitError}</p> : null}
           {submitError?.includes("Plus") ? (
             <TrackedLink
@@ -507,6 +784,18 @@ export default function NewCarePlanPage() {
         </section>
       )}
 
+      {created ? (
+        <footer className="onboarding-footer">
+          <span />
+          <button
+            type="button"
+            className="primary-cta onboarding-primary"
+            onClick={() => router.push(`/plans/${created.planId}`)}
+          >
+            Go to the Care plan <ArrowRight />
+          </button>
+        </footer>
+      ) : (
       <footer className="onboarding-footer">
         {step > 1 ? (
           <button type="button" className="secondary-cta" onClick={() => setStep((current) => current - 1)} disabled={submitting}>
@@ -531,6 +820,7 @@ export default function NewCarePlanPage() {
           )}
         </button>
       </footer>
+      )}
     </main>
   );
 }

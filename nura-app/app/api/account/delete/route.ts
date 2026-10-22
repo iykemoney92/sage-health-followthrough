@@ -61,6 +61,7 @@ export async function POST() {
     "nura_appointment_summaries",
     "nura_channel_links",
     "nura_messages",
+    "nura_care_recipients",
     "nura_plans",
   ];
 

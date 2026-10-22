@@ -121,6 +121,9 @@ export async function scheduleIdleWellnessCheckIns(
     .from("nura_plans")
     .select("id, owner_id, title, updated_at")
     .eq("status", "active")
+    // Plans about someone else get their own scheduled calls; an invented wellness check-in is
+    // about the owner's own wellbeing, so it must never ring the person they care for.
+    .is("care_recipient_id", null)
     .order("updated_at", { ascending: false })
     .limit(400);
 

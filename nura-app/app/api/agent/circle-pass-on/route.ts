@@ -9,6 +9,8 @@ import {
   pushCircleNote,
 } from "@/lib/care-circle-notes";
 import { logger } from "@/lib/logger";
+import { loadRecipientForPlan } from "@/lib/care-recipient";
+import { sendPushToOwner } from "@/lib/integrations/push";
 
 export const runtime = "nodejs";
 
@@ -65,7 +67,11 @@ export async function POST(request: NextRequest) {
     }, { status: 404 });
   }
 
-  if ((await listActiveMemberIds(supabase, planId)).length === 0) {
+  // On a call to someone the owner cares for, the owner is who they're passing it on to - that
+  // works whether or not anyone else is in the circle.
+  const recipient = await loadRecipientForPlan(supabase, planId);
+
+  if (!recipient && (await listActiveMemberIds(supabase, planId)).length === 0) {
     return NextResponse.json({
       ok: false,
       error: "no_circle",
@@ -86,11 +92,18 @@ export async function POST(request: NextRequest) {
     }, { status: result.error === "limit" ? 429 : 400 });
   }
 
-  const ownerFirstName = await planOwnerFirstName(supabase, planId);
+  const senderFirstName = recipient ? recipient.first_name : await planOwnerFirstName(supabase, planId);
   if (!result.duplicate) {
-    await pushCircleNote(supabase, planId, ownerFirstName, result.note).catch((error) =>
+    await pushCircleNote(supabase, planId, senderFirstName, result.note).catch((error) =>
       logger.error("circle_pass_on.push_failed", { message: error instanceof Error ? error.message : String(error) }),
     );
+    if (recipient) {
+      await sendPushToOwner(recipient.owner_id, {
+        title: `A message from ${recipient.first_name}`,
+        body: result.note.body.slice(0, 160),
+        url: `/plans/${planId}`,
+      }).catch(() => null);
+    }
   }
 
   return NextResponse.json({

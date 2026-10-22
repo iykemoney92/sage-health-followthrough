@@ -3,6 +3,11 @@ type PlaceOutboundCallInput = {
   dynamicVariables: Record<string, string>;
   /** Optional per-journey agent override (e.g. postpartum midwife voice). */
   agentId?: string;
+  /**
+   * Replaces the agent's opening line for this call only - used for calls to the person a plan
+   * is about, who hasn't heard of Nura. Needs first_message overrides enabled on the agent.
+   */
+  firstMessage?: string;
 };
 
 type OutboundCallResult = {
@@ -27,7 +32,7 @@ export function isElevenLabsCallingConfigured() {
   );
 }
 
-export async function placeOutboundCall({ toNumber, dynamicVariables, agentId }: PlaceOutboundCallInput) {
+export async function placeOutboundCall({ toNumber, dynamicVariables, agentId, firstMessage }: PlaceOutboundCallInput) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const defaultAgentId = process.env.ELEVENLABS_AGENT_ID;
   const resolvedAgentId = agentId || defaultAgentId;
@@ -50,6 +55,7 @@ export async function placeOutboundCall({ toNumber, dynamicVariables, agentId }:
       call_recording_enabled: true,
       conversation_initiation_client_data: {
         dynamic_variables: dynamicVariables,
+        ...(firstMessage ? { conversation_config_override: { agent: { first_message: firstMessage } } } : {}),
       },
     }),
   });

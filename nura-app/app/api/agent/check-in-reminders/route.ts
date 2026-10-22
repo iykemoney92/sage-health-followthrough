@@ -7,6 +7,7 @@ import {
   sendAuthEmail,
 } from "@/lib/integrations/resend";
 import { sendPushToOwner } from "@/lib/integrations/push";
+import { loadRecipientsForPlans } from "@/lib/care-recipient";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { formatInTimeZone } from "@/lib/timezone";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
@@ -164,8 +165,17 @@ async function runCheckInReminders(request: NextRequest) {
   let skipped = 0;
   let failures = 0;
   const results: Record<string, unknown>[] = [];
+  // Calls to someone the owner cares for aren't the owner's to pick up - the owner hears
+  // "Nura is calling them" when it rings and a summary afterwards, not an advance reminder.
+  const recipientsByPlan = await loadRecipientsForPlans(supabase, rows.map((row) => row.plan_id));
 
   for (const checkIn of rows) {
+    if (recipientsByPlan.has(checkIn.plan_id)) {
+      skipped += 1;
+      results.push({ checkInId: checkIn.id, status: "skipped_recipient_plan" });
+      continue;
+    }
+
     if (await alreadyReminded(supabase, checkIn)) {
       skipped += 1;
       results.push({ checkInId: checkIn.id, status: "already_reminded" });

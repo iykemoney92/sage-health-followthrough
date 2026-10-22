@@ -3,6 +3,13 @@ import { buildAgentContext } from "@/lib/agent/persona-config";
 import { NURA_CORE_IDENTITY, NURA_SAFETY_BOUNDARIES } from "@/lib/domain/nura-persona";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { describeNowForTimeZone } from "@/lib/timezone";
+import {
+  OWNER_CALL_BRIEF,
+  recipientCallBrief,
+  recipientOpeningLine,
+  recipientThreadContext,
+  type CareRecipient,
+} from "@/lib/care-recipient";
 
 export const NO_CIRCLE_PASS_ON = "No Care circle on this Journey. Never offer to pass anything on to anyone.";
 
@@ -47,12 +54,22 @@ async function circleMemberFirstNames(supabase: SupabaseClient, planId: string):
   return names.length === ids.length ? names : null;
 }
 
+/** Set when the call goes to the person a plan is about, not the account owner. */
+export type RecipientCallOptions = {
+  recipient: CareRecipient;
+  ownerFirstName: string;
+  isFirstCall: boolean;
+};
+
 export async function buildVoiceCheckinContext(
   supabase: SupabaseClient,
   ownerId: string,
   planId: string,
   userName?: string,
+  recipientCall?: RecipientCallOptions,
 ) {
+  if (recipientCall) return buildRecipientCallContext(supabase, ownerId, planId, recipientCall);
+
   const { data: plan } = await supabase
     .from("nura_plans")
     .select("id, title, category, why_this_exists, current_focus, next_step")
@@ -116,9 +133,81 @@ export async function buildVoiceCheckinContext(
       user_timezone: timeZone,
       user_local_now: nowInfo.localLabel,
       circle_pass_on: circlePassOnBrief(circleNames),
+      call_brief: OWNER_CALL_BRIEF,
+      on_behalf_of: "",
     },
     systemPrompt,
     elevenLabsAgentId: agentContext.elevenLabsAgentId,
     voiceParams: agentContext.voiceParams,
+    firstMessage: undefined as string | undefined,
+  };
+}
+
+/**
+ * Context for a call to the person a plan is about. Deliberately thin: the plan's own title,
+ * focus and next step, in their time zone - never the owner's messages, uploads, observations or
+ * anything else the owner told Nura. Anything they pass on goes to the owner.
+ */
+async function buildRecipientCallContext(
+  supabase: SupabaseClient,
+  ownerId: string,
+  planId: string,
+  { recipient, ownerFirstName, isFirstCall }: RecipientCallOptions,
+) {
+  const { data: plan } = await supabase
+    .from("nura_plans")
+    .select("id, title, category, current_focus, next_step")
+    .eq("id", planId)
+    .eq("owner_id", ownerId)
+    .maybeSingle();
+
+  if (!plan) return null;
+
+  const { data: nextCheckIn } = await supabase
+    .from("nura_check_ins")
+    .select("prompt")
+    .eq("owner_id", ownerId)
+    .eq("plan_id", planId)
+    .is("completed_at", null)
+    .order("scheduled_for", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const timeZone = recipient.time_zone;
+  const nowInfo = describeNowForTimeZone(timeZone);
+  const agentContext = buildAgentContext({ primaryCategory: plan.category as string | null, surface: "voice" });
+  const title = plan.title as string;
+
+  return {
+    dynamicVariables: {
+      user_name: recipient.first_name,
+      user_id: ownerId,
+      plan_id: plan.id as string,
+      thread_title: title,
+      thread_context: recipientThreadContext(
+        {
+          title,
+          category: plan.category as string | null,
+          current_focus: plan.current_focus as string | null,
+          next_step: plan.next_step as string | null,
+        },
+        timeZone,
+        nowInfo.localLabel,
+      ),
+      checkin_goal: (nextCheckIn?.prompt as string | undefined) ?? (plan.next_step as string),
+      persona_label: agentContext.personaLabel,
+      persona_guidance: agentContext.persona.roleOverlay || NURA_CORE_IDENTITY,
+      knowledge_brief: agentContext.knowledgeBrief || "Use core Nura safety boundaries.",
+      journey_category: String(plan.category ?? "general_health"),
+      user_timezone: timeZone,
+      user_local_now: nowInfo.localLabel,
+      circle_pass_on: circlePassOnBrief([ownerFirstName]),
+      call_brief: recipientCallBrief(recipient.first_name, ownerFirstName, isFirstCall),
+      on_behalf_of: ownerFirstName,
+    },
+    systemPrompt: [NURA_CORE_IDENTITY, NURA_SAFETY_BOUNDARIES].join(" "),
+    elevenLabsAgentId: agentContext.elevenLabsAgentId,
+    voiceParams: agentContext.voiceParams,
+    firstMessage: recipientOpeningLine(recipient.first_name, ownerFirstName, title, isFirstCall) as string | undefined,
   };
 }
