@@ -10,6 +10,7 @@ import {
 } from "@/lib/integrations/resend";
 import { composeMissedCallFollowup } from "@/lib/domain/message-intake";
 import { buildVoiceCheckinContext, NO_CIRCLE_PASS_ON } from "@/lib/domain/voice-checkin-context";
+import { hasCalledRecipientBefore, loadRecipientForPlan, type CareRecipient } from "@/lib/care-recipient";
 
 function appBaseUrl() {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://usenura.app").replace(
@@ -117,6 +118,11 @@ async function loadOwnerContext(supabase: SupabaseClient, ownerId: string) {
  * check-in is worth over-notifying about rather than silently depending on a single channel.
  */
 async function escalateCheckIn(supabase: SupabaseClient, checkIn: ResolvableCheckIn, note: string) {
+  const recipient = await loadRecipientForPlan(supabase, checkIn.plan_id);
+  if (recipient) {
+    await escalateRecipientCheckIn(supabase, checkIn, recipient, note);
+    return;
+  }
   const { allowed, firstName, phone: fallbackPhone, email } = await loadOwnerContext(supabase, checkIn.owner_id);
   const phone = checkIn.contact_phone || fallbackPhone;
   const planTitle = checkIn.nura_plans?.title ?? "your Care plan";
@@ -175,9 +181,69 @@ async function escalateCheckIn(supabase: SupabaseClient, checkIn: ResolvableChec
     .eq("id", checkIn.id);
 }
 
+/**
+ * Missed call to the person a plan is about. They have no account, so nothing is sent to them:
+ * the owner hears that Nura couldn't reach them, by push and email, plus the plan's conversation.
+ * The circle is told separately by the missed-check-in sweep (on by default for these plans).
+ */
+async function escalateRecipientCheckIn(
+  supabase: SupabaseClient,
+  checkIn: ResolvableCheckIn,
+  recipient: CareRecipient,
+  note: string,
+) {
+  const { firstName, email } = await loadOwnerContext(supabase, checkIn.owner_id);
+  const planTitle = checkIn.nura_plans?.title ?? "your Care plan";
+  const message =
+    `Nura tried to call ${recipient.first_name} about ${planTitle} twice but couldn't get through. ` +
+    `It might be worth checking in with them yourself.`;
+  const planUrl = `${appBaseUrl()}/plans/${checkIn.plan_id}`;
+
+  let emailOk = false;
+  let emailError: string | null = null;
+  if (email) {
+    const sent = await sendAuthEmail({
+      to: email,
+      subject: `Nura couldn't reach ${recipient.first_name}`,
+      html: missedCheckInEmailHtml({ workspaceUrl: planUrl, planTitle, firstName, message }),
+      text: missedCheckInEmailText({ workspaceUrl: planUrl, planTitle, firstName, message }),
+      idempotencyKey: `checkin-missed:${checkIn.id}`,
+      attachments: nuraEmailLogoAttachment(),
+    });
+    emailOk = sent.ok;
+    if (!sent.ok) emailError = sent.error;
+  }
+
+  await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, message);
+  const pushResult = await sendPushToOwner(checkIn.owner_id, {
+    title: `Nura couldn't reach ${recipient.first_name}`,
+    body: message,
+    url: planUrl,
+  }).catch(() => null);
+  const pushOk = Boolean(pushResult && pushResult.sent > 0);
+
+  await supabase
+    .from("nura_check_ins")
+    .update({
+      call_status: emailOk ? "escalated_email" : pushOk ? "escalated_push" : "failed",
+      call_error: emailOk || pushOk ? note : `${note} (email: ${emailError ?? "no address"}; push: ${pushResult?.skipped ?? "not delivered"})`,
+    })
+    .eq("id", checkIn.id);
+}
+
 /** Places the redial itself - same call shape as the original outbound dial. */
 async function redialCheckIn(supabase: SupabaseClient, checkIn: ResolvableCheckIn, attempts: number) {
-  const phone = checkIn.contact_phone;
+  // A plan about someone else always redials them (and only while they still agree).
+  const recipient = await loadRecipientForPlan(supabase, checkIn.plan_id);
+  if (recipient && recipient.consent_status !== "granted") {
+    await supabase
+      .from("nura_check_ins")
+      .update({ call_status: "cancelled_no_consent", redial_at: null })
+      .eq("id", checkIn.id);
+    return;
+  }
+
+  const phone = recipient ? recipient.phone : checkIn.contact_phone;
   if (!phone) {
     await escalateCheckIn(supabase, checkIn, "No phone number on file for redial.");
     return;
@@ -186,7 +252,19 @@ async function redialCheckIn(supabase: SupabaseClient, checkIn: ResolvableCheckI
   const { firstName } = await loadOwnerContext(supabase, checkIn.owner_id);
 
   try {
-    const context = await buildVoiceCheckinContext(supabase, checkIn.owner_id, checkIn.plan_id, firstName);
+    const context = await buildVoiceCheckinContext(
+      supabase,
+      checkIn.owner_id,
+      checkIn.plan_id,
+      firstName,
+      recipient
+        ? {
+            recipient,
+            ownerFirstName: firstName,
+            isFirstCall: !(await hasCalledRecipientBefore(supabase, checkIn.plan_id, checkIn.id)),
+          }
+        : undefined,
+    );
     const dynamicVariables = {
       ...(context?.dynamicVariables ?? {
         user_name: firstName,
@@ -201,7 +279,12 @@ async function redialCheckIn(supabase: SupabaseClient, checkIn: ResolvableCheckI
     };
     const digits = phone.replace(/[^\d]/g, "");
     const toNumber = phone.startsWith("+") ? phone : `+${digits}`;
-    const call = await placeOutboundCall({ toNumber, dynamicVariables, agentId: context?.elevenLabsAgentId });
+    const call = await placeOutboundCall({
+      toNumber,
+      dynamicVariables,
+      agentId: context?.elevenLabsAgentId,
+      firstMessage: context?.firstMessage,
+    });
 
     await supabase
       .from("nura_check_ins")

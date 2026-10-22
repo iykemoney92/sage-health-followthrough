@@ -4,6 +4,7 @@ export type OwnerResolveVia =
   | "ownerId"
   | "profile_phone"
   | "whatsapp_link"
+  | "care_recipient"
   | "recent_voice_checkin"
   | null;
 
@@ -72,6 +73,20 @@ export async function resolveAgentOwnerId(
 
     if (link?.owner_id) {
       return { ownerId: link.owner_id as string, via: "whatsapp_link", matchedPhone: phone };
+    }
+
+    // Someone an owner cares for, on a call about their plan. Only while they've agreed.
+    const { data: recipient } = await supabase
+      .from("nura_care_recipients")
+      .select("owner_id")
+      .eq("phone", phone)
+      .eq("consent_status", "granted")
+      .order("consent_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (recipient?.owner_id) {
+      return { ownerId: recipient.owner_id as string, via: "care_recipient", matchedPhone: phone };
     }
   }
 

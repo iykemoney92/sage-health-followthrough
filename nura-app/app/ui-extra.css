@@ -295,3 +295,36 @@
   .walkthrough-dialog.is-portrait .walkthrough-frame{width:min(100%,calc((100dvh - 230px) * 9 / 16));margin:0 auto}
   .walkthrough-dialog.is-portrait .walkthrough-frame video{max-height:calc(100dvh - 230px)}
 }
+/* Agreement page for someone a plan is about: larger, plainer type for any age or eyesight. */
+.agree-page .join-card h1{font-size:30px}
+.agree-page .join-card>p{font-size:18px!important;line-height:1.6}
+.agree-points{margin:4px 0 0;padding-left:22px;list-style:disc;display:grid;gap:8px;font-size:17px;line-height:1.5;color:#33443b}
+.agree-question{margin-top:8px!important;font-size:18px!important;font-weight:650;color:#1f3328!important}
+.agree-actions .primary-cta,.agree-actions .secondary-cta{min-height:56px;font-size:18px!important}
+.agree-done{margin:0;font-size:18px!important;line-height:1.55;color:#1f3328}
+/* Plan about someone else: who Nura calls and whether they've agreed. */
+.care-recipient-status{margin:0 0 12px;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.45;font-weight:600}
+.care-recipient-status.granted{background:#eef4ef;color:#2f5a3e}
+.care-recipient-status.pending{background:#fff7ef;color:#7a4e1e}
+.care-recipient-status.declined,.care-recipient-status.revoked{background:#f4f3f0;color:#5f6662}
+.care-circle-invite textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line,#e4e4dc);border-radius:9px;background:#fff;font:13px/1.5 inherit;color:#2f4a3a;resize:none}
+.care-recipient-actions{display:grid;gap:10px;justify-items:start;margin-top:12px}
+.care-recipient-actions .primary-cta,.care-recipient-stop{display:inline-flex;align-items:center;gap:8px}
+.care-recipient-actions svg,.care-recipient-stop svg{width:16px;height:16px}
+.care-recipient-behalf{border:0;background:none;padding:0;font-size:13px;font-weight:700;color:#3f7353;cursor:pointer;text-align:left}
+.care-recipient-confirm{display:grid;gap:10px;padding:12px;border-radius:12px;background:#f5f7f3;border:1px solid #dfe6dd}
+.care-recipient-confirm p{margin:0;font-size:13px;line-height:1.5;color:#4f5f57}
+.care-recipient-stop{margin-top:4px}
+/* New plan: who it's for, and the details of someone the owner cares for. */
+.plan-for-options{margin-bottom:14px}
+.recipient-fields{display:grid;gap:12px;margin-top:4px}
+.recipient-fields>label{display:grid;gap:6px}
+.recipient-fields>label>span,.recipient-consent legend{font-size:13px;font-weight:700;color:#3d5446}
+.recipient-fields input[type=text],.recipient-fields select{width:100%;box-sizing:border-box;min-height:44px;padding:10px 12px;border:1px solid var(--line,#e4e4dc);border-radius:10px;background:#fff;font-size:15px;color:#24372c}
+.recipient-consent{margin:4px 0 0;padding:0;border:0;display:grid;gap:10px}
+.recipient-consent legend{margin-bottom:8px}
+.recipient-consent label{display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;align-items:start;padding:12px;border:1px solid var(--line,#e4e4dc);border-radius:12px;background:#fff;cursor:pointer}
+.recipient-consent input{width:18px;height:18px;margin:2px 0 0;accent-color:#356b49}
+.recipient-consent b{display:block;font-size:14px;color:#24372c}
+.recipient-consent small{display:block;margin-top:3px;font-size:12px;line-height:1.45;color:#718078}
+.recipient-share-step .care-circle-invite{margin-top:8px}

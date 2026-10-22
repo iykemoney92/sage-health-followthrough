@@ -12,6 +12,11 @@ import { readProfileSettings } from "@/lib/profile-settings";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { rerouteChannel, type CheckinChannel } from "@/lib/domain/checkin-channel";
 import {
+  RECIPIENT_QUIET_HOURS,
+  hasCalledRecipientBefore,
+  loadRecipientsForPlans,
+} from "@/lib/care-recipient";
+import {
   resolveCallForCheckIn,
   placeDueRedials,
   CALL_OUTCOME_CHECK_DELAY_SECONDS,
@@ -43,6 +48,18 @@ async function insertOpenerMessage(
   } catch {
     // Non-blocking — delivery already happened on the outbound channel.
   }
+}
+
+// A call about someone the owner cares for went wrong before it rang - the owner hears about it
+// in the plan's conversation and by push. Nothing goes to the person themselves.
+async function notifyOwnerAboutRecipientCall(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  checkIn: DueCheckIn,
+  body: string,
+  title: string,
+) {
+  await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, body);
+  await sendPushToOwner(checkIn.owner_id, { title, body, url: `/plans/${checkIn.plan_id}` }).catch(() => null);
 }
 
 // Dispatcher lag (a stalled droplet tick, a manual re-fire after downtime) can still leave a
@@ -179,12 +196,29 @@ async function deferQuietHoursCheckIns(
     (profiles ?? []).map((p) => [p.id, (p.preferred_checkin_channels as CheckinChannel[] | null) ?? ["voice", "whatsapp", "in_app"]]),
   );
   const phoneByOwner = new Map((profiles ?? []).map((p) => [p.id, (p.phone as string | null) ?? null]));
+  const recipientsByPlan = await loadRecipientsForPlans(supabase, dueCheckIns.map((c) => c.plan_id));
 
   const ready: DueCheckIn[] = [];
   const deferredUpdates: Array<{ id: string; scheduled_for: string }> = [];
 
   await Promise.all(
     dueCheckIns.map(async (checkIn) => {
+      // Calls to someone the owner cares for only ring in their daytime, whatever the owner's
+      // own quiet-hours settings say. Without consent they're skipped later, so pass through.
+      const recipient = recipientsByPlan.get(checkIn.plan_id);
+      if (recipient) {
+        const dueAt = new Date(checkIn.scheduled_for);
+        if (recipient.consent_status !== "granted" || !isWithinQuietHours(dueAt, RECIPIENT_QUIET_HOURS, recipient.time_zone)) {
+          ready.push(checkIn);
+        } else {
+          deferredUpdates.push({
+            id: checkIn.id,
+            scheduled_for: nextTimeOutsideQuietHours(dueAt, RECIPIENT_QUIET_HOURS, recipient.time_zone).toISOString(),
+          });
+        }
+        return;
+      }
+
       const allowed = allowedByOwner.get(checkIn.owner_id) ?? (["voice", "whatsapp", "in_app"] as CheckinChannel[]);
       const effectiveChannel = rerouteChannel(checkIn.channel, allowed);
       if (effectiveChannel === "in_app") {
@@ -394,15 +428,32 @@ async function runTriggerCheckIns(request: NextRequest) {
     plusByOwner.set(ownerId, (await getSubscriptionAccess(supabase, ownerId)).hasPlus);
   }));
 
+  const recipientsByPlan = await loadRecipientsForPlans(supabase, claimedCheckIns.map((c) => c.plan_id));
+
   const results: Record<string, unknown>[] = [];
   const pushCheckIns: DueCheckIn[] = [];
   const gatedCheckInIds: string[] = [];
+  const noConsentCheckInIds: string[] = [];
   const phoneGroups = new Map<string, DueCheckIn[]>();
   const whatsappTargets: Array<{ checkIn: DueCheckIn; phone: string }> = [];
 
   for (const checkIn of claimedCheckIns) {
     if (!plusByOwner.get(checkIn.owner_id)) {
       gatedCheckInIds.push(checkIn.id);
+      continue;
+    }
+
+    // A plan about someone else: always a call to them, and only once they've agreed. Never a
+    // WhatsApp or push to them - they have no account - and never the owner's own number.
+    const recipient = recipientsByPlan.get(checkIn.plan_id);
+    if (recipient) {
+      if (recipient.consent_status !== "granted") {
+        noConsentCheckInIds.push(checkIn.id);
+        continue;
+      }
+      const group = phoneGroups.get(recipient.phone) ?? [];
+      group.push(checkIn);
+      phoneGroups.set(recipient.phone, group);
       continue;
     }
 
@@ -547,6 +598,16 @@ async function runTriggerCheckIns(request: NextRequest) {
     }
   }
 
+  if (noConsentCheckInIds.length > 0) {
+    await supabase
+      .from("nura_check_ins")
+      .update({ triggered_at: nowIso, call_status: "skipped_no_consent" })
+      .in("id", noConsentCheckInIds);
+    for (const id of noConsentCheckInIds) {
+      results.push({ checkInId: id, status: "skipped_no_consent" });
+    }
+  }
+
   if (phoneGroups.size > 0 && !isElevenLabsCallingConfigured()) {
     return NextResponse.json({ ok: false, error: "ElevenLabs outbound calling is not configured." }, { status: 503 });
   }
@@ -565,6 +626,7 @@ async function runTriggerCheckIns(request: NextRequest) {
     const allowed = allowedChannelsByOwner.get(primary.owner_id) ?? ["voice", "whatsapp", "in_app"];
     const toNumber = toE164(phoneKey);
     const minutesOverdue = (now.getTime() - new Date(primary.scheduled_for).getTime()) / 60_000;
+    const recipient = recipientsByPlan.get(primary.plan_id) ?? null;
 
     if (backlog.length > 0) {
       await supabase
@@ -574,6 +636,22 @@ async function runTriggerCheckIns(request: NextRequest) {
       for (const c of backlog) {
         results.push({ checkInId: c.id, planTitle, status: "missed_consolidated" });
       }
+    }
+
+    if (recipient && minutesOverdue > MAX_VOICE_LATENESS_MINUTES) {
+      // Too late to ring someone who isn't expecting it - tell the owner instead.
+      await notifyOwnerAboutRecipientCall(
+        supabase,
+        primary,
+        `Nura didn't get to call ${recipient.first_name} about ${planTitle} on time, so it skipped this one. The next check-in will go ahead as planned.`,
+        `Nura missed a call to ${recipient.first_name}`,
+      );
+      await supabase
+        .from("nura_check_ins")
+        .update({ triggered_at: nowIso, call_status: "failed", call_error: `Call to ${recipient.first_name} was ${Math.round(minutesOverdue)}m overdue; skipped.` })
+        .eq("id", primary.id);
+      results.push({ checkInId: primary.id, planTitle, status: "failed", overdueMinutes: Math.round(minutesOverdue) });
+      continue;
     }
 
     // Too late for a cold call (dispatcher lag past 6h) — still reach the user by text/push.
@@ -623,7 +701,19 @@ async function runTriggerCheckIns(request: NextRequest) {
     }
 
     try {
-      const context = await buildVoiceCheckinContext(supabase, primary.owner_id, primary.plan_id, firstName);
+      const context = await buildVoiceCheckinContext(
+        supabase,
+        primary.owner_id,
+        primary.plan_id,
+        firstName,
+        recipient
+          ? {
+              recipient,
+              ownerFirstName: firstName,
+              isFirstCall: !(await hasCalledRecipientBefore(supabase, primary.plan_id)),
+            }
+          : undefined,
+      );
       const dynamicVariables = {
         ...(context?.dynamicVariables ?? {
           user_name: firstName,
@@ -641,6 +731,7 @@ async function runTriggerCheckIns(request: NextRequest) {
         toNumber,
         dynamicVariables,
         agentId: context?.elevenLabsAgentId,
+        firstMessage: context?.firstMessage,
       });
 
       await supabase
@@ -655,15 +746,38 @@ async function runTriggerCheckIns(request: NextRequest) {
 
       // Parallel nudge so the user knows to pick up — and so there's still a signal if the
       // ring fails silently on the carrier side.
-      void sendPushToOwner(primary.owner_id, {
-        title: "Nura is calling",
-        body: `Pick up — checking in about ${planTitle}.`,
-        url: `/workspace?planId=${primary.plan_id}`,
-      }).catch(() => null);
+      void sendPushToOwner(
+        primary.owner_id,
+        recipient
+          ? {
+              title: `Nura is calling ${recipient.first_name}`,
+              body: `Checking in about ${planTitle}. You'll get a summary afterwards.`,
+              url: `/plans/${primary.plan_id}`,
+            }
+          : {
+              title: "Nura is calling",
+              body: `Pick up — checking in about ${planTitle}.`,
+              url: `/workspace?planId=${primary.plan_id}`,
+            },
+      ).catch(() => null);
 
       results.push({ checkInId: primary.id, planTitle, toNumber, status: "placed", conversationId: call.conversation_id });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Outbound call failed.";
+      if (recipient) {
+        await notifyOwnerAboutRecipientCall(
+          supabase,
+          primary,
+          `Nura couldn't place today's call to ${recipient.first_name} about ${planTitle}. It will try again at the next check-in.`,
+          `Nura couldn't reach ${recipient.first_name}`,
+        );
+        await supabase
+          .from("nura_check_ins")
+          .update({ triggered_at: nowIso, call_status: "failed", call_error: message })
+          .eq("id", primary.id);
+        results.push({ checkInId: primary.id, planTitle, toNumber, status: "failed", error: message });
+        continue;
+      }
       const opener = await composeMissedCallFollowup(firstName, planTitle, primary.prompt);
       let status: string = "failed";
       let callError = message;

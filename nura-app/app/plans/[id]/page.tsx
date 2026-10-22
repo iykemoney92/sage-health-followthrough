@@ -12,6 +12,8 @@ import { NuraShell } from "@/components/nura-shell";
 import { RescheduleButton } from "@/components/nura-actions";
 import { PlanJourney } from "@/components/plan-journey";
 import { CareCircleCard } from "@/components/care-circle-card";
+import { CareRecipientCard } from "@/components/care-recipient-card";
+import { loadRecipientForPlan, maskPhone } from "@/lib/care-recipient";
 import { CircleUpdateCard } from "@/components/circle-update-card";
 import { CirclePassOnCard } from "@/components/circle-pass-on-card";
 import { CircleEmailToggle } from "@/components/circle-email-toggle";
@@ -95,6 +97,10 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
         ? supabase.from("nura_plan_members").select("email_updates").eq("plan_id", id).eq("member_id", user.id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
+
+  // A plan about someone else. RLS only returns this to the owner; watchers never see who is
+  // called or on what number.
+  const careRecipient = !isWatcher && plan.care_recipient_id ? await loadRecipientForPlan(supabase, id) : null;
   const ownerFirstName = (ownerName ?? (displayName as string)).trim().split(/\s+/)[0] || "them";
 
   const meta = categoryLabel((plan.category as string) || "general_health");
@@ -258,10 +264,27 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
 
         <PlanJourney planId={plan.id as string} milestones={journey} readOnly={isWatcher} />
 
+        {careRecipient && (
+          <CareRecipientCard
+            planId={plan.id as string}
+            initial={{
+              firstName: careRecipient.first_name,
+              relationship: careRecipient.relationship,
+              phoneMasked: maskPhone(careRecipient.phone),
+              timeZone: careRecipient.time_zone,
+              consentStatus: careRecipient.consent_status,
+              consentMethod: careRecipient.consent_method,
+              consentAt: careRecipient.consent_at,
+            }}
+          />
+        )}
+
         {!isWatcher && circleMembers.length > 0 && (
           <CircleUpdateCard planId={plan.id as string} role="owner" ownerFirstName={ownerFirstName} initial={circleUpdate} />
         )}
-        {!isWatcher && circleMembers.length > 0 && <CirclePassOnCard planId={plan.id as string} initialNotes={circleNotes} />}
+        {!isWatcher && (circleMembers.length > 0 || careRecipient) && (
+          <CirclePassOnCard planId={plan.id as string} initialNotes={circleNotes} />
+        )}
         {!isWatcher && circleAlerts.length > 0 && (
           <aside className="circle-alerts owner" aria-label="What your circle was told">
             <small>Your circle was told</small>

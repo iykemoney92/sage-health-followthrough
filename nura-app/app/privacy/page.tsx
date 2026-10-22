@@ -20,6 +20,10 @@ function buildSections(supportEmail: string) {
       body: "You can invite family, a friend or a carer to keep an eye on a specific Care plan. Someone you invite sees that plan’s title, notes, roadmap and check-in status — never your conversation with Nura, your uploaded documents, your phone number or anything from other Care plans. Invites are single-use links that expire after seven days, and you can remove anyone from a Care plan at any moment, which takes effect immediately. Nura also writes your circle a short update from that same plan information, which you can always read yourself, and — only if you switch it on for a plan — tells them when a scheduled check-in is still not done a day later. These updates reach your circle in the app, by push notification and by email, and each person can turn email off. If you choose to pass something on — by typing it on the plan, or by saying yes when Nura asks at the end of a call and reads your message back — your circle sees exactly those words and nothing else from the call. You can take a message back at any time.",
     },
     {
+      title: "Someone you care for",
+      body: `A Care plan can be about someone else, such as a parent, so that Nura's check-in calls go to them instead of you. Nura only calls them after they agree — by tapping Yes on a link you send them, or by you confirming they agree on their behalf, which you should only do if they know about Nura and are happy to be called. For that person we keep their first name, how they're related to you, their phone number, their time zone, and a record of their agreement. Calls happen in their daytime, may be recorded and transcribed so Nura can keep track of what was said, and a short summary of each call is shared with you. Nothing you tell Nura privately is read out to them. They can say "stop" on any call, or use their link, and the calls end straight away; you can stop them too. They can also ask us to delete their details at ${supportEmail}.`,
+    },
+    {
       title: "Your control",
       body: "You decide what Nura remembers. You can edit your profile, change follow-up preferences, review summaries, or ask Nura to stop remembering specific context. From Me → Data & export you can download a full copy of your data, or permanently delete your account — both take effect immediately.",
     },
@@ -59,7 +63,7 @@ export default function PrivacyPage() {
       title="Your health context stays yours."
       intro="Nura helps care continue between appointments. It only uses the context you choose to share — and you stay in control of what it remembers."
       sections={buildSections(supportEmail)}
-      updated="October 8, 2026"
+      updated="October 23, 2026"
     >
       <CookieChoiceButton />
     </LegalPage>

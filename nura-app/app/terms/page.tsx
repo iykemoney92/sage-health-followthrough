@@ -20,6 +20,10 @@ function buildSections(supportEmail: string) {
       body: "You decide what to share, check important details, and contact a qualified professional for medical advice. Do not rely on Nura for emergencies or urgent symptoms — contact emergency services directly.",
     },
     {
+      title: "Plans about someone you care for",
+      body: "If you set up a Care plan so that Nura calls someone else, you must have their permission to share their name and phone number with Nura. Only accept on their behalf if they know about Nura and have told you they're happy to be called — otherwise send them the link so they can decide for themselves. Stop the calls if they change their mind, and don't use this to contact anyone who hasn't agreed.",
+    },
+    {
       title: "Nura Plus and billing",
       body: "Nura offers a free tier and a paid Nura Plus subscription with a trial period. Subscriptions are billed through RevenueCat and Stripe; pricing, renewal, and cancellation terms are shown at purchase. You can manage or cancel anytime from Billing in account settings.",
     },
