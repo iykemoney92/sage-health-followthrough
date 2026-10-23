@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FREE_DOCUMENT_LIMIT } from "@/lib/billing/subscription";
+import { GUIDES } from "@/lib/content/guides";
 
 // Server-rendered on purpose: this is the part of "/" a search engine reads.
 // Every claim here is one the product makes elsewhere — llms.txt, the billing
@@ -99,6 +100,15 @@ export function LandingAbout() {
           <Link href="/example">See a finished example analysis</Link> of an invented MRI report before you upload
           anything of your own.
         </p>
+
+        <h2>Guides</h2>
+        <ul className="clariti-about-guides">
+          {GUIDES.map((guide) => (
+            <li key={guide.slug}>
+              <Link href={`/guides/${guide.slug}`}>{guide.metaTitle}</Link>
+            </li>
+          ))}
+        </ul>
 
         <h2>Questions people ask</h2>
         <dl className="clariti-about-faq">
