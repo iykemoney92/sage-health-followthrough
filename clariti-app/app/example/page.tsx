@@ -39,6 +39,7 @@ export const dynamic = "force-static";
 
 export const metadata: Metadata = {
   title: "An example analysis",
+  alternates: { canonical: "/example" },
   description:
     "See what Clariti gives back before you upload anything of your own: a finished analysis of an invented MRI report, rendered exactly as a real one is.",
 };

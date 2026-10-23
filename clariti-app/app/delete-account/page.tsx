@@ -8,6 +8,7 @@ export const dynamic = "force-static";
 
 export const metadata: Metadata = {
   title: "Delete your account",
+  alternates: { canonical: "/delete-account" },
   description: "How to permanently delete your Clariti account and every document it holds, in about a minute from inside the app.",
 };
 

@@ -8,6 +8,7 @@ export const dynamic = "force-static";
 
 export const metadata: Metadata = {
   title: "Terms",
+  alternates: { canonical: "/terms" },
   description: "How Clariti is meant to be used, what it will not do, and the terms that apply to Clariti Plus.",
 };
 
