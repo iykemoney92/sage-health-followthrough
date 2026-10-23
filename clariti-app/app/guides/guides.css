@@ -1,0 +1,236 @@
+/* /guides and /guides/[slug] — long-form reading pages inside ClaritiShell.
+   Same measure and type as /example: rem sizes, nothing below 0.8125rem,
+   because people read these carefully before trusting the product. */
+
+.guide-page {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 34px max(20px, env(safe-area-inset-left)) 110px max(20px, env(safe-area-inset-right));
+  color: #3e4f4a;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+.guide-page h1 {
+  margin: 8px 0 18px;
+  font: 500 clamp(2rem, 4.4vw, 2.75rem)/1.12 Georgia, "Times New Roman", serif;
+  color: #233330;
+}
+.guide-page h2 {
+  margin: 44px 0 14px;
+  font: 500 1.6rem/1.2 Georgia, "Times New Roman", serif;
+  color: #233330;
+}
+.guide-page h3 {
+  margin: 18px 0 6px;
+  font-size: 1rem;
+  color: #263934;
+}
+.guide-page a {
+  color: #2f6e66;
+  font-weight: 700;
+}
+.guide-crumbs {
+  font-size: 0.8125rem;
+  color: #87938e;
+  margin-bottom: 14px;
+}
+.guide-crumbs a {
+  font-weight: 600;
+}
+.guide-lead {
+  margin: 0 0 14px;
+  color: #5d6d68;
+}
+.guide-parts,
+.guide-faq {
+  margin: 0;
+}
+.guide-parts div,
+.guide-faq div {
+  border-top: 1px solid #e1e7e4;
+  padding: 12px 0;
+}
+.guide-parts dt,
+.guide-faq dt {
+  font-weight: 700;
+  color: #263934;
+}
+.guide-parts dd,
+.guide-faq dd {
+  margin: 3px 0 0;
+  color: #5d6d68;
+}
+.guide-example {
+  margin: 0;
+  background: #fff;
+  border: 1px solid #e1e7e4;
+  border-radius: 14px;
+  padding: 16px;
+  overflow-x: auto;
+}
+.guide-example figcaption {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #7a5b16;
+  background: #fff8e8;
+  border: 1px solid #e4d9b3;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 12px;
+}
+.guide-example table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.guide-example th,
+.guide-example td {
+  text-align: left;
+  vertical-align: top;
+  padding: 10px 8px;
+  border-bottom: 1px solid #edf0ee;
+}
+.guide-example thead th {
+  font-size: 0.8125rem;
+  color: #87938e;
+  font-weight: 700;
+}
+.guide-example tbody th {
+  color: #263934;
+}
+.guide-example-value {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: #245e55;
+}
+.guide-example-takeaway {
+  margin: 14px 0 0;
+  font-weight: 600;
+  color: #355f57;
+}
+.guide-checks,
+.guide-questions ul,
+.guide-related {
+  margin: 0;
+  padding-left: 22px;
+  list-style: disc;
+}
+.guide-checks li,
+.guide-questions li,
+.guide-related li {
+  /* auth.css styles every li as a flex row, which drops the marker. */
+  display: list-item;
+  margin-bottom: 6px;
+}
+.guide-help {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 10px;
+  margin: 32px 0 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #eef3fb;
+  border: 1px solid #cfdcf0;
+  color: #33507a;
+}
+.guide-help svg {
+  width: 20px;
+  height: 20px;
+  margin-top: 3px;
+}
+.guide-help p {
+  margin: 0;
+}
+.guide-cta {
+  margin: 32px 0 0;
+  padding: 20px;
+  border-radius: 16px;
+  background: #e7f2ef;
+  border: 1px solid #d5e6e0;
+}
+.guide-cta p {
+  margin: 0 0 14px;
+  color: #2f4c45;
+  font-weight: 600;
+}
+.guide-cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+.guide-page .guide-cta-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border-radius: 12px;
+  background: #4d8d83;
+  color: #fff;
+  text-decoration: none;
+}
+.guide-cta-primary:hover {
+  background: #3e7e75;
+}
+.guide-cta-primary svg {
+  width: 16px;
+  height: 16px;
+}
+.guide-foot {
+  margin-top: 44px;
+  font-size: 0.8125rem;
+  color: #87938e;
+}
+.guide-index {
+  list-style: none;
+  padding: 0;
+  margin: 28px 0 0;
+  display: grid;
+  gap: 12px;
+}
+.guide-index a {
+  display: grid;
+  gap: 4px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid #e1e7e4;
+  background: #fff;
+  text-decoration: none;
+}
+.guide-index a:hover {
+  border-color: #bfd1cb;
+}
+.guide-index b {
+  font-size: 1.05rem;
+  color: #233330;
+}
+.guide-index small {
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: #6a7a75;
+}
+@media (max-width: 760px) {
+  .guide-example thead {
+    display: none;
+  }
+  .guide-example tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    border-bottom: 1px solid #edf0ee;
+    padding: 8px 0;
+  }
+  .guide-example th,
+  .guide-example td {
+    border: 0;
+    padding: 2px 0;
+  }
+  .guide-example td:last-child {
+    grid-column: 1 / -1;
+    color: #5d6d68;
+  }
+  .guide-example-value {
+    text-align: right;
+    white-space: normal;
+  }
+}

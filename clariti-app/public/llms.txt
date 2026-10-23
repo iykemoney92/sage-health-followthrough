@@ -13,6 +13,13 @@ Attach a document, take a photo, or paste the text, and Clariti explains one doc
 - Discharge summaries: why you were there, medications, and follow-up.
 - Medication lists: names, doses, and questions for the pharmacist.
 
+## Guides
+
+- [How to read an explanation of benefits (EOB)](https://useclariti.app/guides/how-to-read-an-eob)
+- [How to understand a medical bill (and spot errors)](https://useclariti.app/guides/understand-your-medical-bill)
+- [How to read your lab results](https://useclariti.app/guides/lab-results-explained)
+- [How to understand your hospital discharge summary](https://useclariti.app/guides/discharge-summary-explained)
+
 ## Links
 
 - [Clariti](https://useclariti.app): Home

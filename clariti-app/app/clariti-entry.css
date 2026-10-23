@@ -93,8 +93,11 @@
 .clariti-about-steps {
   margin: 0 0 14px;
   padding-left: 22px;
+  list-style: decimal;
 }
 .clariti-about-steps li {
+  /* auth.css styles every li as a flex row, which drops the number. */
+  display: list-item;
   margin-bottom: 6px;
 }
 .clariti-about-faq {
@@ -127,4 +130,13 @@
   .clariti-about h2 {
     font-size: 24px;
   }
+}
+.clariti-about-guides {
+  margin: 0;
+  padding-left: 22px;
+  list-style: disc;
+}
+.clariti-about-guides li {
+  display: list-item;
+  margin-bottom: 6px;
 }
