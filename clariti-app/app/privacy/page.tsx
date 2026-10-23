@@ -8,6 +8,7 @@ export const dynamic = "force-static";
 
 export const metadata: Metadata = {
   title: "Privacy",
+  alternates: { canonical: "/privacy" },
   description: "What Clariti collects when you upload a health document, who else processes it, and how to export or delete it.",
 };
 
