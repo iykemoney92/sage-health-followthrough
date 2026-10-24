@@ -28,6 +28,10 @@ function buildSections(supportEmail: string) {
       body: "Nura offers a free tier and a paid Nura Plus subscription with a trial period. Subscriptions are billed through RevenueCat and Stripe; pricing, renewal, and cancellation terms are shown at purchase. You can manage or cancel anytime from Billing in account settings.",
     },
     {
+      title: "Invite gifts",
+      body: "A new account created through someone's invite link gets 30 days of Nura Plus at no cost and with no card. It is one gift per person, for accounts that have not had a Nura trial or subscription before, and it ends on its own: after 30 days the account carries on with the free tier unless you choose Plus. We may limit how many gifts one link gives, and we may change or end invite gifts at any time; a gift already given runs its full 30 days.",
+    },
+    {
       title: "Acceptable use",
       body: "Don’t use Nura to share content you don’t have the right to share, to impersonate someone else, to disrupt or reverse-engineer the service, or in any way that violates applicable law.",
     },

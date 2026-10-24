@@ -28,6 +28,10 @@ function buildSections(supportEmail: string) {
       body: `A Care plan can be about someone else, such as a parent, so that Nura's check-in calls go to them instead of you. Nura only calls them after they agree — by tapping Yes on a link you send them, or by you confirming they agree on their behalf, which you should only do if they know about Nura and are happy to be called. For that person we keep their first name, how they're related to you, their phone number, their time zone, and a record of their agreement. Calls happen in their daytime, may be recorded and transcribed so Nura can keep track of what was said, and a short summary of each call is shared with you. Nothing you tell Nura privately is read out to them. They can say "stop" on any call, or use their link, and the calls end straight away; you can stop them too. They can also ask us to delete their details at ${supportEmail}.`,
     },
     {
+      title: "Invite links",
+      body: "You have a personal link you can share to invite friends to Nura. When someone creates an account through it, we record that they joined through your link so their free Plus can be switched on. The link and the message that goes with it say nothing about your health, and someone who opens it only sees your first name. You only ever see how many people have joined through your link, never who they are. These records are deleted with either account.",
+    },
+    {
       title: "Your control",
       body: "You decide what Nura remembers. You can edit your profile, change follow-up preferences, review summaries, or ask Nura to stop remembering specific context. From Me → Data & export you can download a full copy of your data, or permanently delete your account — both take effect immediately.",
     },

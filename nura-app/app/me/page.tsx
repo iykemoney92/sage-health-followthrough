@@ -15,6 +15,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { NuraShell } from "@/components/nura-shell";
+import { ReferralCard } from "@/components/referral-card";
 import { SignOutButton } from "@/components/sign-out-button";
 import { WalkthroughButton } from "@/components/walkthrough-video";
 import { getUserAvatarUrl } from "@/lib/avatar";
@@ -234,6 +235,11 @@ export default async function MePage() {
           <div className="me-settings-grid">
             <WalkthroughButton variant="tile" />
           </div>
+        </section>
+
+        <section className="me-settings-group" id="tell-a-friend" aria-label="Tell a friend">
+          <div className="me-section-label">Tell a friend</div>
+          <ReferralCard surface="me" />
         </section>
 
         <section className="me-settings-group" aria-label="Settings">
