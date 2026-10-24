@@ -9,6 +9,7 @@ import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
 import { MAX_VOICE_NOTE_BYTES, VOICE_NOTES_BUCKET } from "@/lib/voice-notes";
 import { evaluateAndAdvanceJourney, ensureJourney } from "@/lib/domain/plan-journey";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
+import { healthContextForPlan } from "@/lib/health/health-store";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -243,7 +244,19 @@ export async function POST(request: NextRequest) {
     phoneDigits: phoneOnFile,
     authMetadata: (user.user_metadata ?? null) as Record<string, unknown> | null,
   });
-  const decision = await resolveDecision(modelContent, plans ?? [], sanitizedAttachments, (contexts ?? []) as PlanContext[], requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels, timeZone, preferredChannel);
+  // Health data is in-app only: this route's replies stay in the chat, which the Care
+  // circle never sees. The WhatsApp path builds its own context without it.
+  const healthPlan = requestedPlan ?? plans?.[0] ?? null;
+  const healthContext = healthPlan
+    ? await healthContextForPlan(supabase, user.id, { id: healthPlan.id as string, category: healthPlan.category as string | null }, timeZone)
+    : null;
+  const modelContexts: PlanContext[] = [
+    ...(healthContext && healthPlan
+      ? [{ plan_id: healthPlan.id as string, title: "Health data", kind: "health_data", summary: healthContext }]
+      : []),
+    ...((contexts ?? []) as PlanContext[]),
+  ];
+  const decision = await resolveDecision(modelContent, plans ?? [], sanitizedAttachments, modelContexts, requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels, timeZone, preferredChannel);
   const threadLimit = await enforceThreadLimit(supabase, user.id, plans?.length ?? 0, decision.action === "new_plan");
   if (threadLimit) return threadLimit;
 

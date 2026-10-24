@@ -8,6 +8,7 @@ import { sendPushToOwner } from "@/lib/integrations/push";
 import { sendWhatsappText } from "@/lib/integrations/whatsapp";
 import { composeCheckinOpener, composeMissedCallFollowup } from "@/lib/domain/message-intake";
 import { scheduleIdleWellnessCheckIns, isWithinQuietHours, nextTimeOutsideQuietHours } from "@/lib/domain/idle-wellness";
+import { scheduleHealthSignalCheckIns } from "@/lib/health/health-signals";
 import { readProfileSettings } from "@/lib/profile-settings";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { rerouteChannel, type CheckinChannel } from "@/lib/domain/checkin-channel";
@@ -312,6 +313,12 @@ async function runTriggerCheckIns(request: NextRequest) {
     scheduled: [] as string[],
     skipped: 0,
   }));
+  // Shared health data that has dropped well below the person's normal (sleep, activity).
+  // Off unless HEALTH_SIGNALS_ENABLED; runs after idle-wellness so the two never double up.
+  const healthSignals = await scheduleHealthSignalCheckIns(supabase, now).catch(() => ({
+    scheduled: [] as string[],
+    skipped: 0,
+  }));
 
   const { data: dueCheckIns, error: dueError } = await supabase
     .from("nura_check_ins")
@@ -332,6 +339,7 @@ async function runTriggerCheckIns(request: NextRequest) {
       triggered: [],
       idleScheduled: idle.scheduled.length,
       idleSkipped: idle.skipped,
+      healthSignalsScheduled: healthSignals.scheduled.length,
       redialsPlaced,
       staleMarked: stale.marked,
       staleRequeued: stale.requeued,
@@ -351,6 +359,7 @@ async function runTriggerCheckIns(request: NextRequest) {
       triggered: [],
       idleScheduled: idle.scheduled.length,
       idleSkipped: idle.skipped,
+      healthSignalsScheduled: healthSignals.scheduled.length,
       redialsPlaced,
       staleMarked: stale.marked,
       staleRequeued: stale.requeued,
@@ -383,6 +392,7 @@ async function runTriggerCheckIns(request: NextRequest) {
       triggered: [],
       idleScheduled: idle.scheduled.length,
       idleSkipped: idle.skipped,
+      healthSignalsScheduled: healthSignals.scheduled.length,
       redialsPlaced,
       staleMarked: stale.marked,
       staleRequeued: stale.requeued,
@@ -819,6 +829,7 @@ async function runTriggerCheckIns(request: NextRequest) {
     triggered: results,
     idleScheduled: idle.scheduled.length,
     idleSkipped: idle.skipped,
+    healthSignalsScheduled: healthSignals.scheduled.length,
     redialsPlaced,
     staleMarked: stale.marked,
     staleRequeued: stale.requeued,

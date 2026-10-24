@@ -12,6 +12,10 @@
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Nura reads your steps, sleep, resting heart rate, weight and blood pressure to make your check-ins more personal. It is never shared with your Care circle or used for ads.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Nura does not save anything to Apple Health.</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

@@ -14,6 +14,10 @@ const sections = [
     body: "Images, files, documents, and voice notes are treated as context for the relevant Care plan. Nura keeps media within what you shared or confirmed — it does not invent clinical advice from documents alone.",
   },
   {
+    title: "Apple Health and Health Connect",
+    body: "If you connect Apple Health or Health Connect, Nura reads steps, sleep, resting heart rate, weight and blood pressure — only the types you allow, and never writes back. It keeps daily summaries for up to 90 days and uses them only to make your check-ins more personal: a short summary of what has changed goes to Anthropic for written check-ins and to ElevenLabs during voice calls, and Nura may check in when your sleep or activity has dropped well below your usual. It is never shown to your Care circle or used in calls to someone you care for, never put in notifications or on WhatsApp, and never used for ads or analytics. Disconnecting deletes it.",
+  },
+  {
     title: "Sharing with your Care circle",
     body: "Nothing is shared with anyone unless you invite them to a Care plan. A person you invite can see that plan’s title, pinned note, roadmap and check-in status so they can support you. They cannot see your messages with Nura, attachments, other Care plans or your contact details. Nura writes them a short update from that same plan information — you see exactly the same text — and, only if you turn it on for a plan, lets them know when a check-in is still not done a day later. These arrive in the app, by push and by email. If you pass a message on — typed on the plan, or confirmed after Nura reads it back to you on a call — they see exactly those words, never the rest of the conversation, and you can take it back. You can see who has access on the Care plan itself and remove them at any time.",
   },

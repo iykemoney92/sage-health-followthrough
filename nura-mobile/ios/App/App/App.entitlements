@@ -16,6 +16,14 @@
 		<string>applinks:usenura.app</string>
 	</array>
 
+	<!-- Read-only Apple Health access: steps, sleep, resting heart rate, weight and
+	     blood pressure, after Nura's own consent screen (usenura.app/me/health). No
+	     background delivery - data syncs when the app is opened. -->
+	<key>com.apple.developer.healthkit</key>
+	<true/>
+	<key>com.apple.developer.healthkit.access</key>
+	<array/>
+
 	<key>com.apple.developer.applesignin</key>
 	<array>
 		<string>Default</string>
