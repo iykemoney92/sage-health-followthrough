@@ -20,7 +20,10 @@
 export const QUORA_PIXEL_ID = "c71a7f641b4e4c73bfc1a52510bf5874";
 const QUORA_SDK_URL = "https://a.quora.com/qevents.js";
 
-export const AD_CONSENT_KEY = "nura_ad_measurement_consent";
+// ":meta" since the notice also names the Meta Pixel (lib/meta-pixel.ts): an
+// Accept given when it only named Quora must not count as a yes to Meta, so
+// the notice asks once more. Both pixels share this one answer.
+export const AD_CONSENT_KEY = "nura_ad_measurement_consent:meta";
 export const AD_CONSENT_EVENT = "nura-ad-measurement-consent";
 
 /** Pages the pixel may run on. Everything else is the signed-in product. */
@@ -50,7 +53,7 @@ function isNativeShell() {
   return typeof bridge?.isNativePlatform === "function" && bridge.isNativePlatform();
 }
 
-function isPublicPath(pathname: string) {
+export function isPublicPath(pathname: string) {
   const path = pathname.replace(/\/+$/, "") || "/";
   return PUBLIC_PATHS.includes(path);
 }

@@ -20,7 +20,7 @@ export function CookieConsent() {
     // server render — deferring to an effect (and accepting the one extra
     // client-only render) is the correct approach here.
     const onWeb = adMeasurementApplies();
-    // On the web the notice also asks about Quora ad measurement, and an
+    // On the web the notice also asks about Quora and Meta ad measurement, and an
     // answer given before that question existed doesn't count, so it shows
     // again once for anyone who hasn't answered it.
     // The same goes for PostHog: an Accept from before the notice named it
@@ -31,7 +31,7 @@ export function CookieConsent() {
     setWeb(onWeb);
     if (unanswered()) setVisible(true);
     // Only the Android shell sends a sign-up conversion to Google Ads, so only
-    // it may say so; on the web the notice names Quora instead.
+    // it may say so; on the web the notice names Quora and Meta instead.
     setAndroidApp(isNativeAnalyticsAvailable());
     const reopen = () => setVisible(true);
     window.addEventListener(COOKIE_NOTICE_REOPEN_EVENT, reopen);
@@ -65,8 +65,8 @@ export function CookieConsent() {
             Nura uses essential cookies to keep you signed in. If you accept, it
             also uses Google Analytics and PostHog to see how the product is used
             (PostHog records screens with what you type and your health details
-            hidden), and the Quora Pixel on our public pages to see which of our
-            ads brought you here. None of them receives your health
+            hidden), and the Quora and Meta pixels on our public pages to see
+            which of our ads brought you here. None of them receives your health
             information.{" "}
           </>
         ) : (
