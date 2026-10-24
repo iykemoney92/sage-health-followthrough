@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   ChevronRight,
+  Clapperboard,
   CreditCard,
   Database,
   Download,
@@ -234,6 +235,16 @@ export default async function MePage() {
           <div className="me-section-label">Getting started</div>
           <div className="me-settings-grid">
             <WalkthroughButton variant="tile" />
+            <Link href="/me/videos" className="me-settings-tile">
+              <span className="me-settings-icon">
+                <Clapperboard />
+              </span>
+              <span className="me-settings-copy">
+                <b>Videos &amp; socials</b>
+                <small>Short how-tos and where to follow Nura</small>
+              </span>
+              <ChevronRight className="me-settings-chevron" />
+            </Link>
           </div>
         </section>
 
