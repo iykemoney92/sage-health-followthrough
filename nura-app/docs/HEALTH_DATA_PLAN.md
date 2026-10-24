@@ -1,6 +1,6 @@
 # Health data integration — first cut
 
-Status: plan, not built. Written 2026-10-24.
+Status: built on branch `nura-health-data` (2026-10-24). Migration applied to prod as `0031_health_data` in Supabase's history; the file in this repo is `0033_health_data.sql` because `main` already had 0031/0032. Binaries: iOS 1.1 (build 4), Android 1.1.0 (versionCode 4).
 
 Goal: let Nura read a small set of measurements from Apple Health (iOS) and Health Connect (Android) so check-ins can start from what has actually changed ("your sleep's been shorter this week — how have nights been?") and so Nura can reach out when someone's normal pattern drops off.
 
@@ -285,9 +285,14 @@ Rough effort: about a week of build for steps 1–6. Store review is the long po
 
 ---
 
-## 10. Decisions needed before building
+## 10. Decisions taken (defaults, 2026-10-24)
 
-1. **Metric list:** are the five above right? (Add glucose or HRV now, or leave them for later?)
-2. **Plus or free:** is connecting health data a Plus feature, or free with Plus-only health-triggered calls?
-3. **Triggers in v1, or context only first?** Shipping context only first is lower risk with reviewers. Triggers could follow two weeks later.
-4. **Fallback if Apple objects** to LLM/voice sharing: is the "triggers only, nothing sent to AI vendors" mode acceptable, or do we hold the feature back?
+1. **Metrics:** the five above. Glucose and HRV later.
+2. **Plus or free:** connecting is free; health-triggered check-ins follow the existing proactive check-in rules (Plus only).
+3. **Triggers:** built, but off until `HEALTH_SIGNALS_ENABLED=true` is set after the binaries are approved and the connect flow has had a week in production.
+4. **Apple pushback fallback:** not built yet; switch off `HEALTH_SIGNALS_ENABLED` is not enough on its own — the fallback would also drop the brief from `healthContextForPlan`.
+
+Added during the build:
+- Plans about someone the owner cares for (`nura_care_recipients`, PR #10) get no health brief and no health-triggered check-ins — the owner's data says nothing about that person and must never reach a call to them.
+- Health-triggered check-ins store a generic prompt, because `nura_check_ins` is readable by the Care circle; specifics reach the call only through the per-call brief.
+- iOS plugin list is pinned in `capacitor.config.ts` so `cap sync` cannot add Firebase Analytics (Android-only) to the iPhone build.
