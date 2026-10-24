@@ -5,13 +5,13 @@ import { ANALYTICS_CONSENT_EVENT, getPostHogConsent } from "@/lib/analytics-cons
  * PostHog product analytics: page views, clicks, errors and session
  * recordings, so we can see where people get stuck. One EU project ("Zapx
  * Products") is shared by every Zapx product, told apart by the `product`
- * property ("clariti" here) and `platform` (web / android_app).
+ * property ("clariti" here) and `platform` (web / android_app / ios_app).
  *
  * Consent: it follows the cookie notice (getPostHogConsent). Nothing loads
  * until the visitor presses Accept on a notice that names PostHog, and
- * "Essential only" (or the Settings switch) stops it. The iOS shell always
- * reads as "denied" (App Review 5.1.2(i), see analytics-consent.ts), so it
- * never runs in the iPhone app.
+ * "Essential only" (or the Settings switch) stops it. The iOS shell shows no
+ * notice: PostHog is on there unless the Settings switch turns it off (see
+ * analytics-consent.ts).
  *
  * Health information: typed text is masked in recordings, and every signed-in
  * page (workspace, documents, history, follow-ups, settings, billing) plus the

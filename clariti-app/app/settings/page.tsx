@@ -30,7 +30,6 @@ import {
   ANALYTICS_CONSENT_EVENT,
   getAnalyticsConsent,
   getPostHogConsent,
-  isIosShell,
   isNativeShell,
   setAnalyticsConsent,
 } from "@/lib/analytics-consent";
@@ -98,9 +97,8 @@ function subscribeAnalyticsConsent(onChange: () => void) {
 function readAnalyticsConsentState(): AnalyticsControlState {
   // The shells hard-deny analytics so the ATT requirement never applies (see
   // lib/analytics-consent.ts), which would make this a switch that cannot move.
-  // The iOS shell also hard-denies PostHog; the Android shell asks about
-  // PostHog alone, so there this switch is PostHog's.
-  if (isIosShell()) return "native";
+  // In both shells this switch is PostHog's alone: the Android notice asks
+  // about PostHog only, and on iOS PostHog is on until it is turned off here.
   if (isNativeShell()) return getPostHogConsent() === "granted" ? "android-granted" : "android-denied";
   // One switch for every optional cookie, as on the cookie notice. It reads as
   // on only when all are on, so turning it on always grants them all.
