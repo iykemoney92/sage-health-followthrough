@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claudeClient } from "@/lib/ai/claude";
 import { recipientFirstNameForPlan } from "@/lib/care-recipient-admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NURA_CORE_IDENTITY } from "@/lib/domain/nura-persona";
@@ -194,7 +194,7 @@ export async function composeCircleUpdate(facts: CircleFacts): Promise<string> {
     .join("\n");
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("care-circle-updates");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 350,

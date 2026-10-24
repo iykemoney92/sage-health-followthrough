@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claudeClient } from "@/lib/ai/claude";
 import type { PlanForJourney } from "@/lib/domain/plan-journey";
 import {
   journeyCreateCheckInSchema,
@@ -76,7 +76,7 @@ export async function draftNextCheckInAfterCompletion(input: {
 
   const nowIso = new Date().toISOString();
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("journey-create");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 220,
@@ -126,7 +126,7 @@ export async function draftFirstCheckInFromIntake(input: {
 
   const nowIso = new Date().toISOString();
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("journey-create");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 220,

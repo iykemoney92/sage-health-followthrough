@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { AI_DOWN_LOG_TAG, AiUnavailableError, claudeClient } from "@/lib/ai/claude";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { anthropicGenerationFields, buildAgentContext } from "@/lib/agent/persona-config";
 import {
@@ -69,42 +70,25 @@ export function extractPhoneNumber(text: string): string | null {
   return digits;
 }
 
-const FALLBACK_REPLY =
-  "I'm here with you — tell me a bit more about how you're doing, and we can take it from there.";
+/**
+ * What Nura says when it can't reach Claude at all. Deliberately honest: a warm canned line
+ * ("I'm here with you…") looks like a real reply, so people kept talking to it and nobody
+ * noticed the 2026-10-24 outage until the same sentence came back every time.
+ */
+export const AI_UNAVAILABLE_REPLY =
+  "Sorry, I can't reply properly right now because something on our side isn't working. Your message is saved, so nothing is lost. Please try again in a few minutes.";
 
-function conversationalFallbackReply(content: string): string {
-  const text = content.trim().toLowerCase();
-  if (/is that (it|all)|that'?s it\??|nothing else|are we done/.test(text)) {
-    return "Not if you don't want it to be — I'm happy to keep talking. What feels worth going into?";
-  }
-  if (/open to discuss|talk (more|further)|can we (talk|chat)|want to talk|listen/.test(text)) {
-    return "Yes — I'm here for the conversation, not just to file things away. What's on your mind?";
-  }
-  if (/don'?t (feel|have).{0,24}pain|no pain|pain.?free|feeling (ok|fine|better)/.test(text)) {
-    return "That's really good to hear. How has the rest of you been feeling alongside that?";
-  }
-  if (text.length < 40 && /\?$/.test(text)) {
-    return "Of course — I'm here. Tell me a little more and I'll stay with you on it.";
-  }
-  return FALLBACK_REPLY;
-}
+export const AI_SLOW_REPLY =
+  "Sorry, that's taking me much longer than it should. Your message is saved. Please try sending it again in a minute.";
 
-function fallbackNewPlan(content = ""): NuraDecision {
-  const draft = inferJourneyDraft(content);
-  const when = new Date();
-  when.setDate(when.getDate() + 2);
-  when.setHours(10, 0, 0, 0);
+/** Files the turn under the plan the person is looking at, if any, and changes nothing else. */
+function outageDecision(reply: string, planId: string | null): NuraDecision {
   return {
-    reply: conversationalFallbackReply(content),
-    action: "new_plan",
-    plan_id: null,
-    new_plan: draft,
-    next_check_in: {
-      when: when.toISOString(),
-      prompt: `How have things been with ${draft.title}?`,
-      channel: "in_app",
-      recurrence: "none",
-    },
+    reply,
+    action: planId ? "existing_plan" : "none",
+    plan_id: planId,
+    new_plan: null,
+    next_check_in: null,
   };
 }
 
@@ -113,7 +97,7 @@ function withTimeout<T>(promise: Promise<T>, fallback: T, ms = 45000) {
     promise,
     new Promise<T>((resolve) =>
       setTimeout(() => {
-        console.warn(`[resolveDecision] timed out after ${ms}ms — using conversational fallback`);
+        console.error(`${AI_DOWN_LOG_TAG} resolveDecision timed out after ${ms}ms; sent the slow-reply message`);
         resolve(fallback);
       }, ms),
     ),
@@ -176,13 +160,14 @@ async function classifyWithClaude(
   const effectiveAllowedChannels = safeAllowedChannels.length > 0 ? safeAllowedChannels : (["in_app"] as NextCheckIn["channel"][]);
   const defaultCheckInChannel = pickDefaultChannel(effectiveAllowedChannels, preferredChannel);
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const fallback: NuraDecision = plans.length > 0
-    ? { reply: conversationalFallbackReply(content), action: "existing_plan", plan_id: plans[0].id, new_plan: null, next_check_in: null }
-    : fallbackNewPlan(content);
-  if (!apiKey) return fallback;
+  const outage = outageDecision(AI_UNAVAILABLE_REPLY, requestedPlan?.id ?? null);
+  if (!apiKey) {
+    console.error(`${AI_DOWN_LOG_TAG} ANTHROPIC_API_KEY is not set; chat sent the outage reply`);
+    return outage;
+  }
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("message-intake");
     const tz = normalizeTimeZone(timeZone);
     const nowInfo = describeNowForTimeZone(tz);
     const inferredCategory = inferJourneyDraft(content).category;
@@ -322,8 +307,8 @@ async function classifyWithClaude(
 
     const toolUse = message.content.find((block) => block.type === "tool_use");
     if (!toolUse || toolUse.type !== "tool_use") {
-      console.error("[classifyWithClaude] no tool_use block; stop_reason:", message.stop_reason, JSON.stringify(message.content));
-      return fallback;
+      console.error(`${AI_DOWN_LOG_TAG} classifyWithClaude got no tool_use block; stop_reason:`, message.stop_reason, JSON.stringify(message.content));
+      return outage;
     }
 
     const raw = toolUse.input as {
@@ -342,8 +327,8 @@ async function classifyWithClaude(
     };
 
     if (!raw.reply || !raw.action) {
-      console.error("[classifyWithClaude] missing reply/action; raw:", JSON.stringify(raw));
-      return fallback;
+      console.error(`${AI_DOWN_LOG_TAG} classifyWithClaude got no reply/action; raw:`, JSON.stringify(raw));
+      return outage;
     }
 
     if (raw.has_next_check_in && !isValidNextCheckIn(raw.next_check_in)) {
@@ -395,9 +380,13 @@ async function classifyWithClaude(
         };
     return parsed;
   } catch (err) {
-    const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-    console.error("[classifyWithClaude] failed:", detail, err);
-    return fallback;
+    // An outage is already logged under AI_DOWN_LOG_TAG by createClaudeMessage; anything else
+    // (a bad request, a reply that wouldn't parse) is a bug on our side and needs its own line.
+    if (!(err instanceof AiUnavailableError)) {
+      const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      console.error(`${AI_DOWN_LOG_TAG} classifyWithClaude failed, chat sent the outage reply:`, detail, err);
+    }
+    return outage;
   }
 }
 
@@ -416,11 +405,7 @@ export async function resolveDecision(
   timeZone: string = DEFAULT_TIME_ZONE,
   preferredChannel: string | null = null,
 ): Promise<NuraDecision> {
-  const fallback: NuraDecision = requestedPlan
-    ? { reply: conversationalFallbackReply(content), action: "existing_plan", plan_id: requestedPlan.id, new_plan: null, next_check_in: null }
-    : plans.length > 0
-      ? { reply: conversationalFallbackReply(content), action: "existing_plan", plan_id: plans[0].id, new_plan: null, next_check_in: null }
-      : fallbackNewPlan(content);
+  const fallback = outageDecision(AI_SLOW_REPLY, requestedPlan?.id ?? null);
 
   return withTimeout(
     classifyWithClaude(
@@ -699,7 +684,7 @@ export async function composeCheckinOpener(
   if (!apiKey) return fallback;
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("message-intake");
     const agentContext = buildAgentContext({ primaryCategory: category, surface: "text" });
     const message = await client.messages.create({
       ...anthropicGenerationFields({ ...agentContext.textParams, maxTokens: 200 }),
@@ -731,7 +716,7 @@ export async function composeMissedCallFollowup(firstName: string, planTitle: st
   if (!apiKey) return fallback;
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("message-intake");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 200,
@@ -768,7 +753,7 @@ export async function composeJourneyCompletionMessage(
   if (!apiKey) return fallback;
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("message-intake");
     const agentContext = buildAgentContext({ primaryCategory: category, surface: "text" });
     const message = await client.messages.create({
       ...anthropicGenerationFields({ ...agentContext.textParams, maxTokens: 200 }),

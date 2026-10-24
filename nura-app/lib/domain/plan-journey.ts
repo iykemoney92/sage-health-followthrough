@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claudeClient } from "@/lib/ai/claude";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { composeJourneyCompletionMessage } from "@/lib/domain/message-intake";
 import { sendWhatsappText } from "@/lib/integrations/whatsapp";
@@ -86,7 +86,7 @@ async function draftJourney(plan: PlanForJourney): Promise<DraftMilestone[]> {
   if (!apiKey) return FALLBACK_JOURNEY;
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("plan-journey");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 1200,
@@ -177,7 +177,9 @@ function toJourney(
     }));
 }
 
-const FALLBACK_STEP_REPLY = "Let's dig into this together - tell me a bit more about where things stand right now.";
+// Honest rather than a generic opener, for the same reason as AI_UNAVAILABLE_REPLY in message-intake.
+const FALLBACK_STEP_REPLY =
+  "Sorry, I can't get this step started properly right now because something on our side isn't working. Please try again in a few minutes.";
 
 export async function respondToStepStart(
   plan: PlanForJourney,
@@ -189,7 +191,7 @@ export async function respondToStepStart(
   if (!apiKey) return FALLBACK_STEP_REPLY;
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("plan-journey");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 400,
@@ -301,7 +303,7 @@ async function draftAdjustedJourney(
   if (!apiKey) return null;
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("plan-journey");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 1200,
@@ -492,7 +494,7 @@ export async function evaluateAndAdvanceJourney(
   if (!activeStep) return;
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("plan-journey");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 150,
