@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Browser } from "@capacitor/browser";
 import { track } from "@/lib/analytics";
-import { signInWithProvider, type OAuthProvider } from "@/lib/auth/oauth";
+import { isNativeShell, signInWithProvider, type OAuthProvider } from "@/lib/auth/oauth";
 
 /**
  * Google's mark. Their brand terms require the four-colour "G" rather than a
@@ -59,6 +60,36 @@ export function AuthProviders({ next, label = "or continue with" }: { next?: str
   const [pending, setPending] = useState<OAuthProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Closing the sign-in sheet without finishing (Done / Cancel in Safari, back
+  // from the Chrome tab) must give the buttons back. Without this they stayed on
+  // "Opening…" and greyed out until the app was restarted.
+  useEffect(() => {
+    const release = () => setPending(null);
+    // Web: coming back from the provider with the browser's Back button restores
+    // this page from the back-forward cache, state and all.
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) release();
+    };
+    window.addEventListener("pageshow", onPageShow);
+
+    let removeBrowserListener: (() => void) | undefined;
+    let cancelled = false;
+    if (isNativeShell()) {
+      void Browser.addListener("browserFinished", release)
+        .then((handle) => {
+          if (cancelled) void handle.remove();
+          else removeBrowserListener = () => void handle.remove();
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("pageshow", onPageShow);
+      removeBrowserListener?.();
+    };
+  }, []);
+
   async function start(provider: OAuthProvider) {
     setError(null);
     setPending(provider);
@@ -79,8 +110,8 @@ export function AuthProviders({ next, label = "or continue with" }: { next?: str
       return;
     }
     // On success the page is either navigating away (web) or waiting on Safari
-    // (native), so `pending` intentionally stays set — re-enabling the buttons
-    // would just invite a second tap mid-handoff.
+    // (native), so `pending` stays set until the sheet closes (see the effect
+    // above) — re-enabling the buttons sooner would invite a second tap mid-handoff.
   }
 
   return (
