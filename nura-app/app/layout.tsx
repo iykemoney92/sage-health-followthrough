@@ -15,6 +15,7 @@ import { GoogleAnalytics } from "@/components/google-analytics";
 import { MetaPixel } from "@/components/meta-pixel";
 import { NativeSignupConversion } from "@/components/native-signup-conversion";
 import { NativeDeepLinks } from "@/components/native-deep-links";
+import { NativeHealthSync } from "@/components/native-health-sync";
 import { PostHogIdentity } from "@/components/posthog-identity";
 import { QuoraPixel } from "@/components/quora-pixel";
 import { ToastProvider } from "@/components/toast";
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <ToastProvider>
           {children}
           <NativeDeepLinks />
+          <NativeHealthSync />
           <CookieConsent />
           <GoogleAnalytics />
           <QuoraPixel />

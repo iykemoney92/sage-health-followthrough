@@ -23,6 +23,9 @@ export async function GET() {
     { data: appointmentSummaries },
     { data: channelLinks },
     { data: careRecipients },
+    { data: healthConnections },
+    { data: healthDaily },
+    { data: healthSignals },
   ] = await Promise.all([
     supabase.from("nura_profiles").select("*").eq("id", ownerId).maybeSingle(),
     supabase.from("nura_plans").select("*").eq("owner_id", ownerId),
@@ -39,6 +42,9 @@ export async function GET() {
       .from("nura_care_recipients")
       .select("plan_id, first_name, relationship, phone, time_zone, consent_status, consent_method, consent_at, revoked_at, revoke_reason, created_at")
       .eq("owner_id", ownerId),
+    supabase.from("nura_health_connections").select("*").eq("owner_id", ownerId),
+    supabase.from("nura_health_daily").select("*").eq("owner_id", ownerId),
+    supabase.from("nura_health_signals").select("*").eq("owner_id", ownerId),
   ]);
 
   const payload = {
@@ -56,6 +62,9 @@ export async function GET() {
     appointmentSummaries: appointmentSummaries ?? [],
     connectedChannels: channelLinks ?? [],
     peopleYouCareFor: careRecipients ?? [],
+    healthConnections: healthConnections ?? [],
+    healthDailySummaries: healthDaily ?? [],
+    healthCheckInReasons: healthSignals ?? [],
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

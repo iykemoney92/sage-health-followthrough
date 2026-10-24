@@ -52,6 +52,9 @@ export async function POST() {
   // (nura_messages.plan_id) use ON DELETE SET NULL rather than CASCADE, so deleting Journeys
   // first wouldn't necessarily clear everything else on its own.
   const tables = [
+    "nura_health_signals",
+    "nura_health_daily",
+    "nura_health_connections",
     "nura_plan_steps",
     "nura_plan_milestones",
     "nura_observations",

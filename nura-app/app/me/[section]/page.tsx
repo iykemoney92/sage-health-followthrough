@@ -15,6 +15,7 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
+import { HealthConnectionCard } from "@/components/health-connection-card";
 import { NuraShell } from "@/components/nura-shell";
 import { ProfileSettingsForm } from "@/components/profile-settings-form";
 import { PreferencesChannelForm } from "@/components/preferences-channel-form";
@@ -497,15 +498,7 @@ export default async function SettingsSection({
               </div>
             </section>
 
-            <section>
-              <h3>
-                Future health connections <span className="preview-badge">Coming soon</span>
-              </h3>
-              <p className="muted">
-                Apple Health, wearables and clinic record links are on the roadmap. Nothing here shares data until you
-                connect it.
-              </p>
-            </section>
+            <HealthConnectionCard />
           </div>
         )}
 

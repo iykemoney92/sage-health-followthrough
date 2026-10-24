@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildAgentContext } from "@/lib/agent/persona-config";
 import { NURA_CORE_IDENTITY, NURA_SAFETY_BOUNDARIES } from "@/lib/domain/nura-persona";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
+import { healthContextForPlan } from "@/lib/health/health-store";
 import { describeNowForTimeZone } from "@/lib/timezone";
 import {
   OWNER_CALL_BRIEF,
@@ -87,6 +88,9 @@ export async function buildVoiceCheckinContext(
     circleMemberFirstNames(supabase, planId).catch(() => [] as string[]),
   ]);
 
+  // Owner-only health summary; null unless they connected Apple Health / Health Connect.
+  // The recipient-call path below never gets it.
+  const healthContext = await healthContextForPlan(supabase, ownerId, { id: plan.id as string, category: plan.category as string | null }, timeZone);
   const nowInfo = describeNowForTimeZone(timeZone);
   const agentContext = buildAgentContext({
     primaryCategory: plan.category as string | null,
@@ -103,6 +107,7 @@ export async function buildVoiceCheckinContext(
     `User timezone: ${timeZone}. Local time now: ${nowInfo.localLabel}. When scheduling a follow-up, use this timezone — never treat their wall-clock time as UTC.`,
     contexts && contexts.length > 0 ? `Care plan context:\n${contexts.map((item) => `- ${item.title}: ${item.summary}${item.requires_user_confirmation ? " (needs user confirmation)" : ""}`).join("\n")}` : "",
     observations && observations.length > 0 ? `Recent user updates:\n${observations.map((item) => `- ${item.label}: ${item.value}`).join("\n")}` : "",
+    healthContext ?? "",
     nextCheckIn ? `Scheduled check-in objective: ${nextCheckIn.prompt}` : "",
   ].filter(Boolean).join("\n\n");
 
