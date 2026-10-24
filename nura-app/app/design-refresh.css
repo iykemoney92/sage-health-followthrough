@@ -296,7 +296,7 @@ input[type="radio"] {
   border-radius: var(--radius-md) !important;
 }
 
-button:not(.thread-row-more-btn):not(.modal-close):not(.icon-only-btn):not(.calendar-item):not(.calendar-event-backdrop):not(.pref-choice-card):not(.interest-flow button):not(.channel-flow button):not(.time-options button),
+button:not(.thread-row-more-btn):not(.modal-close):not(.icon-only-btn):not(.calendar-item):not(.calendar-event-backdrop):not(.pref-choice-card):not(.video-feature):not(.video-card):not(.interest-flow button):not(.channel-flow button):not(.time-options button),
 .primary-cta,
 .secondary-cta,
 a.primary-cta,
