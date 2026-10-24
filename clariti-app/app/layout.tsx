@@ -14,6 +14,7 @@ import { GoogleAnalytics } from "@/components/google-analytics";
 import { KeyboardInset } from "@/components/keyboard-inset";
 import { NativeBackButton } from "@/components/native-back-button";
 import { NativeDeepLinks } from "@/components/native-deep-links";
+import { PostHogIdentity } from "@/components/posthog-identity";
 import { QuoraPixel } from "@/components/quora-pixel";
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "https://useclariti.app";
@@ -102,6 +103,7 @@ export default function RootLayout({
         <CookieConsent />
         <GoogleAnalytics />
         <QuoraPixel />
+        <PostHogIdentity />
       </body>
     </html>
   );

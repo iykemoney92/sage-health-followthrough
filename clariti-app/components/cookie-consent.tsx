@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { track } from "@/lib/analytics";
-import { getAnalyticsConsent, setAnalyticsConsent } from "@/lib/analytics-consent";
+import { getAnalyticsConsent, getPostHogConsent, isNativeShell, setAnalyticsConsent } from "@/lib/analytics-consent";
 import { getAdConsent, setAdConsent } from "@/lib/quora-pixel";
 
 export function CookieConsent() {
   const [visible, setVisible] = useState(false);
+  const [androidApp, setAndroidApp] = useState(false);
 
   useEffect(() => {
     // Consent only exists in the browser, so this can't be read during the
@@ -16,9 +17,19 @@ export function CookieConsent() {
     //
     // The notice now also asks about Quora ad measurement, and an Accept given
     // before that question existed doesn't count as a yes to it, so it shows
-    // once more for anyone who hasn't answered it.
+    // once more for anyone who hasn't answered it. The same goes for PostHog:
+    // an Accept from before the notice named it asks again once.
+    //
+    // The Android app asks about PostHog alone (Google Analytics and the Quora
+    // Pixel stay off in the shells); the iOS app reads PostHog as "denied" too,
+    // so the notice still never shows there.
+    const shell = isNativeShell();
+    const unanswered = shell
+      ? getPostHogConsent() === null
+      : getAnalyticsConsent() === null || getAdConsent() === null || getPostHogConsent() === null;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (getAnalyticsConsent() === null || getAdConsent() === null) setVisible(true);
+    setAndroidApp(shell);
+    if (unanswered) setVisible(true);
   }, []);
 
   function choose(value: "granted" | "denied") {
@@ -33,12 +44,21 @@ export function CookieConsent() {
 
   return (
     <div className="cookie-notice" role="dialog" aria-label="Cookie notice">
-      <p>
-        Clariti uses essential cookies to keep you signed in. If you accept, it also uses Google Analytics to understand
-        how the product is used, and the Quora Pixel on our public pages to see which of our ads brought you here — never
-        on your documents or anything written in them. You can change this answer any time in Settings, under Privacy &
-        support.
-      </p>
+      {androidApp ? (
+        <p>
+          Clariti uses essential cookies to keep you signed in. If you accept, it also uses PostHog to understand how the
+          app is used, including screen recordings that hide what you type, your documents and everything Clariti writes
+          about them. You can change this answer any time in Settings, under Privacy & support.
+        </p>
+      ) : (
+        <p>
+          Clariti uses essential cookies to keep you signed in. If you accept, it also uses Google Analytics and PostHog to
+          understand how the product is used (PostHog records screens with what you type, your documents and everything
+          Clariti writes about them hidden), and the Quora Pixel on our public pages to see which of our ads brought you
+          here — never on your documents or anything written in them. You can change this answer any time in Settings,
+          under Privacy & support.
+        </p>
+      )}
       <div className="cookie-notice-actions">
         <button type="button" className="cookie-notice-essential" onClick={() => choose("denied")}>
           Essential only

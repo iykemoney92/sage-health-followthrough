@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
 import { track } from "@/lib/analytics";
+import { resetPostHog } from "@/lib/posthog";
 
 export function SignOutButton({ className, children }: { className?: string; children?: React.ReactNode }) {
   const router = useRouter();
@@ -16,6 +17,7 @@ export function SignOutButton({ className, children }: { className?: string; chi
       const supabase = getSupabaseBrowserClient();
       await supabase.auth.signOut();
       track("sign_out");
+      resetPostHog();
       router.push("/");
       router.refresh();
     } catch {

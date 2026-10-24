@@ -24,6 +24,13 @@ export function isNativeShell() {
   return typeof bridge?.isNativePlatform === "function" && bridge.isNativePlatform();
 }
 
+/** True inside the Capacitor iOS shell (App Store build). */
+export function isIosShell() {
+  if (!isNativeShell()) return false;
+  const bridge = (window as { Capacitor?: { getPlatform?: () => string } }).Capacitor;
+  return bridge?.getPlatform?.() === "ios";
+}
+
 export function getAnalyticsConsent(): AnalyticsConsent | null {
   // Hard "denied" in the native shells, never the stored value and never null.
   // App Review rejected the iOS build under guideline 5.1.2(i) for showing a
@@ -45,9 +52,36 @@ export function getAnalyticsConsent(): AnalyticsConsent | null {
   return null;
 }
 
+/**
+ * PostHog (product analytics and session recordings) needs an answer given to
+ * the notice that names it: an Accept from before PostHog was added doesn't
+ * count, so the notice asks once more. An earlier "Essential only" still
+ * stands.
+ *
+ * The iOS shell stays hard "denied" for the App Review 5.1.2(i) reason above,
+ * so PostHog never runs in the iPhone app. The Android shell has no such rule:
+ * there the notice asks about PostHog alone (Google Analytics and the Quora
+ * Pixel stay off in both shells).
+ */
+export const POSTHOG_CONSENT_KEY = "clariti_posthog_consent";
+
+export function getPostHogConsent(): AnalyticsConsent | null {
+  if (typeof window === "undefined") return null;
+  if (isIosShell()) return "denied";
+  try {
+    const value = localStorage.getItem(POSTHOG_CONSENT_KEY);
+    if (value === "granted" || value === "denied") return value;
+  } catch {
+    // Private browsing or storage disabled.
+  }
+  if (isNativeShell()) return null;
+  return getAnalyticsConsent() === "denied" ? "denied" : null;
+}
+
 export function setAnalyticsConsent(value: AnalyticsConsent) {
   try {
     localStorage.setItem(ANALYTICS_CONSENT_KEY, value);
+    localStorage.setItem(POSTHOG_CONSENT_KEY, value);
   } catch {
     // Private browsing or storage disabled — consent won't persist.
   }

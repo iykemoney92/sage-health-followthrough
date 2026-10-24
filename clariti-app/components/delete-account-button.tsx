@@ -4,6 +4,7 @@ import { Trash2, TriangleAlert, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { track } from "@/lib/analytics";
+import { resetPostHog } from "@/lib/posthog";
 import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
 
 const CONFIRM_WORD = "DELETE";
@@ -99,6 +100,7 @@ function DeleteAccountDialog({ onClose }: { onClose: () => void }) {
       track("account_delete_confirm");
       const supabase = getSupabaseBrowserClient();
       await supabase.auth.signOut();
+      resetPostHog();
       router.push("/");
       router.refresh();
     } catch {
