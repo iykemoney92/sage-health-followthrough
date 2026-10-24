@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { z } from "zod";
 import { appOriginFromRequest, normalizeEmail } from "@/lib/auth/helpers";
 import { confirmUrlFromGenerateLink } from "@/lib/auth/links";
@@ -20,6 +21,7 @@ import {
   nuraEmailLogoAttachment,
   sendAuthEmail,
 } from "@/lib/integrations/resend";
+import { claimReferral, REFERRAL_COOKIE } from "@/lib/referrals";
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -85,6 +87,18 @@ export async function POST(request: Request) {
     }
     console.error("[signup] createUser failed", createError.message);
     return NextResponse.json({ ok: false, error: createError.message || "Couldn’t create your account." }, { status: 400 });
+  }
+
+  // Arrived through someone's invite link: the 30-day gift is attached now, while the cookie is
+  // certainly in this browser - the confirmation email is often opened somewhere else.
+  const referralCode = (await cookies()).get(REFERRAL_COOKIE)?.value;
+  if (referralCode && created.user?.id) {
+    try {
+      const result = await claimReferral(supabase, { refereeId: created.user.id, rawCode: referralCode, source: "email_signup" });
+      console.info("[referrals] claim", { source: "email_signup", status: result.status });
+    } catch (error) {
+      console.error("[referrals] claim at sign-up failed", error);
+    }
   }
 
   // Every path below this point has a created, unconfirmed account, so they all

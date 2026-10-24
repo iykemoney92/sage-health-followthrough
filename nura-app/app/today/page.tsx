@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { CheckoutSuccessTracker } from "@/components/checkout-success-tracker";
 import { NuraShell } from "@/components/nura-shell";
+import { ReferralCard } from "@/components/referral-card";
 import { CareDisclaimer } from "@/components/care-disclaimer";
 import { NuraActions, RescheduleButton } from "@/components/nura-actions";
 import { WhatsAppOpenButton } from "@/components/whatsapp-open-button";
@@ -141,7 +142,17 @@ export default async function TodayPage({
       : Promise.resolve({ data: null }),
   ]);
 
-  const sharedWithMe = user ? await listSharedWithMe(supabase, user.id) : [];
+  const [sharedWithMe, { count: completedCheckIns }] = await Promise.all([
+    user ? listSharedWithMe(supabase, user.id) : Promise.resolve([]),
+    // "Tell a friend" waits until Nura has actually followed through once.
+    user
+      ? supabase
+          .from("nura_check_ins")
+          .select("id", { count: "exact", head: true })
+          .eq("owner_id", user.id)
+          .not("completed_at", "is", null)
+      : Promise.resolve({ count: 0 }),
+  ]);
 
   const checkInCountByDay = new Map<string, number>();
   for (const row of weekCheckIns ?? []) {
@@ -405,6 +416,7 @@ export default async function TodayPage({
                 plans={(plans ?? []).map((plan) => ({ id: plan.id as string, title: plan.title as string }))}
               />
             </article>
+            {(completedCheckIns ?? 0) > 0 ? <ReferralCard surface="today" /> : null}
           </aside>
         </div>
       </div>

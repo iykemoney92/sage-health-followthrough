@@ -334,3 +334,21 @@
 .care-recipient-last-call p{margin:0;font-size:14px;line-height:1.55;color:#2f4a3a}
 .recipient-notes h3{display:flex;align-items:center;gap:8px}
 .recipient-notes h3 svg{width:18px;height:18px;color:#4b7558}
+
+/* Tell a friend: invite link on Me, and a small card in the Today rail */
+.referral-card{padding:18px}
+.referral-intro{margin:0;font-size:14px;line-height:1.55;color:#4f5f57}
+.referral-loading{margin:12px 0 0;font-size:13px;color:#87918d}
+.referral-invite .button-row{gap:8px}
+.referral-rail-card{position:relative}
+.referral-rail-card h3{display:flex;align-items:center;gap:8px;padding-right:28px}
+.referral-rail-card h3 svg{width:18px!important;height:18px!important;flex:none;color:#4b7558}
+.referral-rail-card>p{margin:0 0 4px;font-size:13px;line-height:1.5;color:#4f5f57}
+.referral-rail-card .referral-invite{margin-top:8px;padding:0;background:none;border:0}
+/* .rail-card a/button (globals.css) turns every rail button into a full-width list row; these opt out */
+.rail-card .referral-dismiss{position:absolute;top:12px;right:12px;left:auto;width:28px;height:28px;padding:0;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:#87918d;cursor:pointer}
+.rail-card .referral-dismiss:hover{background:#f1f3ef}
+.rail-card .referral-dismiss svg{width:16px;height:16px}
+.rail-card .referral-invite .button-row{flex-wrap:wrap}
+.rail-card .referral-invite .button-row a,.rail-card .referral-invite .button-row button{width:auto;flex:1 1 110px;min-height:40px;padding:0 12px;justify-content:center;border-radius:10px;white-space:nowrap}
+.rail-card .referral-invite .button-row .secondary-cta{background:#fff;border:1px solid var(--line,#e4e4dc)}

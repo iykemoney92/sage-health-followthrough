@@ -9,6 +9,7 @@ import {
   CreditCard,
   FileText,
   FolderHeart,
+  Gift,
   Loader2,
   MessageCircle,
   Mic,
@@ -121,7 +122,13 @@ function WelcomeArt() {
   );
 }
 
-function DesktopCopy({ step, trialExpired }: { step: number; trialExpired?: boolean }) {
+type FriendGift = { until: string; referrerFirstName: string };
+
+function giftEndDate(until: string) {
+  return new Date(until).toLocaleDateString(undefined, { day: "numeric", month: "long" });
+}
+
+function DesktopCopy({ step, trialExpired, gift }: { step: number; trialExpired?: boolean; gift?: FriendGift | null }) {
   const copy =
     step === 2
       ? ["You talk. Nura organises. Life keeps moving.", "Three moves: share what’s going on, let it become a Care plan, and let Nura bring the next step back when you need it."]
@@ -137,7 +144,9 @@ function DesktopCopy({ step, trialExpired }: { step: number; trialExpired?: bool
                 ? ["Stay in the loop.", "Turn on browser notifications so a check-in or reply from Nura reaches you even when the tab isn’t open. Optional — skip it if you’d rather not."]
                 : trialExpired
                   ? ["Your free trial has ended.", "Upgrade to Plus to unlock your Care plans and check-ins again. Everything you shared stays saved."]
-                  : [
+                  : gift
+                    ? ["Nura Plus is on.", `Everything in Plus is switched on until ${giftEndDate(gift.until)}. No card needed.`]
+                    : [
                       "Start your free trial.",
                       <PlatformCopy
                         key="trial-copy"
@@ -149,7 +158,7 @@ function DesktopCopy({ step, trialExpired }: { step: number; trialExpired?: bool
   return (
     <aside className="onboarding-desktop-copy">
       <NuraLogo />
-      <span className="auth-kicker">{trialExpired && step === 8 ? "TRIAL ENDED" : "SET UP YOUR NURA"}</span>
+      <span className="auth-kicker">{trialExpired && step === 8 ? "TRIAL ENDED" : gift && step === 8 ? "A GIFT FOR YOU" : "SET UP YOUR NURA"}</span>
       <h2>{copy[0]}</h2>
       <p>{copy[1]}</p>
       <div className="onboarding-desktop-note">
@@ -187,6 +196,8 @@ function OnboardingFlow() {
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [whatsappLinked, setWhatsappLinked] = useState(false);
+  // Someone who arrived through an invite link has Plus already: no card screen for them.
+  const [gift, setGift] = useState<FriendGift | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -194,14 +205,29 @@ function OnboardingFlow() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/referrals/claim", { method: "POST" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data?.gift?.until) setGift(data.gift as FriendGift);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     track("onboarding_step_view", { step });
-    if (step === 8) {
+    if (step === 8 && gift && !trialExpired) {
+      track("referral_gift_view", { source: "onboarding" });
+    } else if (step === 8) {
       track("paywall_view", {
         reason: trialExpired ? "expired" : "trial",
         source: "onboarding",
       });
     }
-  }, [step, trialExpired]);
+  }, [step, trialExpired, gift]);
 
   useEffect(() => {
     if (searchParams.get("checkout") === "incomplete") {
@@ -653,7 +679,7 @@ function OnboardingFlow() {
           </div>
 
           <div className="onboarding-desktop-layout">
-            <DesktopCopy step={step} trialExpired={trialExpired} />
+            <DesktopCopy step={step} trialExpired={trialExpired} gift={gift} />
             <section className="onboarding-card">
               {step === 2 && (
                 <>
@@ -987,7 +1013,32 @@ function OnboardingFlow() {
                 </div>
               )}
 
-              {step === 8 && (
+              {step === 8 && gift && !trialExpired && (
+                <div className="paywall-screen">
+                  <span className="auth-kicker">{`A GIFT FROM ${gift.referrerFirstName.toUpperCase()}`}</span>
+                  <h1>Nura Plus is on for 30 days</h1>
+                  <p className="onboarding-intro paywall-intro">
+                    {`${gift.referrerFirstName} invited you, so everything in Plus is switched on until ${giftEndDate(gift.until)}. No card needed, and nothing is charged.`}
+                  </p>
+                  <ul className="paywall-benefits">
+                    <li><Check size={14} strokeWidth={3} /> Unlimited Care plans and check-ins</li>
+                    <li><Check size={14} strokeWidth={3} /> Voice, WhatsApp, and document uploads</li>
+                    <li><Check size={14} strokeWidth={3} /> Afterwards, keep the free plan or choose Plus</li>
+                  </ul>
+                  <button
+                    className="primary-cta onboarding-primary paywall-cta"
+                    type="button"
+                    onClick={() => {
+                      track("referral_gift_continue", { source: "onboarding" });
+                      router.replace("/today");
+                    }}
+                  >
+                    <Gift size={18} /> Go to Today
+                  </button>
+                </div>
+              )}
+
+              {step === 8 && !(gift && !trialExpired) && (
                 <div className="paywall-screen">
                   <span className="auth-kicker">{trialExpired ? "TRIAL ENDED" : "START YOUR TRIAL"}</span>
                   <h1>
