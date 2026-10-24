@@ -9,8 +9,9 @@ import { ANALYTICS_CONSENT_EVENT, getPostHogConsent } from "@/lib/analytics-cons
  *
  * Consent: it follows the cookie notice (getPostHogConsent). Nothing loads
  * until the visitor presses Accept on a notice that names PostHog, and
- * "Essential only" stops it. The iOS shell always reads as "denied" (see
- * analytics-consent.ts), so it never runs there.
+ * "Essential only" stops it. The iOS shell has no notice: PostHog is on there
+ * unless the privacy page's Product analytics switch turns it off (see
+ * analytics-consent.ts).
  *
  * Health information: typed text is masked in recordings, and every signed-in
  * page (plans, check-ins, messages, documents, medications) sits inside a

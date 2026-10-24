@@ -14,7 +14,7 @@ export function getGaMeasurementId() {
  * this module is also pulled into server components, where that import has no
  * business running.
  */
-function isIosShell() {
+export function isIosShell() {
   if (typeof window === "undefined") return false;
   const bridge = (window as {
     Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
@@ -86,12 +86,26 @@ export function getAnalyticsConsent(): AnalyticsConsent | null {
  * PostHog (product analytics and session recordings) needs an answer given to
  * the notice that names it: an Accept from before PostHog was added doesn't
  * count, so the notice asks once more. An earlier "Essential only" still
- * stands. Hard "denied" in the iOS shell, as above.
+ * stands.
+ *
+ * In the iOS shell PostHog is on unless the person turns it off on the privacy
+ * page, and no prompt is shown. It is first-party product analytics: never
+ * combined with other companies' data, never used for ads and never shared with
+ * data brokers, so it isn't "tracking" under App Tracking Transparency, and the
+ * App Store privacy label declares it (Ike, 24 Oct 2026). The cookie notice,
+ * Google Analytics and the ad tags stay off there, as above.
  */
 const POSTHOG_CONSENT_KEY = "nura_posthog_consent";
 
 export function getPostHogConsent(): AnalyticsConsent | null {
-  if (isIosShell()) return "denied";
+  if (isIosShell()) {
+    try {
+      if (localStorage.getItem(POSTHOG_CONSENT_KEY) === "denied") return "denied";
+    } catch {
+      // Storage unavailable: stays on, as it would on a fresh install.
+    }
+    return "granted";
+  }
   try {
     const value = localStorage.getItem(POSTHOG_CONSENT_KEY);
     if (value === "granted" || value === "denied") return value;
@@ -99,6 +113,18 @@ export function getPostHogConsent(): AnalyticsConsent | null {
     // Private browsing or storage disabled.
   }
   return getAnalyticsConsent() === "denied" ? "denied" : null;
+}
+
+/** The iOS shell's own PostHog switch (privacy page); the cookie notice never shows there. */
+export function setPostHogConsent(value: AnalyticsConsent) {
+  try {
+    localStorage.setItem(POSTHOG_CONSENT_KEY, value);
+  } catch {
+    // Storage unavailable: the choice lasts for this page only.
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(ANALYTICS_CONSENT_EVENT));
+  }
 }
 
 export function setAnalyticsConsent(value: AnalyticsConsent) {
