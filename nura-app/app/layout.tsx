@@ -12,6 +12,7 @@ import "./design-refresh.css";
 import "./toast.css";
 import { CookieConsent } from "@/components/cookie-consent";
 import { GoogleAnalytics } from "@/components/google-analytics";
+import { MetaPixel } from "@/components/meta-pixel";
 import { NativeSignupConversion } from "@/components/native-signup-conversion";
 import { NativeDeepLinks } from "@/components/native-deep-links";
 import { PostHogIdentity } from "@/components/posthog-identity";
@@ -58,6 +59,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <CookieConsent />
           <GoogleAnalytics />
           <QuoraPixel />
+          <MetaPixel />
           <NativeSignupConversion />
           <PostHogIdentity />
         </ToastProvider>

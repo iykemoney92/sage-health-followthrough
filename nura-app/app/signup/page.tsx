@@ -8,6 +8,7 @@ import { AuthAlert, friendlyAuthError } from "@/components/auth-alert";
 import { AuthProviders } from "@/components/auth-providers";
 import { NuraLogo } from "@/components/nura-logo";
 import { track } from "@/lib/analytics";
+import { metaTrack } from "@/lib/meta-pixel";
 import { quoraTrack } from "@/lib/quora-pixel";
 import { AUTH_COPY, normalizeEmail } from "@/lib/auth/helpers";
 import "../auth.css";
@@ -90,6 +91,7 @@ export default function SignupPage() {
         needs_confirmation: Boolean(data.needsConfirmation),
       });
       quoraTrack("CompleteRegistration");
+      metaTrack("CompleteRegistration");
 
       if (data.needsConfirmation) {
         window.sessionStorage.setItem(PENDING_EMAIL_KEY, normalized);
