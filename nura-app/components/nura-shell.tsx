@@ -68,7 +68,7 @@ export function NuraShell({
   }
 
   return (
-    <main className="app-shell product-shell">
+    <main className="app-shell product-shell ph-mask ph-sensitive">
       <TimezoneSync />
       <PullToRefresh />
       <AppUpdateNotice />
