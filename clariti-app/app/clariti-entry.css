@@ -120,6 +120,13 @@
   font-size: 13px;
   color: #87938e;
 }
+.clariti-about-badge {
+  display: inline-block;
+  margin-top: 12px;
+}
+.clariti-about-badge img {
+  display: block;
+}
 @media (max-width: 760px) {
   .clariti-about {
     padding: 40px 16px 110px;
