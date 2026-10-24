@@ -495,7 +495,7 @@ function HomeContent({ about }: { about?: ReactNode }) {
             Clariti explains it in plain language, then helps you decide what to ask next.
           </p>
 
-          <div className="clariti-entry-composer">
+          <div className="clariti-entry-composer ph-mask ph-sensitive">
             <input
               ref={fileInputRef}
               type="file"

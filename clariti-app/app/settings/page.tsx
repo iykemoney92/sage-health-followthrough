@@ -29,6 +29,8 @@ import { ExportDataButton } from "@/components/export-data-button";
 import {
   ANALYTICS_CONSENT_EVENT,
   getAnalyticsConsent,
+  getPostHogConsent,
+  isIosShell,
   isNativeShell,
   setAnalyticsConsent,
 } from "@/lib/analytics-consent";
@@ -82,7 +84,7 @@ function SettingsRow({ row }: { row: SettingsRowData }) {
   );
 }
 
-type AnalyticsControlState = "unknown" | "native" | "granted" | "denied";
+type AnalyticsControlState = "unknown" | "native" | "android-granted" | "android-denied" | "granted" | "denied";
 
 function subscribeAnalyticsConsent(onChange: () => void) {
   window.addEventListener(ANALYTICS_CONSENT_EVENT, onChange);
@@ -96,10 +98,15 @@ function subscribeAnalyticsConsent(onChange: () => void) {
 function readAnalyticsConsentState(): AnalyticsControlState {
   // The shells hard-deny analytics so the ATT requirement never applies (see
   // lib/analytics-consent.ts), which would make this a switch that cannot move.
-  if (isNativeShell()) return "native";
-  // One switch for both optional cookies, as on the cookie notice. It reads as
-  // on only when both are on, so turning it on always grants the pair.
-  return getAnalyticsConsent() === "granted" && getAdConsent() === "granted" ? "granted" : "denied";
+  // The iOS shell also hard-denies PostHog; the Android shell asks about
+  // PostHog alone, so there this switch is PostHog's.
+  if (isIosShell()) return "native";
+  if (isNativeShell()) return getPostHogConsent() === "granted" ? "android-granted" : "android-denied";
+  // One switch for every optional cookie, as on the cookie notice. It reads as
+  // on only when all are on, so turning it on always grants them all.
+  return getAnalyticsConsent() === "granted" && getAdConsent() === "granted" && getPostHogConsent() === "granted"
+    ? "granted"
+    : "denied";
 }
 
 /**
@@ -120,6 +127,22 @@ function AnalyticsConsentControl() {
 
   if (state === "unknown" || state === "native") return null;
 
+  if (state === "android-granted" || state === "android-denied") {
+    const on = state === "android-granted";
+    return (
+      <div>
+        <button type="button" className="settings-signout" onClick={() => setAnalyticsConsent(on ? "denied" : "granted")}>
+          <ChartColumn /> {on ? "Turn off product analytics" : "Turn on product analytics"}
+        </button>
+        <p className="settings-footnote" style={{ textAlign: "left", marginTop: 8 }} role="status">
+          {on
+            ? "On. PostHog sees which screens you open and records them with what you type, your documents and everything Clariti writes about them hidden."
+            : "Off. Only the cookies that keep you signed in are loaded."}
+        </p>
+      </div>
+    );
+  }
+
   const granted = state === "granted";
 
   return (
@@ -137,8 +160,8 @@ function AnalyticsConsentControl() {
       </button>
       <p className="settings-footnote" style={{ textAlign: "left", marginTop: 8 }} role="status">
         {granted
-          ? "Both are on. Google Analytics sees which screens you open, and the Quora Pixel sees visits to our public pages, store taps and sign-ups — never your documents or anything written in them."
-          : "Both are off. Only the cookies that keep you signed in are loaded."}
+          ? "All on. Google Analytics and PostHog see which screens you open (PostHog records them with what you type, your documents and everything Clariti writes about them hidden), and the Quora Pixel sees visits to our public pages, store taps and sign-ups — never your documents or anything written in them."
+          : "All off. Only the cookies that keep you signed in are loaded."}
       </p>
     </div>
   );

@@ -90,7 +90,7 @@ export function ClaritiShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="clariti-account-actions">
+        <div className="clariti-account-actions ph-mask ph-sensitive">
           {authenticated ? (
             <>
               <button className="clariti-avatar" aria-label="Profile">{avatarInitials}</button>

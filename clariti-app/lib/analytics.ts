@@ -1,4 +1,5 @@
 import { getAnalyticsConsent, getGaMeasurementId } from "@/lib/analytics-consent";
+import { capturePostHog } from "@/lib/posthog";
 
 export type AnalyticsParams = Record<string, string | number | boolean | undefined | null>;
 
@@ -31,9 +32,10 @@ function ensureGtagStub() {
   };
 }
 
-/** Fire a GA4 custom event when the user has granted analytics consent. */
+/** Fire a GA4 custom event (also sent to PostHog) when the user has granted analytics consent. */
 export function track(event: string, params?: AnalyticsParams) {
   if (typeof window === "undefined") return;
+  capturePostHog(event, sanitizeParams(params));
   if (!getGaMeasurementId()) return;
   if (getAnalyticsConsent() !== "granted") return;
 
