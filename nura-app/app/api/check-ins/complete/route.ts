@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import Anthropic from "@anthropic-ai/sdk";
+import { claudeClient } from "@/lib/ai/claude";
 import { primaryCheckinChannel } from "@/lib/domain/checkin-channel";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { draftNextCheckInAfterCompletion } from "@/lib/domain/journey-create";
@@ -18,7 +18,7 @@ async function draftNextStep(planTitle: string, currentFocus: string | null, moo
   if (!apiKey) return fallback;
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("check-ins-complete");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 100,

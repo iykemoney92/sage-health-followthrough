@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Anthropic from "@anthropic-ai/sdk";
+import { claudeClient } from "@/lib/ai/claude";
 import { CalendarDays, FileText, TrendingDown } from "lucide-react";
 import { NuraShell } from "@/components/nura-shell";
 import { ExportSummaryButton } from "@/components/export-summary-button";
@@ -19,7 +19,7 @@ async function generateSummary(planTitle: string, entries: string[]): Promise<Ge
   if (!apiKey || entries.length === 0) return FALLBACK_SUMMARY;
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("summary-page");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 400,

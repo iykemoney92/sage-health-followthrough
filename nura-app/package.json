@@ -23,6 +23,7 @@
     "@revenuecat/purchases-capacitor": "^13.4.1",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.8",
+    "@vercel/oidc": "^4.0.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "firebase-admin": "^14.2.0",

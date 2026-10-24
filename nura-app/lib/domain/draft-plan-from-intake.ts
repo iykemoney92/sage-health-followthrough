@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claudeClient } from "@/lib/ai/claude";
 import { anthropicGenerationFields, buildAgentContext } from "@/lib/agent/persona-config";
 import {
   inferJourneyDraft,
@@ -29,7 +29,7 @@ export async function draftPlanFromIntake(
       : "";
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = claudeClient("draft-plan-from-intake");
     const agentContext = buildAgentContext({
       primaryCategory: inferred.category,
       surface: "text",
