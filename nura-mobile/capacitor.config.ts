@@ -33,6 +33,16 @@ const config: CapacitorConfig = {
     // already sets viewport-fit=cover and pads with env(safe-area-inset-*)
     // throughout, so letting CSS own the insets is the consistent half to keep.
     contentInset: "never",
+    // Firebase Analytics is Android-only (Google Ads install attribution); the iOS
+    // build has never shipped it and its App Privacy answers don't cover it, so the
+    // iOS plugin list is pinned rather than "everything in node_modules".
+    includePlugins: [
+      "@capacitor/app",
+      "@capacitor/browser",
+      "@capacitor/push-notifications",
+      "@capgo/capacitor-health",
+      "@revenuecat/purchases-capacitor",
+    ],
   },
 };
 
