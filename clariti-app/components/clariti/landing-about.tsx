@@ -124,6 +124,13 @@ export function LandingAbout() {
           Clariti is made by <a href="https://zapxlabs.com/products/clariti">Zapx Labs</a>.{" "}
           <Link href="/privacy">Privacy</Link> · <Link href="/terms">Terms</Link>
         </p>
+        {/* Altern's free listing requires its badge on the homepage, and its
+            checker looks for this exact link, so it stays in the server HTML.
+            A plain <img>: next/image would proxy the URL and break the check. */}
+        <a className="clariti-about-badge" href="https://altern.ai/ai/clariti" target="_blank" rel="noopener">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="https://data.altern.ai/alternbadge.png" alt="Featured on Altern" width={150} height={32} />
+        </a>
       </div>
     </section>
   );
