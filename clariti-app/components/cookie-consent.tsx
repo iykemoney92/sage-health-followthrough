@@ -21,8 +21,8 @@ export function CookieConsent() {
     // an Accept from before the notice named it asks again once.
     //
     // The Android app asks about PostHog alone (Google Analytics and the Quora
-    // Pixel stay off in the shells); the iOS app reads PostHog as "denied" too,
-    // so the notice still never shows there.
+    // Pixel stay off in the shells); the iOS app reads PostHog as answered (on
+    // unless turned off in Settings), so the notice never shows there.
     const shell = isNativeShell();
     const unanswered = shell
       ? getPostHogConsent() === null

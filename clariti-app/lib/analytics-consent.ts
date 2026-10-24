@@ -58,16 +58,26 @@ export function getAnalyticsConsent(): AnalyticsConsent | null {
  * count, so the notice asks once more. An earlier "Essential only" still
  * stands.
  *
- * The iOS shell stays hard "denied" for the App Review 5.1.2(i) reason above,
- * so PostHog never runs in the iPhone app. The Android shell has no such rule:
- * there the notice asks about PostHog alone (Google Analytics and the Quora
- * Pixel stay off in both shells).
+ * In the iOS shell PostHog is on unless the person turns it off in Settings, and
+ * no prompt is shown. It is first-party product analytics: never combined with
+ * other companies' data, never used for ads and never shared with data brokers,
+ * so it isn't "tracking" under App Tracking Transparency, and the App Store
+ * privacy label declares it (Ike, 24 Oct 2026). The 5.1.2(i) remedy above still
+ * holds: no cookie notice, no Google Analytics and no Quora Pixel on iOS. The
+ * Android shell's notice asks about PostHog alone.
  */
 export const POSTHOG_CONSENT_KEY = "clariti_posthog_consent";
 
 export function getPostHogConsent(): AnalyticsConsent | null {
   if (typeof window === "undefined") return null;
-  if (isIosShell()) return "denied";
+  if (isIosShell()) {
+    try {
+      if (localStorage.getItem(POSTHOG_CONSENT_KEY) === "denied") return "denied";
+    } catch {
+      // Storage unavailable: stays on, as it would on a fresh install.
+    }
+    return "granted";
+  }
   try {
     const value = localStorage.getItem(POSTHOG_CONSENT_KEY);
     if (value === "granted" || value === "denied") return value;
