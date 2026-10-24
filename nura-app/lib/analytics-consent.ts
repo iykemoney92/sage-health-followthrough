@@ -82,9 +82,29 @@ export function getAnalyticsConsent(): AnalyticsConsent | null {
   return null;
 }
 
+/**
+ * PostHog (product analytics and session recordings) needs an answer given to
+ * the notice that names it: an Accept from before PostHog was added doesn't
+ * count, so the notice asks once more. An earlier "Essential only" still
+ * stands. Hard "denied" in the iOS shell, as above.
+ */
+const POSTHOG_CONSENT_KEY = "nura_posthog_consent";
+
+export function getPostHogConsent(): AnalyticsConsent | null {
+  if (isIosShell()) return "denied";
+  try {
+    const value = localStorage.getItem(POSTHOG_CONSENT_KEY);
+    if (value === "granted" || value === "denied") return value;
+  } catch {
+    // Private browsing or storage disabled.
+  }
+  return getAnalyticsConsent() === "denied" ? "denied" : null;
+}
+
 export function setAnalyticsConsent(value: AnalyticsConsent) {
   try {
     localStorage.setItem(consentStorageKey(), value);
+    localStorage.setItem(POSTHOG_CONSENT_KEY, value);
   } catch {
     // Private browsing or storage disabled — consent won't persist.
   }

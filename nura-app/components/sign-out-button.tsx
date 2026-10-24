@@ -5,6 +5,7 @@ import { useState } from "react";
 import { LogOut } from "lucide-react";
 import { track } from "@/lib/analytics";
 import { getSupabaseBrowserClient } from "@/lib/integrations/supabase-browser";
+import { resetPostHog } from "@/lib/posthog";
 
 export function SignOutButton({
   className = "secondary-cta",
@@ -21,6 +22,7 @@ export function SignOutButton({
     track("logout", { source });
     const supabase = getSupabaseBrowserClient();
     await supabase.auth.signOut();
+    resetPostHog();
     router.push("/login");
     router.refresh();
   }

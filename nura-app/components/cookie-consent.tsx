@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { track } from "@/lib/analytics";
-import { getAnalyticsConsent, setAnalyticsConsent } from "@/lib/analytics-consent";
+import { getAnalyticsConsent, getPostHogConsent, setAnalyticsConsent } from "@/lib/analytics-consent";
 import { isNativeAnalyticsAvailable } from "@/lib/native-analytics";
 import { adMeasurementApplies, getAdConsent, setAdConsent } from "@/lib/quora-pixel";
 
@@ -23,7 +23,10 @@ export function CookieConsent() {
     // On the web the notice also asks about Quora ad measurement, and an
     // answer given before that question existed doesn't count, so it shows
     // again once for anyone who hasn't answered it.
-    const unanswered = () => getAnalyticsConsent() === null || (onWeb && getAdConsent() === null);
+    // The same goes for PostHog: an Accept from before the notice named it
+    // asks again once.
+    const unanswered = () =>
+      getAnalyticsConsent() === null || getPostHogConsent() === null || (onWeb && getAdConsent() === null);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setWeb(onWeb);
     if (unanswered()) setVisible(true);
@@ -51,22 +54,27 @@ export function CookieConsent() {
         {androidApp ? (
           <>
             Nura uses essential cookies to keep you signed in, and optional
-            analytics (Google Analytics) to understand how the app is used and to
-            tell Google which of our ads led to a new account. No health
-            information is shared, and nothing is used to target you with ads.{" "}
+            analytics (Google Analytics and PostHog) to understand how the app is
+            used, including screen recordings that hide what you type and your
+            health details, and to tell Google which of our ads led to a new
+            account. No health information is shared, and nothing is used to
+            target you with ads.{" "}
           </>
         ) : web ? (
           <>
             Nura uses essential cookies to keep you signed in. If you accept, it
-            also uses Google Analytics to see how the product is used, and the
-            Quora Pixel on our public pages to see which of our ads brought you
-            here. Neither ever receives your health information.{" "}
+            also uses Google Analytics and PostHog to see how the product is used
+            (PostHog records screens with what you type and your health details
+            hidden), and the Quora Pixel on our public pages to see which of our
+            ads brought you here. None of them receives your health
+            information.{" "}
           </>
         ) : (
           <>
             Nura uses essential cookies to keep you signed in, and optional analytics
-            cookies (Google Analytics) to understand how the product is used — never
-            for ads.{" "}
+            (Google Analytics and PostHog, including screen recordings that hide what
+            you type and your health details) to understand how the product is used —
+            never for ads.{" "}
           </>
         )}
         <Link href="/privacy">Learn more</Link>
