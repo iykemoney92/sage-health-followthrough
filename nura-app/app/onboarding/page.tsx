@@ -1018,23 +1018,54 @@ function OnboardingFlow() {
                   <span className="auth-kicker">{`A GIFT FROM ${gift.referrerFirstName.toUpperCase()}`}</span>
                   <h1>Nura Plus is on for 30 days</h1>
                   <p className="onboarding-intro paywall-intro">
-                    {`${gift.referrerFirstName} invited you, so everything in Plus is switched on until ${giftEndDate(gift.until)}. No card needed, and nothing is charged.`}
+                    {`${gift.referrerFirstName} invited you, so everything in Plus is switched on until ${giftEndDate(gift.until)}, with no card needed.`}
                   </p>
                   <ul className="paywall-benefits">
                     <li><Check size={14} strokeWidth={3} /> Unlimited Care plans and check-ins</li>
                     <li><Check size={14} strokeWidth={3} /> Voice, WhatsApp, and document uploads</li>
                     <li><Check size={14} strokeWidth={3} /> Afterwards, keep the free plan or choose Plus</li>
                   </ul>
-                  <button
-                    className="primary-cta onboarding-primary paywall-cta"
-                    type="button"
-                    onClick={() => {
-                      track("referral_gift_continue", { source: "onboarding" });
-                      router.replace("/today");
-                    }}
-                  >
-                    <Gift size={18} /> Go to Today
-                  </button>
+                  {/* The optional card step is web only: in the apps a card means an App Store or
+                      Play subscription, whose fixed 14-day trial would charge before the gift ends. */}
+                  <PlatformCopy
+                    web={
+                      <>
+                        <TrackedCheckoutLink
+                          href="/api/billing/checkout?gift=1"
+                          className="primary-cta onboarding-primary paywall-cta"
+                          source="onboarding_gift"
+                          cta="add_card_after_gift"
+                        >
+                          <CreditCard size={18} /> Add a card so Plus carries on
+                        </TrackedCheckoutLink>
+                        <p className="control-note">
+                          {`Optional. You won’t be charged before ${giftEndDate(gift.until)}, and you can cancel any time before then. Without a card you simply move to the free plan.`}
+                        </p>
+                        <button
+                          className="skip-intake-button"
+                          type="button"
+                          onClick={() => {
+                            track("referral_gift_continue", { source: "onboarding", card: false });
+                            router.replace("/today");
+                          }}
+                        >
+                          Not now, go to Today
+                        </button>
+                      </>
+                    }
+                    native={
+                      <button
+                        className="primary-cta onboarding-primary paywall-cta"
+                        type="button"
+                        onClick={() => {
+                          track("referral_gift_continue", { source: "onboarding" });
+                          router.replace("/today");
+                        }}
+                      >
+                        <Gift size={18} /> Go to Today
+                      </button>
+                    }
+                  />
                 </div>
               )}
 

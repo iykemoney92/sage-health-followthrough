@@ -23,6 +23,7 @@ import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
 import { getWhatsappConnectionStatus } from "@/lib/channel-links";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { getActiveFriendGift } from "@/lib/referrals";
 
 function formatDate(value: string | null) {
   if (!value) return null;
@@ -47,6 +48,12 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
       // Keep computed access if service role isn't available locally.
     }
   }
+  // On an invite gift with no card yet: Plus is free until the gift ends, then the free plan.
+  const gift =
+    user && access?.complimentaryUntil && access.status !== "trialing"
+      ? await getActiveFriendGift(getSupabaseServerClient(), user.id).catch(() => null)
+      : null;
+  const giftEnds = gift ? formatDate(gift.until) : null;
   const whatsapp = user
     ? await getWhatsappConnectionStatus(supabase, user.id)
     : { linked: false, pendingCode: null, expiresAt: null };
@@ -61,7 +68,9 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
   const paidUntil = formatDate(access?.currentPeriodEndsAt ?? null);
   const isTrialing = access?.status === "trialing" && Boolean(trialEnds);
   const isCancelled = access?.status === "cancelled";
-  const statusLabel = access?.hasPlus
+  const statusLabel = gift
+    ? "Gift active"
+    : access?.hasPlus
     ? isTrialing
       ? "Trial active"
       : isCancelled
@@ -70,7 +79,9 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
     : access?.status === "expired"
       ? "Trial expired"
       : "Free";
-  const statusCopy = isTrialing && trialEnds
+  const statusCopy = gift && giftEnds
+    ? `Nura Plus is free until ${giftEnds}, a gift from ${gift.referrerFirstName}. Without a card you move to the free plan after that, and nothing is charged.`
+    : isTrialing && trialEnds
     ? `Your free trial runs until ${trialEnds} (then US$9.99/month unless you cancel).`
     : isCancelled && paidUntil && access?.hasPlus
       ? `Cancelled — Plus stays on until ${paidUntil}.`
@@ -148,7 +159,21 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
           </div>
 
           <div className="billing-actions">
-            {access?.hasPlus ? (
+            {gift && giftEnds ? (
+              <PlatformCopy
+                web={
+                  <TrackedCheckoutLink
+                    href="/api/billing/checkout?gift=1&return=billing"
+                    className="primary-cta"
+                    source="billing_gift"
+                    cta="add_card_after_gift"
+                  >
+                    <CreditCard /> Add a card so Plus carries on
+                  </TrackedCheckoutLink>
+                }
+                native={null}
+              />
+            ) : access?.hasPlus ? (
               <ManageSubscriptionCta className="primary-cta">
                 <TrackedPortalLink href="/api/billing/portal" className="primary-cta" hasPlus>
                   <Settings /> Manage or cancel
@@ -172,7 +197,14 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
               </>
             )}
           </div>
-          {access?.hasPlus ? (
+          {gift && giftEnds ? (
+            <p className="billing-cancel-hint">
+              <PlatformCopy
+                web={`Optional. You won’t be charged before ${giftEnds}, and you can cancel any time before then.`}
+                native={`Your gift runs until ${giftEnds}. Nothing is charged.`}
+              />
+            </p>
+          ) : access?.hasPlus ? (
             <p className="billing-cancel-hint">
               <PlatformCopy
                 web="Opens Stripe’s customer portal to update your card, download invoices, or cancel. Access stays until the current period ends."
