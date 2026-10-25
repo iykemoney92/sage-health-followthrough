@@ -7,6 +7,7 @@ import { track } from "@/lib/analytics";
 import {
   checkHealthAvailability,
   clearHealthSyncThrottle,
+  nativeHealthPlatform,
   openHealthSettings,
   syncHealthData,
   type HealthAvailability,
@@ -30,11 +31,23 @@ function formatSynced(iso: string) {
   return new Date(iso).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-async function loadConnection(): Promise<Connection | null> {
-  const response = await fetch("/api/health/connection", { cache: "no-store" }).catch(() => null);
-  if (!response?.ok) return null;
-  const body = (await response.json().catch(() => null)) as { connection: Connection | null } | null;
-  return body?.connection ?? null;
+type Connections = { connection: Connection | null; others: HealthPlatform[] };
+
+/**
+ * On a phone, only that phone's own connection counts: someone who connected Apple Health
+ * on their iPhone still has to connect Health Connect on their Android phone. The website
+ * shows whichever synced last.
+ */
+async function loadConnections(): Promise<Connections> {
+  const platform = nativeHealthPlatform();
+  const url = platform ? `/api/health/connection?platform=${platform}` : "/api/health/connection";
+  const response = await fetch(url, { cache: "no-store" }).catch(() => null);
+  if (!response?.ok) return { connection: null, others: [] };
+  const body = (await response.json().catch(() => null)) as {
+    connection: Connection | null;
+    other_platforms?: HealthPlatform[];
+  } | null;
+  return { connection: body?.connection ?? null, others: body?.other_platforms ?? [] };
 }
 
 function ComingSoon() {
@@ -53,14 +66,16 @@ function ComingSoon() {
 export function HealthConnectionCard() {
   const [availability, setAvailability] = useState<HealthAvailability | null>(null);
   const [connection, setConnection] = useState<Connection | null>(null);
+  const [others, setOthers] = useState<HealthPlatform[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState<"sync" | "disconnect" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const refresh = useCallback(
     () =>
-      loadConnection().then((next) => {
-        setConnection(next);
+      loadConnections().then((next) => {
+        setConnection(next.connection);
+        setOthers(next.others);
         setLoaded(true);
       }),
     [],
@@ -68,19 +83,19 @@ export function HealthConnectionCard() {
 
   useEffect(() => {
     void checkHealthAvailability().then(setAvailability);
-    void loadConnection().then((next) => {
-      setConnection(next);
-      setLoaded(true);
-    });
-  }, []);
+    void refresh();
+  }, [refresh]);
 
   if (!availability || !loaded) return null;
 
   const platform = connection?.platform ?? (availability.state === "web" ? null : availability.platform);
   const label = platform ? HEALTH_PLATFORM_LABELS[platform] : "Apple Health or Health Connect";
   const pluginReady = availability.state === "ready";
+  const otherLabels = others.map((p) => HEALTH_PLATFORM_LABELS[p]).join(" and ");
 
-  if (!connection && !pluginReady && !ANNOUNCED) return <ComingSoon />;
+  // Someone already connected on their other phone gets the real card, so this phone says
+  // why it can't connect yet (update the app, install Health Connect) instead of "coming soon".
+  if (!connection && others.length === 0 && !pluginReady && !ANNOUNCED) return <ComingSoon />;
 
   async function syncNow() {
     if (!connection) return;
@@ -94,7 +109,8 @@ export function HealthConnectionCard() {
   }
 
   async function disconnect() {
-    if (!window.confirm(`Disconnect ${label}? Nura will delete everything it has stored from it.`)) return;
+    const everything = others.length ? `${label} and ${otherLabels}` : label;
+    if (!window.confirm(`Disconnect ${everything}? Nura will delete everything it has stored from it.`)) return;
     setBusy("disconnect");
     setMessage(null);
     const ok = await fetch("/api/health/connection", { method: "DELETE" })
@@ -104,6 +120,7 @@ export function HealthConnectionCard() {
       track("health_disconnected", { platform: connection?.platform ?? "unknown" });
       clearHealthSyncThrottle();
       setConnection(null);
+      setOthers([]);
       setMessage(
         connection?.platform === "apple_health"
           ? "Disconnected and deleted. To also remove Nura’s access, open the Health app → your profile → Apps → Nura."
@@ -185,6 +202,12 @@ export function HealthConnectionCard() {
             {status}
           </div>
           <p className="muted">{body}</p>
+          {others.length > 0 && (
+            <p className="muted">
+              {otherLabels} is also connected from your other phone.
+              {connection ? " Disconnecting removes both." : ""}
+            </p>
+          )}
           <p className="muted">Never shown to your Care circle, in notifications or on WhatsApp.</p>
           {message && (
             <p className="connection-channel-note" role="status">

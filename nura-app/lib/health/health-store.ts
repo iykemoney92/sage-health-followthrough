@@ -40,6 +40,22 @@ export async function getActiveHealthConnection(supabase: SupabaseClient, ownerI
   return data as HealthConnection;
 }
 
+/**
+ * Every unrevoked connection, most recently synced first. Someone who uses Nura on an
+ * iPhone and an Android phone has one per platform, and each device must only see and
+ * sync its own.
+ */
+export async function listActiveHealthConnections(supabase: SupabaseClient, ownerId: string): Promise<HealthConnection[]> {
+  const { data, error } = await supabase
+    .from("nura_health_connections")
+    .select("id, owner_id, platform, consented_at, consent_version, metrics, last_synced_at, last_sync_status, revoked_at")
+    .eq("owner_id", ownerId)
+    .is("revoked_at", null)
+    .order("last_synced_at", { ascending: false, nullsFirst: false });
+  if (error || !data) return [];
+  return data as HealthConnection[];
+}
+
 export async function loadHealthDailies(supabase: SupabaseClient, ownerId: string, sinceDay: string): Promise<HealthDailyRow[]> {
   const { data, error } = await supabase
     .from("nura_health_daily")
