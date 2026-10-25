@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSubscriptionAccess, isSubscriptionLockedOut, type SubscriptionAccess } from "@/lib/billing/subscription";
 import { syncPlusFromRevenueCat } from "@/lib/billing/sync-plus";
+import { syncPlusFromStripe } from "@/lib/billing/sync-plus-stripe";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 
 function getStripeSecretKey() {
@@ -82,8 +83,12 @@ export async function getVerifiedSubscriptionAccess(
       const admin = getSupabaseServerClient();
       const synced = await syncPlusFromRevenueCat(admin, ownerId);
       if (synced.hasPlus) return getSubscriptionAccess(admin, ownerId);
+      // Card added through Nura's own Stripe Checkout (e.g. the invite-gift step):
+      // RevenueCat doesn't know about it, Stripe does.
+      const fromStripe = await syncPlusFromStripe(admin, ownerId);
+      if (fromStripe.hasPlus) return getSubscriptionAccess(admin, ownerId);
     } catch (error) {
-      console.error("[billing] RevenueCat sync for locked profile failed", error);
+      console.error("[billing] store sync for locked profile failed", error);
     }
     return local;
   }

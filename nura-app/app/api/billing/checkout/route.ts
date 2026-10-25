@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
+import { giftTrialEnd } from "@/lib/billing/gift-checkout";
 import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
 import { getBillingMode, getRevenueCatPurchaseUrl } from "@/lib/billing/revenuecat";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
+import { getActiveFriendGift } from "@/lib/referrals";
 import { appUrl } from "@/lib/url";
 
 type StripeCheckoutSession = {
@@ -44,6 +47,9 @@ function checkoutCancelUrl(request: NextRequest) {
   if (returnTo === "locked") {
     return appUrl("/billing/locked", request);
   }
+  if (returnTo === "billing") {
+    return appUrl("/billing", request);
+  }
   const cancelUrl = appUrl("/onboarding", request);
   cancelUrl.searchParams.set("paywall", "1");
   if (returnTo === "expired") {
@@ -52,7 +58,11 @@ function checkoutCancelUrl(request: NextRequest) {
   return cancelUrl;
 }
 
-async function createStripeCheckout(request: NextRequest, user: { id: string; email?: string | null }) {
+async function createStripeCheckout(
+  request: NextRequest,
+  user: { id: string; email?: string | null },
+  options?: { trialEnd?: Date },
+) {
   const secretKey = getStripeSecretKey();
   if (!secretKey) return null;
 
@@ -63,11 +73,21 @@ async function createStripeCheckout(request: NextRequest, user: { id: string; em
     mode: "subscription",
     success_url: successUrl.toString(),
     cancel_url: cancelUrl.toString(),
-    "subscription_data[trial_period_days]": String(CARD_TRIAL_DAYS),
     "metadata[owner_id]": user.id,
     "subscription_data[metadata][owner_id]": user.id,
-    "subscription_data[metadata][trial_days]": String(CARD_TRIAL_DAYS),
   });
+  if (options?.trialEnd) {
+    // Invite gift: the card trial ends when the gift does, so there's no charge before then.
+    const trialEndsAt = options.trialEnd.toISOString();
+    body.set("subscription_data[trial_end]", String(Math.floor(options.trialEnd.getTime() / 1000)));
+    body.set("metadata[trial_ends_at]", trialEndsAt);
+    body.set("metadata[source]", "invite_gift");
+    body.set("subscription_data[metadata][trial_ends_at]", trialEndsAt);
+    body.set("subscription_data[metadata][source]", "invite_gift");
+  } else {
+    body.set("subscription_data[trial_period_days]", String(CARD_TRIAL_DAYS));
+    body.set("subscription_data[metadata][trial_days]", String(CARD_TRIAL_DAYS));
+  }
 
   const priceId = getStripePlusPriceId();
   if (priceId) {
@@ -108,6 +128,17 @@ export async function GET(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.redirect(appUrl("/login", request));
+  }
+
+  // Someone on an invite gift adding a card: Stripe Checkout with the trial ending on the
+  // gift's last day. RevenueCat's purchase link can only start its fixed 14-day trial.
+  if (request.nextUrl.searchParams.get("gift") === "1") {
+    const gift = await getActiveFriendGift(getSupabaseAdminClient(), user.id).catch(() => null);
+    const trialEnd = giftTrialEnd(gift?.until);
+    if (trialEnd) {
+      const giftCheckout = await createStripeCheckout(request, user, { trialEnd });
+      if (giftCheckout) return giftCheckout;
+    }
   }
 
   // Primary path: RevenueCat Web Purchase (Stripe is only a fallback if RC isn't configured).

@@ -145,7 +145,14 @@ function DesktopCopy({ step, trialExpired, gift }: { step: number; trialExpired?
                 : trialExpired
                   ? ["Your free trial has ended.", "Upgrade to Plus to unlock your Care plans and check-ins again. Everything you shared stays saved."]
                   : gift
-                    ? ["Nura Plus is on.", `Everything in Plus is switched on until ${giftEndDate(gift.until)}. No card needed.`]
+                    ? [
+                      "Your 30-day free trial is on.",
+                      <PlatformCopy
+                        key="gift-copy"
+                        web={`A gift from ${gift.referrerFirstName}: everything in Plus is free until ${giftEndDate(gift.until)}. Add a card now so your plan carries on without a break. You won’t be charged before then.`}
+                        native={`A gift from ${gift.referrerFirstName}: everything in Plus is free until ${giftEndDate(gift.until)}. Nothing is charged.`}
+                      />,
+                    ]
                     : [
                       "Start your free trial.",
                       <PlatformCopy
@@ -158,7 +165,7 @@ function DesktopCopy({ step, trialExpired, gift }: { step: number; trialExpired?
   return (
     <aside className="onboarding-desktop-copy">
       <NuraLogo />
-      <span className="auth-kicker">{trialExpired && step === 8 ? "TRIAL ENDED" : gift && step === 8 ? "A GIFT FOR YOU" : "SET UP YOUR NURA"}</span>
+      <span className="auth-kicker">{trialExpired && step === 8 ? "TRIAL ENDED" : gift && step === 8 ? "YOUR FREE TRIAL" : "SET UP YOUR NURA"}</span>
       <h2>{copy[0]}</h2>
       <p>{copy[1]}</p>
       <div className="onboarding-desktop-note">
@@ -1016,25 +1023,59 @@ function OnboardingFlow() {
               {step === 8 && gift && !trialExpired && (
                 <div className="paywall-screen">
                   <span className="auth-kicker">{`A GIFT FROM ${gift.referrerFirstName.toUpperCase()}`}</span>
-                  <h1>Nura Plus is on for 30 days</h1>
+                  <h1>Your 30-day free trial is on</h1>
                   <p className="onboarding-intro paywall-intro">
-                    {`${gift.referrerFirstName} invited you, so everything in Plus is switched on until ${giftEndDate(gift.until)}. No card needed, and nothing is charged.`}
+                    <PlatformCopy
+                      web={`${gift.referrerFirstName} gave you 30 days of Nura Plus, free until ${giftEndDate(gift.until)}. Add a card now so your plan carries on without a break when the trial ends. You won’t be charged before then.`}
+                      native={`${gift.referrerFirstName} gave you 30 days of Nura Plus, free until ${giftEndDate(gift.until)}. Nothing is charged.`}
+                    />
                   </p>
                   <ul className="paywall-benefits">
                     <li><Check size={14} strokeWidth={3} /> Unlimited Care plans and check-ins</li>
                     <li><Check size={14} strokeWidth={3} /> Voice, WhatsApp, and document uploads</li>
-                    <li><Check size={14} strokeWidth={3} /> Afterwards, keep the free plan or choose Plus</li>
+                    <li><Check size={14} strokeWidth={3} /> Cancel anytime before the trial ends</li>
                   </ul>
-                  <button
-                    className="primary-cta onboarding-primary paywall-cta"
-                    type="button"
-                    onClick={() => {
-                      track("referral_gift_continue", { source: "onboarding" });
-                      router.replace("/today");
-                    }}
-                  >
-                    <Gift size={18} /> Go to Today
-                  </button>
+                  {/* The card step is web only: in the apps a card means an App Store or Play
+                      subscription, whose fixed 14-day trial would charge before the gift ends. */}
+                  <PlatformCopy
+                    web={
+                      <>
+                        <TrackedCheckoutLink
+                          href="/api/billing/checkout?gift=1"
+                          className="primary-cta onboarding-primary paywall-cta"
+                          source="onboarding_gift"
+                          cta="continue_plan_after_gift"
+                        >
+                          <CreditCard size={18} /> Continue my plan after the trial
+                        </TrackedCheckoutLink>
+                        <p className="control-note">
+                          {`Your trial is already on. A card just keeps your plan going after ${giftEndDate(gift.until)}, and you won’t be charged before then. Skip it and you move to the free plan instead.`}
+                        </p>
+                        <button
+                          className="skip-intake-button"
+                          type="button"
+                          onClick={() => {
+                            track("referral_gift_continue", { source: "onboarding", card: false });
+                            router.replace("/today");
+                          }}
+                        >
+                          Skip for now
+                        </button>
+                      </>
+                    }
+                    native={
+                      <button
+                        className="primary-cta onboarding-primary paywall-cta"
+                        type="button"
+                        onClick={() => {
+                          track("referral_gift_continue", { source: "onboarding" });
+                          router.replace("/today");
+                        }}
+                      >
+                        <Gift size={18} /> Start my trial
+                      </button>
+                    }
+                  />
                 </div>
               )}
 

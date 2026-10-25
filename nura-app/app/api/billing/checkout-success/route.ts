@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBillingMode } from "@/lib/billing/revenuecat";
+import { recordedTrialEnd } from "@/lib/billing/gift-checkout";
 import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
@@ -13,7 +14,7 @@ type StripeCheckoutSession = {
   status?: string;
   payment_status?: string;
   customer?: string | { id?: string } | null;
-  metadata?: { owner_id?: string } | null;
+  metadata?: { owner_id?: string; trial_ends_at?: string } | null;
   subscription?: string | { id?: string } | null;
 };
 
@@ -46,12 +47,6 @@ async function fetchCheckoutSession(sessionId: string) {
   return (await response.json()) as StripeCheckoutSession;
 }
 
-function addDaysIso(from: Date, days: number) {
-  const next = new Date(from);
-  next.setDate(next.getDate() + days);
-  return next.toISOString();
-}
-
 /**
  * Verified Stripe Checkout return. Grants Plus only when the session is complete
  * and owned by the signed-in user.
@@ -81,7 +76,8 @@ export async function GET(request: NextRequest) {
   }
 
   const now = new Date();
-  const trialEndsAt = addDaysIso(now, CARD_TRIAL_DAYS);
+  // An invite-gift checkout carries its own trial end (the gift's last day).
+  const trialEndsAt = recordedTrialEnd(session.metadata?.trial_ends_at, CARD_TRIAL_DAYS, now);
   const customerId = customerIdFrom(session.customer);
   const supabase = getSupabaseServerClient();
 
