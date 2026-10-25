@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
+import { loadRoutineTimes, saveRoutineTimes } from "@/lib/domain/routine-times";
 import { enforceThreadLimit, requirePlusAccess } from "@/lib/billing/subscription";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
@@ -256,7 +257,9 @@ export async function POST(request: NextRequest) {
       : []),
     ...((contexts ?? []) as PlanContext[]),
   ];
-  const decision = await resolveDecision(modelContent, plans ?? [], sanitizedAttachments, modelContexts, requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels, timeZone, preferredChannel);
+  const routineTimes = await loadRoutineTimes(supabase, user.id);
+  const decision = await resolveDecision(modelContent, plans ?? [], sanitizedAttachments, modelContexts, requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels, timeZone, preferredChannel, routineTimes);
+  await saveRoutineTimes(supabase, user.id, routineTimes, decision.routine_times);
   const threadLimit = await enforceThreadLimit(supabase, user.id, plans?.length ?? 0, decision.action === "new_plan");
   if (threadLimit) return threadLimit;
 

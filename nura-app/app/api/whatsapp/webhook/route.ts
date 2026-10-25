@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
+import { loadRoutineTimes, saveRoutineTimes } from "@/lib/domain/routine-times";
 import { getSubscriptionAccess, isSubscriptionLockedOut } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { sendWhatsappText, downloadWhatsappMedia } from "@/lib/integrations/whatsapp";
@@ -507,6 +508,7 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
     phoneDigits: phoneOnFile,
   });
 
+  const routineTimes = await loadRoutineTimes(supabase, ownerId);
   const decision = await resolveDecision(
     content,
     (plans ?? []) as PlanSummary[],
@@ -521,7 +523,9 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
     allowedChannels,
     timeZone,
     preferredChannel,
+    routineTimes,
   );
+  await saveRoutineTimes(supabase, ownerId, routineTimes, decision.routine_times);
 
   const { planId, createdPlan, error: planError } = await applyPlanDecision(supabase, ownerId, decision, (plans ?? []) as PlanSummary[]);
   if (planError) {
