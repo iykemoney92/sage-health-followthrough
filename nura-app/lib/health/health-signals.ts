@@ -4,7 +4,7 @@ import { isWithinQuietHours, pickIdleChannel } from "@/lib/domain/idle-wellness"
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { addDays, detectHealthSignals, healthSignalCheckInPrompt, HEALTH_STALE_AFTER_DAYS, localDay } from "@/lib/health/health-brief";
 import { loadHealthDailies, plansAboutSomeoneElse } from "@/lib/health/health-store";
-import { metricsForCategory } from "@/lib/health/metrics";
+import { metricsForCategory, type HealthPlatform } from "@/lib/health/metrics";
 import { readProfileSettings } from "@/lib/profile-settings";
 
 /** At most one health-triggered check-in per person in this window. */
@@ -34,11 +34,15 @@ export async function scheduleHealthSignalCheckIns(
   const freshSince = new Date(now.getTime() - HEALTH_STALE_AFTER_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data: connections } = await supabase
     .from("nura_health_connections")
-    .select("owner_id, last_synced_at")
+    .select("owner_id, platform, last_synced_at")
     .is("revoked_at", null)
     .gte("last_synced_at", freshSince)
     .limit(400);
-  const ownerIds = [...new Set((connections ?? []).map((c) => c.owner_id as string))];
+  const platformsByOwner = new Map<string, HealthPlatform[]>();
+  for (const c of connections ?? []) {
+    platformsByOwner.set(c.owner_id as string, [...(platformsByOwner.get(c.owner_id as string) ?? []), c.platform as HealthPlatform]);
+  }
+  const ownerIds = [...platformsByOwner.keys()];
   if (ownerIds.length === 0) return { scheduled, skipped };
 
   const cooldownCutoff = new Date(now.getTime() - HEALTH_SIGNAL_COOLDOWN_MS).toISOString();
@@ -90,7 +94,7 @@ export async function scheduleHealthSignalCheckIns(
       }
 
       const today = localDay(now, timeZone);
-      const rows = await loadHealthDailies(supabase, ownerId, addDays(today, -40));
+      const rows = await loadHealthDailies(supabase, ownerId, addDays(today, -40), platformsByOwner.get(ownerId) ?? []);
 
       // The most recently active plan whose category this kind of signal fits.
       let match: { plan: (typeof ownerPlans)[number]; signal: ReturnType<typeof detectHealthSignals>[number] } | null = null;

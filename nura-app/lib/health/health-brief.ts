@@ -163,7 +163,8 @@ function lineFor(metric: HealthMetric, rows: HealthDailyRow[], today: string): s
 export type HealthBriefInput = {
   rows: HealthDailyRow[];
   category: string | null | undefined;
-  platform: HealthPlatform;
+  /** Every platform the rows came from; two phones can each contribute metrics. */
+  platforms: HealthPlatform[];
   timeZone: string;
   now: Date;
   lastSyncedAt: string | null;
@@ -174,7 +175,7 @@ export type HealthBriefInput = {
  * nothing current to say (no data, stale data, or none of it fits this plan).
  */
 export function buildHealthBrief(input: HealthBriefInput): string | null {
-  const { rows, category, platform, timeZone, now, lastSyncedAt } = input;
+  const { rows, category, platforms, timeZone, now, lastSyncedAt } = input;
   if (!lastSyncedAt) return null;
   const syncedAt = new Date(lastSyncedAt);
   if (Number.isNaN(syncedAt.getTime())) return null;
@@ -197,7 +198,7 @@ export function buildHealthBrief(input: HealthBriefInput): string | null {
   });
 
   return [
-    `Health data the user chose to share from ${HEALTH_PLATFORM_LABELS[platform]} (last synced ${syncedLabel}):`,
+    `Health data the user chose to share from ${platforms.map((p) => HEALTH_PLATFORM_LABELS[p]).join(" and ")} (last synced ${syncedLabel}):`,
     ...(lines.length > 0 ? lines : ["Nothing notable has changed recently."]).map((line) => `- ${line}`),
   ].join("\n");
 }

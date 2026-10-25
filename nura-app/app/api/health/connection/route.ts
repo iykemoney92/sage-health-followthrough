@@ -73,21 +73,29 @@ export async function POST(request: Request) {
   return NextResponse.json({ ok: true });
 }
 
-/** Disconnect: revoke every connection and delete all stored health data straight away. */
-export async function DELETE() {
+/**
+ * Disconnect, deleting the stored data straight away. A phone passes `?platform=` and
+ * disconnects only itself, so the other phone stays connected; without it (the website)
+ * every connection goes.
+ */
+export async function DELETE(request: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
+  const requested = z.enum(HEALTH_PLATFORMS).safeParse(new URL(request.url).searchParams.get("platform"));
+  const platform = requested.success ? requested.data : undefined;
   const supabase = await getSupabaseSessionClient();
-  const { error } = await supabase
+  let revoke = supabase
     .from("nura_health_connections")
     .update({ revoked_at: new Date().toISOString() })
     .eq("owner_id", user.id)
     .is("revoked_at", null);
+  if (platform) revoke = revoke.eq("platform", platform);
+  const { error } = await revoke;
   if (error) return NextResponse.json({ ok: false, error: "not_saved" }, { status: 500 });
 
   try {
-    await deleteHealthData(supabase, user.id);
+    await deleteHealthData(supabase, user.id, platform);
   } catch (deleteError) {
     console.error("[health-disconnect]", user.id, deleteError);
     return NextResponse.json({ ok: false, error: "delete_failed" }, { status: 500 });
