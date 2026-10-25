@@ -27,7 +27,7 @@ function brief(rows: HealthDailyRow[], category = "mental_wellbeing", overrides:
   return buildHealthBrief({
     rows,
     category,
-    platform: "apple_health",
+    platforms: ["apple_health"],
     timeZone: "Europe/London",
     now: NOW,
     lastSyncedAt: SYNCED,

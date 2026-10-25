@@ -1,8 +1,8 @@
 /**
  * Server-side reads of synced health data.
  *
- * Every path that uses health data goes through `getActiveHealthConnection`: no
- * active (unrevoked) connection means no health data, whatever rows exist.
+ * Every path that uses health data goes through `listActiveHealthConnections`: rows
+ * are only read from platforms with an active (unrevoked) connection, whatever exists.
  * Failures read as "no health data" — a missing table or a bad row must never
  * break a check-in.
  */
@@ -27,19 +27,6 @@ export type HealthConnection = {
   revoked_at: string | null;
 };
 
-export async function getActiveHealthConnection(supabase: SupabaseClient, ownerId: string): Promise<HealthConnection | null> {
-  const { data, error } = await supabase
-    .from("nura_health_connections")
-    .select("id, owner_id, platform, consented_at, consent_version, metrics, last_synced_at, last_sync_status, revoked_at")
-    .eq("owner_id", ownerId)
-    .is("revoked_at", null)
-    .order("last_synced_at", { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data as HealthConnection;
-}
-
 /**
  * Every unrevoked connection, most recently synced first. Someone who uses Nura on an
  * iPhone and an Android phone has one per platform, and each device must only see and
@@ -56,23 +43,60 @@ export async function listActiveHealthConnections(supabase: SupabaseClient, owne
   return data as HealthConnection[];
 }
 
-export async function loadHealthDailies(supabase: SupabaseClient, ownerId: string, sinceDay: string): Promise<HealthDailyRow[]> {
+export type SourcedHealthRow = HealthDailyRow & { platform: HealthPlatform };
+
+/**
+ * With two phones connected, each metric comes from one of them only: whichever has more
+ * days of it in the window (ties go to the newer data). Mixing them day by day would
+ * compare an iPhone's step count with an Android phone's and read the gap as a change.
+ */
+export function pickOneSourcePerMetric(rows: SourcedHealthRow[]): SourcedHealthRow[] {
+  const score = new Map<string, { days: number; newest: string }>();
+  for (const row of rows) {
+    const key = `${row.metric}|${row.platform}`;
+    const current = score.get(key) ?? { days: 0, newest: "" };
+    score.set(key, { days: current.days + 1, newest: row.day > current.newest ? row.day : current.newest });
+  }
+  const chosen = new Map<HealthMetric, HealthPlatform>();
+  for (const [key, s] of score) {
+    const [metric, platform] = key.split("|") as [HealthMetric, HealthPlatform];
+    const best = chosen.get(metric);
+    const bestScore = best ? score.get(`${metric}|${best}`)! : null;
+    if (!bestScore || s.days > bestScore.days || (s.days === bestScore.days && s.newest > bestScore.newest)) {
+      chosen.set(metric, platform);
+    }
+  }
+  return rows.filter((row) => chosen.get(row.metric) === row.platform);
+}
+
+/** Daily rows since `sinceDay` from the given connected platforms, one source per metric. */
+export async function loadHealthDailies(
+  supabase: SupabaseClient,
+  ownerId: string,
+  sinceDay: string,
+  platforms: HealthPlatform[],
+): Promise<SourcedHealthRow[]> {
+  if (platforms.length === 0) return [];
   const { data, error } = await supabase
     .from("nura_health_daily")
-    .select("day, metric, value, value_secondary, sample_count")
+    .select("day, metric, value, value_secondary, sample_count, platform")
     .eq("owner_id", ownerId)
+    .in("platform", platforms)
     .gte("day", sinceDay)
     .order("day", { ascending: true });
   if (error || !data) return [];
-  return data
-    .filter((row) => (HEALTH_METRICS as readonly string[]).includes(row.metric as string))
-    .map((row) => ({
-      day: row.day as string,
-      metric: row.metric as HealthMetric,
-      value: Number(row.value),
-      value_secondary: row.value_secondary == null ? null : Number(row.value_secondary),
-      sample_count: (row.sample_count as number | null) ?? 1,
-    }));
+  return pickOneSourcePerMetric(
+    data
+      .filter((row) => (HEALTH_METRICS as readonly string[]).includes(row.metric as string))
+      .map((row) => ({
+        day: row.day as string,
+        metric: row.metric as HealthMetric,
+        value: Number(row.value),
+        value_secondary: row.value_secondary == null ? null : Number(row.value_secondary),
+        sample_count: (row.sample_count as number | null) ?? 1,
+        platform: row.platform as HealthPlatform,
+      })),
+  );
 }
 
 /**
@@ -102,16 +126,22 @@ export async function healthContextForPlan(
 ): Promise<string | null> {
   try {
     if ((await plansAboutSomeoneElse(supabase, [plan.id])).size > 0) return null;
-    const connection = await getActiveHealthConnection(supabase, ownerId);
-    if (!connection) return null;
-    const rows = await loadHealthDailies(supabase, ownerId, addDays(localDay(now, timeZone), -READ_WINDOW_DAYS));
+    const connections = await listActiveHealthConnections(supabase, ownerId);
+    if (connections.length === 0) return null;
+    const rows = await loadHealthDailies(
+      supabase,
+      ownerId,
+      addDays(localDay(now, timeZone), -READ_WINDOW_DAYS),
+      connections.map((c) => c.platform),
+    );
     const brief = buildHealthBrief({
       rows,
       category: plan.category,
-      platform: connection.platform,
+      platforms: [...new Set(rows.map((r) => r.platform))],
       timeZone,
       now,
-      lastSyncedAt: connection.last_synced_at,
+      // Most recently synced first, so this is the freshest of the phones.
+      lastSyncedAt: connections[0].last_synced_at,
     });
     return brief ? `${brief}\n${HEALTH_BRIEF_GUIDANCE}` : null;
   } catch {
@@ -119,10 +149,16 @@ export async function healthContextForPlan(
   }
 }
 
-/** Deletes everything Nura has stored from a health connection. Used by disconnect. */
-export async function deleteHealthData(supabase: SupabaseClient, ownerId: string) {
-  for (const table of ["nura_health_daily", "nura_health_signals"]) {
-    const { error } = await supabase.from(table).delete().eq("owner_id", ownerId);
-    if (error) throw new Error(`Failed to delete ${table}: ${error.message}`);
-  }
+/**
+ * Deletes what Nura has stored from a health connection. Used by disconnect. With a
+ * platform, only that phone's daily rows go and the other phone's stay; signals are
+ * derived from both, so they always go and are rebuilt from what remains.
+ */
+export async function deleteHealthData(supabase: SupabaseClient, ownerId: string, platform?: HealthPlatform) {
+  let daily = supabase.from("nura_health_daily").delete().eq("owner_id", ownerId);
+  if (platform) daily = daily.eq("platform", platform);
+  const { error: dailyError } = await daily;
+  if (dailyError) throw new Error(`Failed to delete nura_health_daily: ${dailyError.message}`);
+  const { error } = await supabase.from("nura_health_signals").delete().eq("owner_id", ownerId);
+  if (error) throw new Error(`Failed to delete nura_health_signals: ${error.message}`);
 }

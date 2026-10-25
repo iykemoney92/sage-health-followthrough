@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     }));
 
   if (rows.length > 0) {
-    const { error } = await supabase.from("nura_health_daily").upsert(rows, { onConflict: "owner_id,day,metric" });
+    const { error } = await supabase.from("nura_health_daily").upsert(rows, { onConflict: "owner_id,day,metric,platform" });
     if (error) {
       await supabase
         .from("nura_health_connections")

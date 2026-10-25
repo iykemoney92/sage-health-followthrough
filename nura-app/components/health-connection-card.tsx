@@ -109,18 +109,21 @@ export function HealthConnectionCard() {
   }
 
   async function disconnect() {
-    const everything = others.length ? `${label} and ${otherLabels}` : label;
-    if (!window.confirm(`Disconnect ${everything}? Nura will delete everything it has stored from it.`)) return;
+    // A phone disconnects only itself; the website has no phone of its own, so it disconnects all.
+    const devicePlatform = nativeHealthPlatform();
+    const what = devicePlatform || others.length === 0 ? label : `${label} and ${otherLabels}`;
+    if (!window.confirm(`Disconnect ${what}? Nura will delete everything it has stored from it.`)) return;
     setBusy("disconnect");
     setMessage(null);
-    const ok = await fetch("/api/health/connection", { method: "DELETE" })
+    const url = devicePlatform ? `/api/health/connection?platform=${devicePlatform}` : "/api/health/connection";
+    const ok = await fetch(url, { method: "DELETE" })
       .then((r) => r.ok)
       .catch(() => false);
     if (ok) {
       track("health_disconnected", { platform: connection?.platform ?? "unknown" });
       clearHealthSyncThrottle();
       setConnection(null);
-      setOthers([]);
+      if (!devicePlatform) setOthers([]);
       setMessage(
         connection?.platform === "apple_health"
           ? "Disconnected and deleted. To also remove Nura’s access, open the Health app → your profile → Apps → Nura."
@@ -205,7 +208,7 @@ export function HealthConnectionCard() {
           {others.length > 0 && (
             <p className="muted">
               {otherLabels} is also connected from your other phone.
-              {connection ? " Disconnecting removes both." : ""}
+              {connection && !nativeHealthPlatform() ? " Disconnecting here removes both." : ""}
             </p>
           )}
           <p className="muted">Never shown to your Care circle, in notifications or on WhatsApp.</p>
