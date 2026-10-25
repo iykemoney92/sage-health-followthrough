@@ -1,3 +1,4 @@
+import { describeRoutineTimes, loadRoutineTimes } from "@/lib/domain/routine-times";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildAgentContext } from "@/lib/agent/persona-config";
 import { NURA_CORE_IDENTITY, NURA_SAFETY_BOUNDARIES } from "@/lib/domain/nura-persona";
@@ -80,12 +81,13 @@ export async function buildVoiceCheckinContext(
 
   if (!plan) return null;
 
-  const [{ data: observations }, { data: contexts }, { data: nextCheckIn }, timeZone, circleNames] = await Promise.all([
+  const [{ data: observations }, { data: contexts }, { data: nextCheckIn }, timeZone, circleNames, routineTimes] = await Promise.all([
     supabase.from("nura_observations").select("label, value, recorded_at").eq("owner_id", ownerId).eq("plan_id", planId).order("recorded_at", { ascending: false }).limit(8),
     supabase.from("nura_source_contexts").select("kind, title, summary, requires_user_confirmation").eq("owner_id", ownerId).eq("plan_id", planId).order("created_at", { ascending: false }).limit(8),
     supabase.from("nura_check_ins").select("scheduled_for, prompt, channel").eq("owner_id", ownerId).eq("plan_id", planId).is("completed_at", null).order("scheduled_for", { ascending: true }).limit(1).maybeSingle(),
     resolveUserTimeZone(supabase, ownerId),
     circleMemberFirstNames(supabase, planId).catch(() => [] as string[]),
+    loadRoutineTimes(supabase, ownerId).catch(() => ({})),
   ]);
 
   // Owner-only health summary; null unless they connected Apple Health / Health Connect.
@@ -105,6 +107,7 @@ export async function buildVoiceCheckinContext(
     `Current focus: ${plan.current_focus}`,
     `Next step: ${plan.next_step}`,
     `User timezone: ${timeZone}. Local time now: ${nowInfo.localLabel}. When scheduling a follow-up, use this timezone — never treat their wall-clock time as UTC.`,
+    `Usual times: ${describeRoutineTimes(routineTimes)}. If they ask for a follow-up "after work", "after school" or "after the school run", use the saved time; if it isn't saved, ask what time that usually is before scheduling.`,
     contexts && contexts.length > 0 ? `Care plan context:\n${contexts.map((item) => `- ${item.title}: ${item.summary}${item.requires_user_confirmation ? " (needs user confirmation)" : ""}`).join("\n")}` : "",
     observations && observations.length > 0 ? `Recent user updates:\n${observations.map((item) => `- ${item.label}: ${item.value}`).join("\n")}` : "",
     healthContext ?? "",

@@ -12,6 +12,7 @@ import {
 } from "@/lib/domain/journey-naming";
 import { NURA_CORE_IDENTITY, NURA_SAFETY_BOUNDARIES, NURA_TONE } from "@/lib/domain/nura-persona";
 import { primaryCheckinChannel } from "@/lib/domain/checkin-channel";
+import { describeRoutineTimes, normalizeRoutineTimes, type RoutineTimes } from "@/lib/domain/routine-times";
 import {
   DEFAULT_TIME_ZONE,
   describeNowForTimeZone,
@@ -42,6 +43,8 @@ export type NuraDecision = {
   plan_id: string | null;
   new_plan: NewPlanDraft | null;
   next_check_in: NextCheckIn | null;
+  /** Usual times the user just told Nura ("I finish work at 6"), to save on their profile. */
+  routine_times?: RoutineTimes | null;
 };
 
 export type PlanSummary = { id: string; title: string; current_focus: string | null; category?: string | null };
@@ -152,6 +155,7 @@ async function classifyWithClaude(
   requestedPlan: PlanSummary | null = null,
   timeZone: string = DEFAULT_TIME_ZONE,
   preferredChannel: string | null = null,
+  routineTimes: RoutineTimes = {},
 ): Promise<NuraDecision> {
   const hasPhoneOnFile = Boolean(phoneOnFile);
   // A channel can be allowed by preference but still unusable right now (voice with no phone
@@ -193,6 +197,10 @@ async function classifyWithClaude(
         "\n\nWhen you create a NEW Care plan (action = new_plan), that Care plan should almost always come with a follow-up — but do NOT silently lock in a time and channel. After responding as a person, ask (in the same reply, briefly) when would be a good time to check in, and whether they'd rather a phone call or a WhatsApp text — only offer modes from their allowed list below. While you're waiting for that answer, leave has_next_check_in false (create/attach the Care plan if ready, but don't schedule yet). Once they answer, honour their time and mode exactly and set next_check_in. If they already stated a time and/or mode in this thread, schedule immediately without re-asking. " +
         "\n\nWhen you attach to an EXISTING Care plan instead, only set a fresh next_check_in if something actually changed enough to warrant re-scheduling (new detail, explicit request, or the situation clearly shifted) - otherwise leave it null and let the existing schedule stand. Something the user explicitly asked about ('call me in 5 minutes', 'check in next Tuesday', 'move my check-in to Friday', 'reschedule to 3pm', 'check in on me from time to time') must always be honoured, overriding any existing schedule for that Care plan. If you're proposing a new follow-up time for an existing Care plan and they haven't said when or how, ask those two things first and leave has_next_check_in false until they answer. " +
         `\n\nTIMEZONE (critical): The user's timezone is ${tz}. Right now it is ${nowInfo.localLabel} there (UTC ${nowInfo.utcIso}). When the user says a clock time like "12:30pm", "tomorrow at 9", or "Thursday evening", interpret it in THEIR timezone (${tz}), NOT server UTC. Set next_check_in.when as ISO 8601 that includes their offset (e.g. 2026-08-07T12:30:00+01:00) or the correct equivalent instant — never treat their local wall clock as UTC/Z. Confirm times back to them in local terms (e.g. "12:30pm your time"). ` +
+        `\n\nROUTINE TIMES: people often anchor a check-in to their day instead of a clock time - "after work", "after school", "after the school run". This user's saved usual times: ${describeRoutineTimes(routineTimes)}. ` +
+        "If they anchor a check-in to one of these and its time is saved, use that time in their timezone without asking, and confirm it back naturally (e.g. \"6pm, after work as usual - tell me if that's changed\"). " +
+        "If its time is NOT saved, never guess: ask once, briefly, what time that usually is for them (e.g. \"What time do you usually finish work?\") and leave has_next_check_in false until they answer. Ask about the routine only, not anything else, in that reply. " +
+        "Whenever the user tells you a usual time for one of these (in this message or earlier in this thread), or says it has changed, put it in routine_times as 24-hour HH:MM in their local time so Nura remembers it, and schedule using it if they asked for a check-in. A one-off exception (\"I'm finishing late on Friday, call at 8\") is NOT a new routine: schedule that time and leave routine_times empty. " +
         "\n\nIMPORTANT - recurring vs one-off: next_check_in only ever represents a SINGLE point in time by itself, so if the user asks for an ONGOING or REPEATING pattern you MUST also set next_check_in.recurrence, not just pick one date. Phrases like 'check in on me daily', 'remind me every day to take my meds', 'check in each morning', 'check in on weekdays', or 'check in with me weekly' describe a repeating cadence - set recurrence to \"daily\", \"weekdays\", or \"weekly\" accordingly, and set next_check_in.when to the FIRST occurrence only (pick a sensible time of day for the purpose - e.g. morning for a medication reminder - unless the user specifies a time). The system will automatically lay down the full recurring series from that first occurrence; you never need to schedule each one yourself. For a normal single follow-up (the common case), leave recurrence as \"none\". Setting up a recurring reminder REPLACES any previous schedule for that Care plan, so say clearly in your reply what the new pattern is (e.g. 'I'll check in with you every morning at 9am about your medication') rather than only confirming a single date. " +
         "\n\nNura CAN place a real proactive phone check-in call (voice), or follow up on WhatsApp or in-app - never say you are unable to call or check in. " +
         `\n\nThe user has allowed Nura to proactively check in via: ${effectiveAllowedChannels.join(", ")}. next_check_in.channel must always be one of these - never propose a channel they haven't allowed, even if it would otherwise fit. If the user asks for a channel they haven't enabled (e.g. asks you to call when voice isn't in that list), gently say in your reply that you can't call them yet and they can turn calls on in Settings, then schedule the follow-up on the closest allowed channel instead. ` +
@@ -290,8 +298,18 @@ async function classifyWithClaude(
                 },
                 required: ["when", "prompt", "channel", "recurrence"],
               },
+              routine_times: {
+                type: "object",
+                description: "Usual times the user just stated for their routine anchors, as 24-hour HH:MM local time. Empty string for any anchor they didn't state in this conversation.",
+                properties: {
+                  after_work: { type: "string", description: "When they usually finish work, e.g. \"18:00\", or \"\"." },
+                  after_school: { type: "string", description: "When school usually finishes for them or their children, or \"\"." },
+                  after_school_run: { type: "string", description: "When they're usually back from the school run, or \"\"." },
+                },
+                required: ["after_work", "after_school", "after_school_run"],
+              },
             },
-            required: ["reply", "action", "plan_id", "new_plan", "has_next_check_in", "next_check_in"],
+            required: ["reply", "action", "plan_id", "new_plan", "has_next_check_in", "next_check_in", "routine_times"],
           },
         },
       ],
@@ -324,6 +342,7 @@ async function classifyWithClaude(
       };
       has_next_check_in: boolean;
       next_check_in: { when: string; prompt: string; channel: string; recurrence?: string };
+      routine_times?: Record<string, string>;
     };
 
     if (!raw.reply || !raw.action) {
@@ -369,14 +388,17 @@ async function classifyWithClaude(
     // requestedPlan means the user is inside that Journey's own conversation view - pin the
     // attachment server-side too, regardless of what the model picked, so it can never drift
     // to a different Journey; everything else (reply, next_check_in) stays the model's real output.
+    const learned = normalizeRoutineTimes(raw.routine_times);
+    const routine_times = Object.keys(learned).length > 0 ? learned : null;
     const parsed: NuraDecision = requestedPlan
-      ? { reply: raw.reply, action: "existing_plan", plan_id: requestedPlan.id, new_plan: null, next_check_in: nextCheckIn }
+      ? { reply: raw.reply, action: "existing_plan", plan_id: requestedPlan.id, new_plan: null, next_check_in: nextCheckIn, routine_times }
       : {
           reply: raw.reply,
           action: raw.action,
           plan_id: raw.action === "existing_plan" && raw.plan_id ? raw.plan_id : null,
           new_plan: newPlan,
           next_check_in: nextCheckIn,
+          routine_times,
         };
     return parsed;
   } catch (err) {
@@ -404,6 +426,7 @@ export async function resolveDecision(
   allowedChannels: NextCheckIn["channel"][] = ["voice", "whatsapp", "in_app"],
   timeZone: string = DEFAULT_TIME_ZONE,
   preferredChannel: string | null = null,
+  routineTimes: RoutineTimes = {},
 ): Promise<NuraDecision> {
   const fallback = outageDecision(AI_SLOW_REPLY, requestedPlan?.id ?? null);
 
@@ -422,6 +445,7 @@ export async function resolveDecision(
       requestedPlan ?? null,
       timeZone,
       preferredChannel,
+      routineTimes,
     ),
     fallback,
   );

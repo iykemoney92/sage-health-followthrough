@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { loadRoutineTimes, saveRoutineTimes } from "@/lib/domain/routine-times";
 import { enforceThreadLimit, requirePlusAccess } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { resolveDecision, applyPlanDecision, applyNextCheckIn, insertConversationTurn, type PlanContext, type HistoryTurn } from "@/lib/domain/message-intake";
@@ -113,7 +114,9 @@ export async function POST(request: NextRequest) {
 
   // WhatsApp always carries a caller phone, so a voice check-in is always reachable here.
   const timeZone = await resolveUserTimeZone(supabase, ownerId, { phoneDigits: phone });
-  const decision = await resolveDecision(content, plans ?? [], [], (contexts ?? []) as PlanContext[], null, history, phone, [], [], "whatsapp", allowedChannels, timeZone, preferredChannel);
+  const routineTimes = await loadRoutineTimes(supabase, ownerId);
+  const decision = await resolveDecision(content, plans ?? [], [], (contexts ?? []) as PlanContext[], null, history, phone, [], [], "whatsapp", allowedChannels, timeZone, preferredChannel, routineTimes);
+  await saveRoutineTimes(supabase, ownerId, routineTimes, decision.routine_times);
   const threadLimit = await enforceThreadLimit(supabase, ownerId, plans?.length ?? 0, decision.action === "new_plan");
   if (threadLimit) return threadLimit;
 
