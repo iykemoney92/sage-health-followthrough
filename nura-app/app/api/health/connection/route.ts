@@ -1,18 +1,28 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
-import { deleteHealthData, getActiveHealthConnection } from "@/lib/health/health-store";
+import { deleteHealthData, listActiveHealthConnections } from "@/lib/health/health-store";
 import { HEALTH_CONSENT_VERSION, HEALTH_METRICS, HEALTH_PLATFORMS } from "@/lib/health/metrics";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
-/** The signed-in person's health connection, if any. */
-export async function GET() {
+/**
+ * The signed-in person's health connection, if any. A phone passes `?platform=` and
+ * gets only its own: an Apple Health connection made on an iPhone must not show up as
+ * "connected" on their Android phone, or be synced from it. `other_platforms` lists the
+ * rest so the card can mention them.
+ */
+export async function GET(request: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
+  const requested = z.enum(HEALTH_PLATFORMS).safeParse(new URL(request.url).searchParams.get("platform"));
   const supabase = await getSupabaseSessionClient();
-  const connection = await getActiveHealthConnection(supabase, user.id);
+  const connections = await listActiveHealthConnections(supabase, user.id);
+  const connection = requested.success
+    ? (connections.find((c) => c.platform === requested.data) ?? null)
+    : (connections[0] ?? null);
   return NextResponse.json({
+    other_platforms: connections.filter((c) => c !== connection).map((c) => c.platform),
     ok: true,
     connection: connection
       ? {

@@ -2,12 +2,15 @@
 
 import { useEffect } from "react";
 import { App as CapacitorApp } from "@capacitor/app";
-import { isHealthPluginPresent, syncHealthData } from "@/lib/health/native-health";
+import { isHealthPluginPresent, nativeHealthPlatform, syncHealthData } from "@/lib/health/native-health";
 
 type ConnectionResponse = { ok: boolean; connection: { last_synced_at: string | null } | null };
 
 async function syncIfConnected() {
-  const response = await fetch("/api/health/connection", { cache: "no-store" }).catch(() => null);
+  // Only this phone's own connection: an Apple Health consent says nothing about Health Connect.
+  const response = await fetch(`/api/health/connection?platform=${nativeHealthPlatform()}`, { cache: "no-store" }).catch(
+    () => null,
+  );
   if (!response?.ok) return; // signed out, or no consent yet
   const body = (await response.json().catch(() => null)) as ConnectionResponse | null;
   if (!body?.connection) return;
