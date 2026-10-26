@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { ArrowRight } from "lucide-react";
 import { NuraLogo } from "@/components/nura-logo";
 import { LandingSprout } from "@/components/landing-sprout";
@@ -11,10 +12,14 @@ import { getSessionUser } from "@/lib/integrations/supabase-server";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
 import "./landing.css";
 
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+  openGraph: { url: "/" },
+};
+
 // Ties Nura to Zapx Labs and its store listings so search and AI assistants
 // can tell this Nura apart from other products with the same name.
-const jsonLd = {
-  "@context": "https://schema.org",
+const appJsonLd = {
   "@type": "SoftwareApplication",
   "@id": "https://usenura.app/#app",
   name: "Nura",
@@ -35,6 +40,20 @@ const jsonLd = {
     "https://apps.apple.com/app/id6804203569",
     "https://play.google.com/store/apps/details?id=app.usenura.mobile",
     "https://alternativeto.net/software/nura-zapx-labs-/",
+  ],
+};
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    appJsonLd,
+    {
+      "@type": "WebSite",
+      "@id": "https://usenura.app/#website",
+      name: "Nura",
+      url: "https://usenura.app",
+      publisher: { "@id": "https://zapxlabs.com/#organization" },
+    },
   ],
 };
 

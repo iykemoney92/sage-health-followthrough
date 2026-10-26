@@ -16,5 +16,10 @@ Clinicians treat in the visit; most care after that is carried by you, family, f
 - [Nura on the App Store](https://apps.apple.com/app/id6804203569)
 - [Nura on Google Play](https://play.google.com/store/apps/details?id=app.usenura.mobile)
 - [Privacy](https://usenura.app/privacy)
+- [How Nura uses data](https://usenura.app/data-use)
+- [Terms](https://usenura.app/terms)
+- [Delete your account](https://usenura.app/delete-account)
 - [Nura on Zapx Labs](https://zapxlabs.com/products/nura)
 - [Zapx Labs](https://zapxlabs.com)
+
+Made by Zapx Labs (https://zapxlabs.com).

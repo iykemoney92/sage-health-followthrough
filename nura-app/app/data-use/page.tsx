@@ -1,4 +1,12 @@
+import type { Metadata } from "next";
 import { LegalPage } from "../legal-content";
+
+export const metadata: Metadata = {
+  title: "How Nura uses data",
+  description:
+    "How Nura uses the context you share — messages, Care plans, check-ins, attachments and health data — to help you follow through between appointments.",
+  alternates: { canonical: "/data-use" },
+};
 
 const sections = [
   {
