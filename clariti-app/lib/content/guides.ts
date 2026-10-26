@@ -35,6 +35,7 @@ export type Guide = {
   getHelp: string;
   faqs: { question: string; answer: string }[];
   ctaPrompt: string;
+  /** Slugs from GUIDES or TOPICS (lib/content/topics.ts). */
   related: string[];
 };
 
@@ -118,7 +119,7 @@ export const GUIDES: Guide[] = [
       },
     ],
     ctaPrompt: "Have an EOB you can’t make sense of? Attach it or take a photo, and Clariti will walk through each line.",
-    related: ["understand-your-medical-bill", "lab-results-explained"],
+    related: ["eob-vs-medical-bill", "patient-responsibility-on-eob", "claim-denied-on-eob", "understand-your-medical-bill"],
   },
   {
     slug: "understand-your-medical-bill",
@@ -197,7 +198,7 @@ export const GUIDES: Guide[] = [
       },
     ],
     ctaPrompt: "Got a bill that doesn’t add up? Attach it or take a photo, and Clariti will explain each charge and what to ask.",
-    related: ["how-to-read-an-eob", "discharge-summary-explained"],
+    related: ["how-to-check-a-hospital-bill-for-errors", "cpt-code-on-medical-bill", "why-two-bills-for-one-hospital-visit", "how-to-read-an-eob"],
   },
   {
     slug: "lab-results-explained",
@@ -265,7 +266,7 @@ export const GUIDES: Guide[] = [
       },
     ],
     ctaPrompt: "Got a lab report you can’t decode? Attach it or paste the text, and Clariti will explain each line and what to ask.",
-    related: ["discharge-summary-explained", "how-to-read-an-eob"],
+    related: ["what-does-reference-range-mean", "cbc-results-explained", "high-or-low-mcv", "discharge-summary-explained"],
   },
   {
     slug: "discharge-summary-explained",
@@ -339,7 +340,7 @@ export const GUIDES: Guide[] = [
       },
     ],
     ctaPrompt: "Got a discharge summary full of abbreviations? Attach it or paste the text, and Clariti will explain each section and what to do next.",
-    related: ["lab-results-explained", "understand-your-medical-bill"],
+    related: ["discharge-summary-abbreviations", "lab-results-explained", "understand-your-medical-bill"],
   },
 ];
 

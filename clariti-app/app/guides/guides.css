@@ -234,3 +234,40 @@
     white-space: normal;
   }
 }
+
+/* Second-wave topic pages (lib/content/topics.ts). */
+.guide-answer {
+  margin: 0 0 8px;
+  padding: 14px 16px;
+  border-left: 3px solid #4d8d83;
+  background: #f3f8f6;
+  border-radius: 0 12px 12px 0;
+  color: #2f4c45;
+  font-size: 1.0625rem;
+}
+.guide-page > p {
+  margin: 0 0 14px;
+}
+.guide-cta .guide-cta-note {
+  margin: 14px 0 0;
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: #5d6d68;
+}
+.guide-aside {
+  margin: 14px 0 0;
+  font-size: 0.875rem;
+  color: #6a7a75;
+}
+.guide-index-section {
+  margin-top: 40px;
+}
+.guide-index-section > p {
+  margin: 0;
+  color: #6a7a75;
+}
+.guide-index-more {
+  margin-top: 40px;
+  font-size: 0.875rem;
+  color: #6a7a75;
+}

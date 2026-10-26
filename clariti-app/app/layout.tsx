@@ -68,7 +68,7 @@ const jsonLd = {
   description,
   url: appUrl,
   applicationCategory: "HealthApplication",
-  operatingSystem: "Web, Android",
+  operatingSystem: "Web, Android, iOS",
   publisher: {
     "@type": "Organization",
     "@id": "https://zapxlabs.com/#organization",
@@ -78,6 +78,7 @@ const jsonLd = {
   sameAs: [
     "https://zapxlabs.com/products/clariti",
     "https://play.google.com/store/apps/details?id=app.useclariti.mobile",
+    "https://apps.apple.com/app/id6806667378",
   ],
 };
 
