@@ -72,6 +72,7 @@ export function LegalPage({ eyebrow, title, intro, sections, active, updated = "
           <StoreBadges placement="legal_footer" compact />
         </div>
         <nav aria-label="Legal links">
+          <Link href="/guides">Guides</Link>
           {navItems.map((item) => (
             <Link key={item.id} href={item.href}>
               {item.label}

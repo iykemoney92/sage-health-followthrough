@@ -10,6 +10,38 @@ Clinicians treat in the visit; most care after that is carried by you, family, f
 2. It becomes a Care plan, so context doesn't scatter across chats, paper, and memory.
 3. Care continues with check-ins: gentle follow-ups bring the next step back when life gets busy.
 
+## Guides
+
+Plain-English guides on following through between appointments: medicines, appointments and results, symptoms, recovery at home, and caring for someone. General information, not medical advice; each guide links its NHS sources.
+
+- [All guides](https://usenura.app/guides)
+- [How to remember to take your medication](https://usenura.app/guides/how-to-remember-to-take-medication)
+- [Medication reminders for an elderly parent: what actually works](https://usenura.app/guides/medication-reminder-for-elderly-parent)
+- [Missed a dose of your medication? What to do next](https://usenura.app/guides/missed-a-dose-of-medication-what-to-do)
+- [How to keep an up-to-date list of your medications](https://usenura.app/guides/how-to-keep-a-list-of-your-medications)
+- [Questions to ask when you're prescribed a new medicine](https://usenura.app/guides/questions-to-ask-about-a-new-medicine)
+- [Questions to ask your doctor at your appointment](https://usenura.app/guides/questions-to-ask-your-doctor)
+- [How to prepare for a GP appointment](https://usenura.app/guides/how-to-prepare-for-a-gp-appointment)
+- [How to remember what the doctor said](https://usenura.app/guides/how-to-remember-what-the-doctor-said)
+- [How to follow up on test results (and what to do if you hear nothing)](https://usenura.app/guides/how-to-follow-up-on-test-results)
+- [How to stick to a new routine after a doctor's appointment](https://usenura.app/guides/how-to-stick-to-a-plan-after-a-doctors-appointment)
+- [How to keep track of symptoms between appointments](https://usenura.app/guides/how-to-keep-track-of-symptoms-between-appointments)
+- [Symptoms changed between appointments? Who to contact](https://usenura.app/guides/who-to-contact-when-symptoms-change-between-appointments)
+- [What to do after being discharged from hospital: a checklist](https://usenura.app/guides/what-to-do-after-being-discharged-from-hospital)
+- [How to look after yourself recovering from surgery at home](https://usenura.app/guides/how-to-recover-from-surgery-at-home)
+- [How to stick to your physio exercises at home](https://usenura.app/guides/how-to-stick-to-physio-exercises-at-home)
+- [How to check on an elderly parent who lives alone](https://usenura.app/guides/how-to-check-on-an-elderly-parent-who-lives-alone)
+- [Daily check-in calls for elderly parents: how they work](https://usenura.app/guides/daily-check-in-calls-for-elderly-parents)
+- [How to care for an ageing parent from a distance](https://usenura.app/guides/caring-for-a-parent-from-a-distance)
+- [How to share the care of a parent with your siblings](https://usenura.app/guides/how-to-share-the-care-of-a-parent-with-siblings)
+- [How to keep family updated about your health (without retelling it every time)](https://usenura.app/guides/how-to-share-health-updates-with-family)
+- [How to look after yourself when you're caring for someone](https://usenura.app/guides/looking-after-yourself-as-a-carer)
+- [How to support a parent after a hospital stay](https://usenura.app/guides/checking-on-a-parent-after-a-hospital-stay)
+- [How to build a new health habit that actually sticks](https://usenura.app/guides/how-to-build-a-new-health-habit)
+- [How to get into a better sleep routine](https://usenura.app/guides/how-to-get-into-a-sleep-routine)
+- [How to manage work stress before it affects your health](https://usenura.app/guides/how-to-manage-stress-from-work)
+- [What is a care and support plan, and how do you keep track of yours?](https://usenura.app/guides/what-is-a-care-and-support-plan)
+
 ## Links
 
 - [Nura](https://usenura.app): Home (web)
