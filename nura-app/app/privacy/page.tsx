@@ -1,5 +1,13 @@
 import { CookieChoiceButton } from "@/components/cookie-choice-button";
+import type { Metadata } from "next";
 import { LegalPage } from "../legal-content";
+
+export const metadata: Metadata = {
+  title: "Privacy",
+  description:
+    "What Nura remembers, who processes your data, how Apple Health and Health Connect are handled, and how to control or delete what you share.",
+  alternates: { canonical: "/privacy" },
+};
 
 function buildSections(supportEmail: string) {
   return [

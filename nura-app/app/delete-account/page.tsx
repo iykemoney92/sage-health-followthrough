@@ -4,6 +4,7 @@ import { LegalPage } from "../legal-content";
 export const metadata: Metadata = {
   title: "Delete your account",
   description: "How to permanently delete your Nura account and everything it holds, from inside the app or by email.",
+  alternates: { canonical: "/delete-account" },
 };
 
 function buildSections(supportEmail: string) {

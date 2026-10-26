@@ -1,4 +1,12 @@
+import type { Metadata } from "next";
 import { LegalPage } from "../legal-content";
+
+export const metadata: Metadata = {
+  title: "Terms",
+  description:
+    "The terms for using Nura, the health and wellbeing care companion from Zapx Labs: what Nura is, what it is not, and your responsibilities.",
+  alternates: { canonical: "/terms" },
+};
 
 function buildSections(supportEmail: string) {
   return [

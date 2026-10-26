@@ -28,9 +28,34 @@ const dmSans = DM_Sans({
   display: "swap",
 });
 
+const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "https://usenura.app";
+
+// Search results cut descriptions at ~160 characters; the longer
+// NURA_PRODUCT.metaDescription still feeds the landing copy.
+const description =
+  "Nura is a health and wellbeing companion that helps you follow through after the GP, clinic or hospital, with Care plans and gentle check-ins.";
+const title = `Nura — ${NURA_PRODUCT.tagline}`;
+
 export const metadata: Metadata = {
-  title: `Nura — ${NURA_PRODUCT.tagline}`,
-  description: NURA_PRODUCT.metaDescription,
+  // Relative URLs below (canonicals, the generated share image) resolve against
+  // this; without it Next falls back to localhost.
+  metadataBase: new URL(appUrl),
+  title: { default: title, template: "%s · Nura" },
+  description,
+  applicationName: "Nura",
+  openGraph: {
+    type: "website",
+    siteName: "Nura",
+    title,
+    description,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+  },
+  // iPhone Smart App Banner (Safari only; does nothing inside the app shell).
+  itunes: { appId: "6804203569" },
   icons: {
     icon: [
       { url: "/brand/nura-app-icon.png", type: "image/png", sizes: "512x512" },

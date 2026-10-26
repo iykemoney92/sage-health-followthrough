@@ -4,6 +4,12 @@ import { track } from "@/lib/analytics";
 import { ANDROID_PLAY_STORE_URL, IOS_APP_STORE_URL } from "@/lib/store-links";
 import { useIsNativeShell } from "@/components/platform-copy";
 
+// Tags web installs so Play Console shows them by source (marketing/utm/tagged-links.md).
+const PLAY_REFERRER = "utm_source%3Dsite%26utm_medium%3Dweb%26utm_campaign%3Dnura_nov26";
+const TAGGED_PLAY_STORE_URL = ANDROID_PLAY_STORE_URL.includes("referrer=")
+  ? ANDROID_PLAY_STORE_URL
+  : `${ANDROID_PLAY_STORE_URL}${ANDROID_PLAY_STORE_URL.includes("?") ? "&" : "?"}referrer=${PLAY_REFERRER}`;
+
 /**
  * "Download on the App Store" / "Get it on Google Play" buttons.
  *
@@ -36,7 +42,7 @@ export function StoreBadges({ placement, compact = false }: { placement: string;
       </a>
       <a
         className="store-badge"
-        href={ANDROID_PLAY_STORE_URL}
+        href={TAGGED_PLAY_STORE_URL}
         target="_blank"
         rel="noopener noreferrer"
         onClick={() => track("store_badge_click", { store: "google", placement })}
