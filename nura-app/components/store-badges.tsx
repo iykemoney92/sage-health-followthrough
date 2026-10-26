@@ -16,9 +16,22 @@ const TAGGED_PLAY_STORE_URL = ANDROID_PLAY_STORE_URL.includes("referrer=")
  * Rendered on the web only: inside the iOS or Android shell the visitor is
  * already in the app, and a store button there reads as a bug.
  */
-export function StoreBadges({ placement, compact = false }: { placement: string; compact?: boolean }) {
+export function StoreBadges({
+  placement,
+  compact = false,
+  utmContent,
+}: {
+  placement: string;
+  compact?: boolean;
+  /** Adds utm_content to the Play referrer, e.g. "guide" on the /guides pages. */
+  utmContent?: string;
+}) {
   const native = useIsNativeShell();
   if (native) return null;
+  const playHref =
+    utmContent && !ANDROID_PLAY_STORE_URL.includes("referrer=")
+      ? `${TAGGED_PLAY_STORE_URL}${encodeURIComponent(`&utm_content=${utmContent}`)}`
+      : TAGGED_PLAY_STORE_URL;
 
   return (
     <div className={`store-badges${compact ? " store-badges-compact" : ""}`} aria-label="Get the Nura app">
@@ -42,7 +55,7 @@ export function StoreBadges({ placement, compact = false }: { placement: string;
       </a>
       <a
         className="store-badge"
-        href={TAGGED_PLAY_STORE_URL}
+        href={playHref}
         target="_blank"
         rel="noopener noreferrer"
         onClick={() => track("store_badge_click", { store: "google", placement })}
