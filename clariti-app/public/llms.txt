@@ -2,7 +2,7 @@
 
 > Clariti, made by Zapx Labs, reads confusing health paperwork — medical bills, insurance EOBs, lab results, radiology reports, discharge summaries, medication lists and letters — explains it in plain language, and helps you work out what to ask next.
 
-Attach a document, take a photo, or paste the text, and Clariti explains one document at a time. It explains paperwork; it does not diagnose, and it does not replace advice from your doctor, pharmacist or insurer.
+Attach a document, take a photo, or paste the text, and Clariti explains one document at a time. The first 3 analyses are free; Clariti Plus removes the limit. It runs on the web, Android and iPhone. It explains paperwork; it does not diagnose, and it does not replace advice from your doctor, pharmacist or insurer.
 
 ## What it explains
 
@@ -15,15 +15,57 @@ Attach a document, take a photo, or paste the text, and Clariti explains one doc
 
 ## Guides
 
+- [All guides](https://useclariti.app/guides): Index of every guide
+
+### Document walkthroughs
+
 - [How to read an explanation of benefits (EOB)](https://useclariti.app/guides/how-to-read-an-eob)
 - [How to understand a medical bill (and spot errors)](https://useclariti.app/guides/understand-your-medical-bill)
 - [How to read your lab results](https://useclariti.app/guides/lab-results-explained)
 - [How to understand your hospital discharge summary](https://useclariti.app/guides/discharge-summary-explained)
+
+### Insurance EOBs and claims
+
+- [EOB vs medical bill: what’s the difference?](https://useclariti.app/guides/eob-vs-medical-bill)
+- [What does “patient responsibility” mean on an EOB?](https://useclariti.app/guides/patient-responsibility-on-eob)
+- [What is the “allowed amount” on an EOB?](https://useclariti.app/guides/allowed-amount-on-eob)
+- [Deductible vs copay vs coinsurance on your EOB](https://useclariti.app/guides/deductible-copay-coinsurance)
+- [Out-of-pocket maximum explained, using your EOB](https://useclariti.app/guides/out-of-pocket-maximum-explained)
+- [Claim denied on your EOB? What it means and how to appeal](https://useclariti.app/guides/claim-denied-on-eob)
+- [What do the remark codes on an EOB mean?](https://useclariti.app/guides/eob-remark-codes)
+- [Out of network on your EOB? Balance billing explained](https://useclariti.app/guides/out-of-network-and-balance-billing)
+
+### Medical bills and codes
+
+- [What is a CPT code on my medical bill?](https://useclariti.app/guides/cpt-code-on-medical-bill)
+- [What is an ICD-10 code on a medical bill or EOB?](https://useclariti.app/guides/icd-10-code-on-medical-bill)
+- [How to check a hospital bill for errors, step by step](https://useclariti.app/guides/how-to-check-a-hospital-bill-for-errors)
+- [Why did I get two bills for one hospital visit?](https://useclariti.app/guides/why-two-bills-for-one-hospital-visit)
+- [ER visit levels 99281–99285 on a bill, explained](https://useclariti.app/guides/er-visit-level-codes-99281-99285)
+- [Good faith estimate: what it is and the $400 rule](https://useclariti.app/guides/good-faith-estimate)
+
+### Lab and blood test results
+
+- [What does “reference range” mean on lab results?](https://useclariti.app/guides/what-does-reference-range-mean)
+- [CBC blood test results explained (full blood count)](https://useclariti.app/guides/cbc-results-explained)
+- [What does high or low MCV mean on a blood test?](https://useclariti.app/guides/high-or-low-mcv)
+- [Lipid panel (cholesterol test) results explained](https://useclariti.app/guides/lipid-panel-results-explained)
+- [HbA1c result explained: % and mmol/mol](https://useclariti.app/guides/hba1c-result-explained)
+- [eGFR result explained: what the number means](https://useclariti.app/guides/egfr-result-explained)
+- [Comprehensive metabolic panel (CMP) results explained](https://useclariti.app/guides/comprehensive-metabolic-panel-explained)
+- [TSH and thyroid test results explained](https://useclariti.app/guides/tsh-result-explained)
+
+### Hospital paperwork
+
+- [Discharge summary abbreviations: TDS, BD, PRN and more](https://useclariti.app/guides/discharge-summary-abbreviations)
+
+For the wording on X-ray, CT, MRI and ultrasound reports, see Radily's report phrase guides: https://radily.ai/report-phrases
 
 ## Links
 
 - [Clariti](https://useclariti.app): Home
 - [Example analysis](https://useclariti.app/example): An invented report, explained
 - [Clariti on Google Play](https://play.google.com/store/apps/details?id=app.useclariti.mobile)
+- [Clariti on the App Store](https://apps.apple.com/app/id6806667378)
 - [Clariti on Zapx Labs](https://zapxlabs.com/products/clariti)
 - [Zapx Labs](https://zapxlabs.com)

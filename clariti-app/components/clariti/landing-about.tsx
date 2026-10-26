@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FREE_DOCUMENT_LIMIT } from "@/lib/billing/subscription";
 import { GUIDES } from "@/lib/content/guides";
+import { TOPICS } from "@/lib/content/topics";
 
 // Server-rendered on purpose: this is the part of "/" a search engine reads.
 // Every claim here is one the product makes elsewhere — llms.txt, the billing
@@ -108,6 +109,10 @@ export function LandingAbout() {
               <Link href={`/guides/${guide.slug}`}>{guide.metaTitle}</Link>
             </li>
           ))}
+          <li>
+            <Link href="/guides">All {GUIDES.length + TOPICS.length} guides</Link> — EOB terms, billing codes, blood
+            tests and hospital shorthand
+          </li>
         </ul>
 
         <h2>Questions people ask</h2>

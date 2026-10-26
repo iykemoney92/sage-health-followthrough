@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { ClaritiShell } from "@/components/clariti-shell";
 import { GUIDES, getGuide } from "@/lib/content/guides";
+import { TOPICS, getTopic } from "@/lib/content/topics";
+import { GuideCta, GuideFoot } from "../guide-parts";
+import { TopicArticle } from "./topic-article";
 import "../guides.css";
 
 // Not in PROTECTED_PREFIXES in proxy.ts, like /example: these answer before sign-in.
@@ -14,11 +17,12 @@ const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "ht
 type Props = { params: Promise<{ slug: string }> };
 
 export function generateStaticParams() {
-  return GUIDES.map((guide) => ({ slug: guide.slug }));
+  return [...GUIDES, ...TOPICS].map((guide) => ({ slug: guide.slug }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const guide = getGuide((await params).slug);
+  const slug = (await params).slug;
+  const guide = getGuide(slug) ?? getTopic(slug);
   if (!guide) return {};
   return {
     title: guide.metaTitle,
@@ -38,7 +42,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function GuidePage({ params }: Props) {
-  const guide = getGuide((await params).slug);
+  const slug = (await params).slug;
+  const topic = getTopic(slug);
+  if (topic) return <TopicArticle topic={topic} appUrl={appUrl} />;
+  const guide = getGuide(slug);
   if (!guide) notFound();
 
   const url = `${appUrl}/guides/${guide.slug}`;
@@ -72,7 +79,7 @@ export default async function GuidePage({ params }: Props) {
       ],
     },
   ];
-  const related = guide.related.map(getGuide).filter((g) => g !== undefined);
+  const related = guide.related.map((other) => getGuide(other) ?? getTopic(other)).filter((g) => g !== undefined);
 
   return (
     <ClaritiShell>
@@ -145,15 +152,7 @@ export default async function GuidePage({ params }: Props) {
           <p>{guide.getHelp}</p>
         </aside>
 
-        <section className="guide-cta" aria-label="Try Clariti">
-          <p>{guide.ctaPrompt}</p>
-          <div className="guide-cta-actions">
-            <Link className="guide-cta-primary" href="/">
-              Explain my document <ArrowRight aria-hidden="true" />
-            </Link>
-            <Link href="/example">See an example analysis first</Link>
-          </div>
-        </section>
+        <GuideCta prompt={guide.ctaPrompt} />
 
         <h2>Common questions</h2>
         <dl className="guide-faq">
@@ -178,10 +177,7 @@ export default async function GuidePage({ params }: Props) {
           </>
         )}
 
-        <footer className="guide-foot">
-          The examples on this page are invented. Clariti explains paperwork in plain language; it does not diagnose or
-          replace advice from your doctor, pharmacist or insurer.
-        </footer>
+        <GuideFoot invented />
       </article>
     </ClaritiShell>
   );
