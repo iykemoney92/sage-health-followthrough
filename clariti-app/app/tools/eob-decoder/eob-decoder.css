@@ -1,0 +1,282 @@
+/* /tools/eob-decoder — the calculator inside a guide-page article.
+   Same palette and measure as guides.css; inputs stay 16px so iOS doesn't zoom. */
+
+.eob-tool {
+  margin: 24px 0 0;
+  padding: 18px;
+  border: 1px solid #d5e6e0;
+  border-radius: 16px;
+  background: #fff;
+}
+.eob-tool:focus-within {
+  border-color: #bfd1cb;
+}
+.eob-paste {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f3f8f6;
+}
+.eob-paste summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #2f6e66;
+}
+.eob-paste label {
+  display: block;
+  margin: 10px 0 6px;
+  font-size: 0.875rem;
+  color: #5d6d68;
+}
+.eob-paste textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid #cfdcd7;
+  border-radius: 10px;
+  font: 1rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #263934;
+  background: #fff;
+  resize: vertical;
+}
+.eob-paste .eob-secondary {
+  margin-top: 10px;
+}
+.eob-note {
+  margin: 10px 0 0;
+  font-size: 0.875rem;
+  color: #355f57;
+}
+.eob-group {
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.eob-group > legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-weight: 700;
+  color: #263934;
+}
+.eob-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 12px;
+}
+.eob-field {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+.eob-field label {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #3e4f4a;
+}
+.eob-field small {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #87938e;
+}
+.eob-money {
+  display: flex;
+  align-items: center;
+  border: 1px solid #cfdcd7;
+  border-radius: 10px;
+  background: #fff;
+  padding-left: 10px;
+}
+.eob-money:focus-within,
+.eob-paste textarea:focus,
+.eob-field select:focus {
+  outline: 2px solid #4d8d83;
+  outline-offset: 1px;
+}
+.eob-money span {
+  color: #87938e;
+  font-weight: 700;
+}
+.eob-money input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  padding: 10px 10px 10px 6px;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+  color: #263934;
+}
+.eob-money:has(input[aria-invalid="true"]) {
+  border-color: #c0573f;
+}
+.eob-field select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #cfdcd7;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 1rem;
+  color: #263934;
+}
+.eob-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+.eob-choices legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #3e4f4a;
+}
+.eob-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  color: #3e4f4a;
+}
+.eob-choice input {
+  width: 18px;
+  height: 18px;
+  accent-color: #4d8d83;
+}
+.eob-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.eob-primary,
+.eob-secondary {
+  padding: 11px 18px;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.eob-primary {
+  border: 0;
+  background: #4d8d83;
+  color: #fff;
+}
+.eob-primary:hover {
+  background: #3e7e75;
+}
+.eob-secondary {
+  border: 1px solid #cfdcd7;
+  background: #fff;
+  color: #2f6e66;
+}
+.eob-secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.eob-error {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fbeeea;
+  color: #8a3b29;
+  font-size: 0.9375rem;
+}
+.eob-result:focus {
+  outline: none;
+}
+.eob-result h2 {
+  margin-top: 28px;
+}
+.eob-total {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 8px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #e7f2ef;
+  color: #2f4c45;
+}
+.eob-total span {
+  font-weight: 600;
+}
+.eob-total b {
+  font: 500 2rem/1.2 Georgia, "Times New Roman", serif;
+  font-variant-numeric: tabular-nums;
+  color: #233330;
+}
+.eob-total small {
+  font-size: 0.875rem;
+  color: #5d6d68;
+}
+.eob-findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.eob-finding {
+  /* auth.css makes every li a flex row; this one wants that, with its own gap. */
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #e1e7e4;
+}
+.eob-finding svg {
+  width: 20px;
+  height: 20px;
+  margin-top: 3px;
+}
+.eob-finding b {
+  color: #263934;
+}
+.eob-finding p {
+  margin: 2px 0 0;
+  font-size: 0.9375rem;
+  color: #4d5e59;
+}
+.eob-ok {
+  background: #eef7f1;
+  border-color: #cfe5d6;
+}
+.eob-ok svg {
+  color: #2f7a4c;
+}
+.eob-check {
+  background: #fff8e8;
+  border-color: #e4d9b3;
+}
+.eob-check svg {
+  color: #9a6a0c;
+}
+.eob-info {
+  background: #eef3fb;
+  border-color: #cfdcf0;
+}
+.eob-info svg {
+  color: #33507a;
+}
+.eob-figure {
+  font-variant-numeric: tabular-nums;
+  color: #245e55;
+}
+.eob-steps {
+  margin: 0;
+  padding-left: 22px;
+}
+.eob-steps li {
+  display: list-item;
+  margin-bottom: 8px;
+}
+.guide-related small {
+  color: #87938e;
+  font-weight: 400;
+}
+

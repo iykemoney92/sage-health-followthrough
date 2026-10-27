@@ -271,3 +271,17 @@
   font-size: 0.875rem;
   color: #6a7a75;
 }
+
+/* Promo box on guide pages and the /guides index (ToolPromo in guide-parts.tsx) — links a free tool from its related guides. */
+.tool-promo {
+  margin: 22px 0 0;
+  padding: 16px 18px;
+  border: 1px dashed #9cc3b9;
+  border-radius: 14px;
+  background: #f3f8f6;
+}
+.tool-promo p {
+  margin: 4px 0 0;
+  color: #4d5e59;
+  font-size: 0.9375rem;
+}

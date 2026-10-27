@@ -110,6 +110,9 @@ export function LandingAbout() {
             </li>
           ))}
           <li>
+            <Link href="/tools/eob-decoder">Free EOB decoder</Link> — check what you owe and whether the bill matches
+          </li>
+          <li>
             <Link href="/guides">All {GUIDES.length + TOPICS.length} guides</Link> — EOB terms, billing codes, blood
             tests and hospital shorthand
           </li>
@@ -127,6 +130,7 @@ export function LandingAbout() {
 
         <p className="clariti-about-foot">
           Clariti is made by <a href="https://zapxlabs.com/products/clariti">Zapx Labs</a>.{" "}
+          <Link href="/guides">Guides</Link> · <Link href="/tools/eob-decoder">EOB decoder</Link> ·{" "}
           <Link href="/privacy">Privacy</Link> · <Link href="/terms">Terms</Link>
         </p>
         {/* Altern's free listing requires its badge on the homepage, and its
