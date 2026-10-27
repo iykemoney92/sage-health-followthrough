@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react";
 import { WebOnly } from "@/components/web-only";
 import { FREE_DOCUMENT_LIMIT } from "@/lib/billing/subscription";
 import { APP_STORE_URL, GUIDE_APP_HREF, GUIDE_PLAY_HREF } from "@/lib/content/guide-links";
+import { toolForGuide } from "@/lib/content/tools";
 
 // Pieces every /guides/[slug] page shares, whichever list the guide comes from.
 
@@ -33,5 +34,17 @@ export function GuideFoot({ invented }: { invented: boolean }) {
       Clariti explains paperwork in plain language; it does not diagnose or replace advice from your doctor, pharmacist
       or insurer.
     </footer>
+  );
+}
+
+/** Points a guide at the free tool that does its arithmetic, when there is one (lib/content/tools.ts). */
+export function ToolPromo({ slug }: { slug: string }) {
+  const tool = toolForGuide(slug);
+  if (!tool) return null;
+  return (
+    <aside className="tool-promo" aria-label={tool.name}>
+      <Link href={`/tools/${tool.slug}`}>{tool.name} →</Link>
+      <p>{tool.blurb}</p>
+    </aside>
   );
 }

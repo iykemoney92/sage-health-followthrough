@@ -13,6 +13,10 @@ Attach a document, take a photo, or paste the text, and Clariti explains one doc
 - Discharge summaries: why you were there, medications, and follow-up.
 - Medication lists: names, doses, and questions for the pharmacist.
 
+## Free tools
+
+- [EOB decoder](https://useclariti.app/tools/eob-decoder): Enter the billed, allowed, plan-paid, deductible, copay, coinsurance and not-covered figures from one EOB line to see what each means, what you may owe (deductible + copay + coinsurance + not covered), whether the figures add up, and whether the provider's bill matches — with pointers to balance billing and the No Surprises Act (CMS). Runs in the browser; no sign-up, no AI, nothing sent.
+
 ## Guides
 
 - [All guides](https://useclariti.app/guides): Index of every guide

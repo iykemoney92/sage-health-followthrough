@@ -5,7 +5,7 @@ import { ShieldCheck } from "lucide-react";
 import { ClaritiShell } from "@/components/clariti-shell";
 import { GUIDES, getGuide } from "@/lib/content/guides";
 import { TOPICS, getTopic } from "@/lib/content/topics";
-import { GuideCta, GuideFoot } from "../guide-parts";
+import { GuideCta, GuideFoot, ToolPromo } from "../guide-parts";
 import { TopicArticle } from "./topic-article";
 import "../guides.css";
 
@@ -93,6 +93,7 @@ export default async function GuidePage({ params }: Props) {
         {guide.intro.map((paragraph) => (
           <p className="guide-lead" key={paragraph.slice(0, 32)}>{paragraph}</p>
         ))}
+        <ToolPromo slug={guide.slug} />
 
         <h2>{guide.partsHeading}</h2>
         <dl className="guide-parts">

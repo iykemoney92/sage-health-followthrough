@@ -4,7 +4,7 @@ import { ClaritiShell } from "@/components/clariti-shell";
 import { getGuide } from "@/lib/content/guides";
 import { RADILY_PHRASES_URL } from "@/lib/content/guide-links";
 import { getTopic, type TopicGuide } from "@/lib/content/topics";
-import { GuideCta, GuideFoot } from "../guide-parts";
+import { GuideCta, GuideFoot, ToolPromo } from "../guide-parts";
 
 // One question, answered: the second-wave layout for lib/content/topics.ts.
 // Order follows the Radily phrase pages — the direct answer first, then why it
@@ -57,6 +57,7 @@ export function TopicArticle({ topic, appUrl }: { topic: TopicGuide; appUrl: str
         <p className="clariti-kicker">{topic.kicker}</p>
         <h1>{topic.h1}</h1>
         <p className="guide-answer">{topic.answer}</p>
+        <ToolPromo slug={topic.slug} />
 
         <h2>Why it’s confusing</h2>
         {topic.why.map((paragraph) => (

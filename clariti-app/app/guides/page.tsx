@@ -4,6 +4,7 @@ import { ClaritiShell } from "@/components/clariti-shell";
 import { RADILY_PHRASES_URL } from "@/lib/content/guide-links";
 import { GUIDES } from "@/lib/content/guides";
 import { TOPICS, TOPIC_CATEGORIES } from "@/lib/content/topics";
+import { TOOLS } from "@/lib/content/tools";
 import "./guides.css";
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "https://useclariti.app";
@@ -43,6 +44,22 @@ export default function GuidesIndex() {
         <p className="guide-lead">
           Walkthroughs of whole documents, and answers to the questions people ask with one in their hand.
         </p>
+
+        <section className="guide-index-section" aria-labelledby="guides-tools">
+          <h2 id="guides-tools">Free tools</h2>
+          <p>Work it out yourself, in your browser, without signing up.</p>
+          <ul className="guide-index">
+            {TOOLS.map((tool) => (
+              <li key={tool.slug}>
+                <Link href={`/tools/${tool.slug}`}>
+                  <span className="clariti-kicker">FREE TOOL</span>
+                  <b>{tool.name}</b>
+                  <small>{tool.blurb}</small>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
 
         <section className="guide-index-section" aria-labelledby="guides-walkthroughs">
           <h2 id="guides-walkthroughs">Document walkthroughs</h2>
