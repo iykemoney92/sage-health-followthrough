@@ -420,3 +420,55 @@
     align-items: flex-start;
   }
 }
+
+/* Box on medicines guides linking the free tool (lib/tools). */
+.guide-tool {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 18px;
+  margin-top: 24px;
+  padding: 16px 18px;
+  border: 1px solid rgba(63, 123, 87, 0.35);
+  border-radius: 16px;
+  background: var(--guide-soft);
+}
+
+.guide-tool > div {
+  flex: 1 1 280px;
+}
+
+.guide-tool b {
+  display: block;
+  color: var(--guide-ink);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.guide-tool p {
+  margin: 4px 0 0;
+  color: var(--guide-muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.guides-v2 .guide-tool-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgba(63, 123, 87, 0.45);
+  color: var(--guide-green-deep);
+  font-size: 14px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.guides-v2 .guide-tool-link:hover {
+  background: #fff;
+  border-color: var(--guide-green-deep);
+}

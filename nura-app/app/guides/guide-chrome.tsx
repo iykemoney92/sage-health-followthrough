@@ -7,7 +7,16 @@ import { NURA_PRODUCT } from "@/lib/product/nura-story";
 import "./guides.css";
 
 /** Header and footer shared by /guides and every /guides/<slug> page. */
-export function GuideChrome({ children, placement }: { children: React.ReactNode; placement: string }) {
+export function GuideChrome({
+  children,
+  placement,
+  signupHref = GUIDE_SIGNUP_HREF,
+}: {
+  children: React.ReactNode;
+  placement: string;
+  /** The nav button's tagged link; tool pages pass their own utm_content. */
+  signupHref?: string;
+}) {
   return (
     <div className="guides-v2">
       <header className="guide-nav">
@@ -20,7 +29,7 @@ export function GuideChrome({ children, placement }: { children: React.ReactNode
           <Link href="/privacy">Privacy</Link>
         </nav>
         <TrackedLink
-          href={GUIDE_SIGNUP_HREF}
+          href={signupHref}
           className="guide-button"
           event="guide_cta_click"
           eventParams={{ cta: "get_started", placement: `${placement}_nav` }}
@@ -39,6 +48,7 @@ export function GuideChrome({ children, placement }: { children: React.ReactNode
         </div>
         <nav aria-label="Site links">
           <Link href="/guides">Guides</Link>
+          <Link href="/tools/medicine-schedule">Medicine schedule maker</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
           <Link href="/data-use">Data use</Link>
