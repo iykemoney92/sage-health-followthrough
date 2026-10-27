@@ -42,6 +42,12 @@ Plain-English guides on following through between appointments: medicines, appoi
 - [How to manage work stress before it affects your health](https://usenura.app/guides/how-to-manage-stress-from-work)
 - [What is a care and support plan, and how do you keep track of yours?](https://usenura.app/guides/what-is-a-care-and-support-plan)
 
+## Free tools
+
+Free tools that run in your browser, with no sign-up. Nothing you type is uploaded.
+
+- [Printable medicine schedule maker](https://usenura.app/tools/medicine-schedule): add each medicine, dose, times of day and days, and print a weekly tick-box chart (A4 or US Letter) or save it as a PDF. A personal reminder chart, not medical advice; it has no drug data and gives no dose advice.
+
 ## Links
 
 - [Nura](https://usenura.app): Home (web)

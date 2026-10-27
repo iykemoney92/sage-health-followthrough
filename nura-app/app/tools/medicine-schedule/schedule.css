@@ -1,0 +1,618 @@
+/* /tools/medicine-schedule: the form, the on-screen preview and the printed chart.
+   Builds on the guide palette in app/guides/guides.css. */
+
+.tool-main {
+  width: min(980px, calc(100% - 10vw));
+}
+
+.tool-main > .guide-lead,
+.tool-main > article,
+.tool-main > .guide-nura,
+.tool-main > .guide-section {
+  max-width: 760px;
+}
+
+.tool-safety {
+  margin: 16px 0 0;
+  max-width: 760px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--guide-soft);
+  color: var(--guide-ink);
+  font-size: 15px;
+  font-weight: 550;
+  line-height: 1.5;
+}
+
+.tool-app {
+  margin-top: 28px;
+}
+
+.med-tool {
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.med-panel {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid var(--guide-line);
+  border-radius: 18px;
+  background: var(--guide-card);
+}
+
+.med-form {
+  display: grid;
+  gap: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--guide-line);
+}
+
+.med-panel h2 {
+  margin: 0;
+  color: var(--guide-ink);
+  font: 600 19px / 1.3 var(--guide-serif);
+}
+
+.med-row {
+  display: grid;
+  gap: 14px;
+}
+
+.med-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.med-field > span,
+.med-fieldset legend {
+  color: var(--guide-ink);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.med-field input,
+.med-field select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid rgba(24, 49, 41, 0.22);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--guide-ink);
+  font: inherit;
+  font-size: 16px;
+}
+
+.med-field input:focus-visible,
+.med-field select:focus-visible,
+.med-chip input:focus-visible + span,
+.med-tool button:focus-visible {
+  outline: 3px solid rgba(63, 123, 87, 0.45);
+  outline-offset: 2px;
+}
+
+.med-field select:disabled {
+  opacity: 0.55;
+}
+
+.med-fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.med-fieldset legend {
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+.med-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.med-chip {
+  position: relative;
+  cursor: pointer;
+}
+
+.med-chip input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.med-chip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(24, 49, 41, 0.22);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--guide-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.med-chip-day span {
+  min-width: 48px;
+  justify-content: center;
+  padding: 0 8px;
+}
+
+.med-chip input:checked + span {
+  border-color: var(--guide-green-deep);
+  background: var(--guide-green-deep);
+  color: #fff;
+}
+
+.med-time-add {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.med-time-add .med-field {
+  flex: 1;
+}
+
+.med-secondary,
+.med-quick button,
+.med-list-actions button,
+.med-time-list button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(24, 49, 41, 0.22);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--guide-green-deep);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.med-secondary:hover,
+.med-quick button:hover,
+.med-list-actions button:hover {
+  border-color: rgba(63, 123, 87, 0.5);
+  background: var(--guide-soft);
+}
+
+.med-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.med-quick button {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.med-time-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.med-time-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 12px;
+  border-radius: 999px;
+  background: var(--guide-soft);
+  color: var(--guide-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.med-time-list button {
+  min-height: 32px;
+  width: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.med-errors {
+  margin: 0;
+  padding: 10px 14px 10px 30px;
+  border-radius: 10px;
+  background: #fbeeea;
+  color: #8a3b2c;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.med-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.med-tool .guide-button {
+  border: 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.med-list {
+  padding-top: 16px;
+  border-top: 1px solid var(--guide-line);
+}
+
+.med-list ul {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.med-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--guide-line);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 15px;
+}
+
+.med-list li > div:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.med-list small {
+  display: block;
+  margin-top: 2px;
+  color: var(--guide-muted);
+  font-size: 13px;
+}
+
+.med-list-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.med-list-actions button {
+  width: 40px;
+  min-height: 40px;
+  padding: 0;
+}
+
+.med-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 16px;
+  border-top: 1px solid var(--guide-line);
+}
+
+.med-options legend {
+  float: left;
+  width: 100%;
+  padding-top: 0;
+}
+
+.med-remember {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--guide-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.med-remember input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  accent-color: var(--guide-green-deep);
+}
+
+.med-status {
+  min-height: 1em;
+  margin: -8px 0 0;
+  color: var(--guide-green-deep);
+  font-size: 13px;
+}
+
+.med-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* The preview: a sheet of paper. */
+
+.med-sheet-wrap {
+  min-width: 0;
+}
+
+.med-sheet-label {
+  margin: 0 0 10px;
+  color: var(--guide-muted);
+  font-size: 13px;
+}
+
+.med-sheet-scroll {
+  /* Positioned so the visually hidden labels inside stay inside the scroll box on phones. */
+  position: relative;
+  overflow-x: auto;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(24, 49, 41, 0.08), 0 12px 32px rgba(24, 49, 41, 0.1);
+}
+
+.med-sheet {
+  min-width: 500px;
+  padding: 24px;
+  background: #fff;
+  color: #111;
+  font-family: var(--guide-sans);
+}
+
+.med-sheet-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin-bottom: 12px;
+}
+
+.med-sheet-head h2 {
+  margin: 0;
+  font: 600 22px / 1.2 var(--guide-serif);
+  overflow-wrap: anywhere;
+}
+
+.med-sheet-head p {
+  margin: 0;
+  color: #444;
+  font-size: 13px;
+}
+
+.med-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.med-col-when {
+  width: 13%;
+}
+
+.med-col-med {
+  width: 31%;
+}
+
+.med-table th,
+.med-table td {
+  border: 1px solid #9aa5a0;
+  padding: 6px;
+  vertical-align: middle;
+}
+
+.med-table thead th {
+  background: #edf4eb;
+  color: #183129;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.med-table thead th:nth-child(-n + 2) {
+  text-align: left;
+}
+
+.med-table thead small {
+  display: block;
+  font-weight: 500;
+}
+
+.med-table .med-when {
+  background: #f7f5ef;
+  font-weight: 700;
+  text-align: left;
+  vertical-align: top;
+}
+
+.med-name {
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.med-name b {
+  display: block;
+  font-size: 13px;
+}
+
+.med-name span,
+.med-name em {
+  display: block;
+  color: #333;
+}
+
+.med-name em {
+  font-style: italic;
+}
+
+.med-box {
+  height: 34px;
+  text-align: center;
+}
+
+.med-tick {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid #333;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+.med-off {
+  background: repeating-linear-gradient(135deg, #e9ebea 0 4px, #f6f7f6 4px 8px);
+}
+
+.med-group {
+  break-inside: avoid;
+}
+
+.med-group + .med-group tr:first-child > * {
+  border-top-width: 2px;
+  border-top-color: #4d5a54;
+}
+
+.med-sheet-foot {
+  margin-top: 12px;
+  color: #444;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.med-sheet-foot p {
+  margin: 0 0 2px;
+}
+
+.tool-tips {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tool-tips li {
+  padding: 14px 16px;
+  border: 1px solid var(--guide-line);
+  border-radius: 14px;
+  background: var(--guide-card);
+  color: var(--guide-muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.tool-tips b {
+  color: var(--guide-ink);
+}
+
+.tool-main .guide-nura {
+  margin-top: 32px;
+}
+
+@media (max-width: 900px) {
+  .med-tool {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .med-panel {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  .med-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .med-sheet {
+    padding: 16px;
+  }
+}
+
+/* Printing: only the chart. Everything else on the page, and the site chrome, is hidden. */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  .cookie-notice,
+  .guide-nav,
+  .guide-footer,
+  .tool-main > :not(.tool-app),
+  .med-panel,
+  .med-sheet-label {
+    display: none !important;
+  }
+
+  .guides-v2 {
+    min-height: 0;
+    background: #fff !important;
+  }
+
+  .tool-main {
+    width: auto;
+    margin: 0;
+    padding: 0;
+  }
+
+  .tool-app {
+    margin: 0;
+  }
+
+  .med-tool {
+    display: block;
+  }
+
+  .med-sheet-scroll {
+    overflow: visible;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .med-sheet {
+    min-width: 0;
+    padding: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .med-sheet-portrait .med-table {
+    font-size: 11px;
+  }
+
+  .med-sheet-portrait .med-col-med {
+    width: 30%;
+  }
+
+  .med-table tr {
+    break-inside: avoid;
+  }
+
+  .med-table thead {
+    display: table-header-group;
+  }
+}

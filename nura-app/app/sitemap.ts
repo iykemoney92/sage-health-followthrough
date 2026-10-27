@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { GUIDES } from "@/lib/guides";
+import { TOOLS } from "@/lib/tools";
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "https://usenura.app";
 
@@ -18,6 +19,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${appUrl}/guides/${guide.slug}`,
       changeFrequency: "monthly" as const,
       priority: 0.6,
+    })),
+    ...TOOLS.map((tool) => ({
+      url: `${appUrl}/tools/${tool.slug}`,
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
     })),
   ];
 }
