@@ -6142,7 +6142,7 @@ body:has(.chat-page) {
   justify-content: center;
 }
 .mobile-onboarding.step-8 .paywall-screen .skip-intake-button {
-  margin: 4px auto 0;
+  margin: 8px auto 0;
 }
 
 /* Expired trial lock screen */
