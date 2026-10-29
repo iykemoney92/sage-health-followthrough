@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { composeJourneyCompletionMessage } from "@/lib/domain/message-intake";
 import { sendWhatsappText } from "@/lib/integrations/whatsapp";
 import { sendPushToOwner } from "@/lib/integrations/push";
+import { withTimeout } from "@/lib/domain/with-timeout";
 
 export type JourneyStep = {
   id: string;
@@ -58,13 +59,6 @@ const FALLBACK_JOURNEY: DraftMilestone[] = [
     ],
   },
 ];
-
-function withTimeout<T>(promise: Promise<T>, fallback: T, ms = 12000) {
-  return Promise.race([
-    promise,
-    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
-  ]);
-}
 
 function isValidDraft(value: unknown): value is DraftMilestone[] {
   if (!Array.isArray(value) || value.length === 0) return false;

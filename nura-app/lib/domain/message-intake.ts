@@ -12,6 +12,7 @@ import {
 } from "@/lib/domain/journey-naming";
 import { NURA_CORE_IDENTITY, NURA_SAFETY_BOUNDARIES, NURA_TONE } from "@/lib/domain/nura-persona";
 import { primaryCheckinChannel } from "@/lib/domain/checkin-channel";
+import { withTimeout } from "@/lib/domain/with-timeout";
 import { describeRoutineTimes, normalizeRoutineTimes, type RoutineTimes } from "@/lib/domain/routine-times";
 import {
   DEFAULT_TIME_ZONE,
@@ -95,17 +96,7 @@ function outageDecision(reply: string, planId: string | null): NuraDecision {
   };
 }
 
-function withTimeout<T>(promise: Promise<T>, fallback: T, ms = 45000) {
-  return Promise.race([
-    promise,
-    new Promise<T>((resolve) =>
-      setTimeout(() => {
-        console.error(`${AI_DOWN_LOG_TAG} resolveDecision timed out after ${ms}ms; sent the slow-reply message`);
-        resolve(fallback);
-      }, ms),
-    ),
-  ]);
-}
+const DECISION_TIMEOUT_MS = 45000;
 
 function attachmentContext(attachments: MessageAttachment[]) {
   if (attachments.length === 0) return "";
@@ -448,6 +439,8 @@ export async function resolveDecision(
       routineTimes,
     ),
     fallback,
+    DECISION_TIMEOUT_MS,
+    () => console.error(`${AI_DOWN_LOG_TAG} resolveDecision timed out after ${DECISION_TIMEOUT_MS}ms; sent the slow-reply message`),
   );
 }
 
