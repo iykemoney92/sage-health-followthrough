@@ -45,6 +45,7 @@ export function GuideChrome({
           <NuraLogo compact href="/" />
           <p>{NURA_PRODUCT.footerLine}</p>
           <StoreBadges placement={`${placement}_footer`} compact utmContent="guide" />
+          <p className="landing-crisis-line">{NURA_PRODUCT.crisisLine}</p>
         </div>
         <nav aria-label="Site links">
           <Link href="/guides">Guides</Link>
