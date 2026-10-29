@@ -10,6 +10,7 @@ import { NuraLogo } from "@/components/nura-logo";
 import { track } from "@/lib/analytics";
 import { googleAdsTrack } from "@/lib/google-ads-tag";
 import { metaTrack } from "@/lib/meta-pixel";
+import { pinterestTrack } from "@/lib/pinterest-tag";
 import { quoraTrack } from "@/lib/quora-pixel";
 import { AUTH_COPY, normalizeEmail } from "@/lib/auth/helpers";
 import "../auth.css";
@@ -93,6 +94,7 @@ export default function SignupPage() {
       });
       quoraTrack("CompleteRegistration");
       metaTrack("CompleteRegistration");
+      pinterestTrack("signup");
       googleAdsTrack("SignUp");
 
       if (data.needsConfirmation) {

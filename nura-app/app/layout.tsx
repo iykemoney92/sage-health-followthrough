@@ -13,6 +13,7 @@ import "./toast.css";
 import { CookieConsent } from "@/components/cookie-consent";
 import { GoogleAnalytics } from "@/components/google-analytics";
 import { MetaPixel } from "@/components/meta-pixel";
+import { PinterestTag } from "@/components/pinterest-tag";
 import { GoogleAdsTag } from "@/components/google-ads-tag";
 import { WebAnalytics } from "@/components/web-analytics";
 import { NativeSignupConversion } from "@/components/native-signup-conversion";
@@ -89,6 +90,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <GoogleAnalytics />
           <QuoraPixel />
           <MetaPixel />
+          <PinterestTag />
           <GoogleAdsTag />
           <WebAnalytics />
           <NativeSignupConversion />
