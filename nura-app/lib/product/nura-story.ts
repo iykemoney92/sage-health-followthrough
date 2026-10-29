@@ -63,4 +63,12 @@ export const NURA_PRODUCT = {
     "Tell Nura what is happening in plain language. It turns what matters into Care plans and gentle check-ins — so the care that usually falls to you, family, and friends after the appointment doesn’t get lost.",
 
   footerLine: "A health and wellbeing companion that checks in on you.",
+
+  /** Shown on the public site so reviewers and visitors can see the cost without signing up */
+  pricingLine:
+    "Free to start. Nura Plus is US$9.99 a month after a 14-day free trial (the price may vary by region), and you can cancel any time.",
+
+  /** Crisis signposting for every public page footer. Nura is not an emergency service. */
+  crisisLine:
+    "Nura is not an emergency service. If you are in crisis or someone is in danger, call 999 (UK) or 911 (US). In the UK, Samaritans are on 116 123, any time; in the US, call or text 988.",
 } as const;

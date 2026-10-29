@@ -201,6 +201,7 @@ export default async function LandingPage() {
           <span className="landing-section-kicker">Private by design</span>
           <h2>Your health context stays yours.</h2>
           <p>{NURA_PRODUCT.trustLead}</p>
+          <p className="landing-pricing-line">{NURA_PRODUCT.pricingLine}</p>
           {isSignedIn ? (
             <TrackedLink
               href="/today"
@@ -228,6 +229,7 @@ export default async function LandingPage() {
           <NuraLogo compact />
           <p>{NURA_PRODUCT.footerLine}</p>
           <StoreBadges placement="footer" compact />
+          <p className="landing-crisis-line">{NURA_PRODUCT.crisisLine}</p>
         </div>
         <nav aria-label="Legal links">
           <Link href="/guides">Guides</Link>

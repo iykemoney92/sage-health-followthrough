@@ -687,3 +687,17 @@
     padding: 72px 6vw;
   }
 }
+
+/* Price and crisis lines added 29 Oct 2026 for caregiver-directory reviewers */
+.landing-pricing-line {
+  margin-top: 0.75rem;
+  font-size: 0.95rem;
+  opacity: 0.85;
+}
+.landing-crisis-line {
+  margin-top: 0.75rem;
+  max-width: 34rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  opacity: 0.8;
+}
