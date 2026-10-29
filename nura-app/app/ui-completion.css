@@ -47,6 +47,9 @@
 .final-intake-composer svg{width:16px;height:16px}
 .skip-intake-button{width:max-content;margin:14px auto 0;border:0;background:transparent;color:#66746d;font-size:13px;font-weight:650;text-decoration:underline;text-underline-offset:3px}
 .skip-intake-button:disabled{opacity:.5;cursor:not-allowed}
+/* Trial step: the skip stays available but reads as a footnote, not a second call to action. */
+.skip-intake-button.paywall-skip{margin:18px auto 0;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:500;color:#6b7871;text-decoration:none}
+.skip-intake-button.paywall-skip:hover,.skip-intake-button.paywall-skip:focus-visible{color:#3f4d46;text-decoration:underline}
 @media(max-width:760px){
   .final-intake-screen h1{font-size:clamp(26px,6.5vw,32px)!important;line-height:1.12!important;letter-spacing:-.02em!important}
 }

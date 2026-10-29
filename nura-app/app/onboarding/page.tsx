@@ -1052,7 +1052,7 @@ function OnboardingFlow() {
                           {`Your trial is already on. A card just keeps your plan going after ${giftEndDate(gift.until)}, and you won’t be charged before then. Skip it and you move to the free plan instead.`}
                         </p>
                         <button
-                          className="skip-intake-button"
+                          className="skip-intake-button paywall-skip"
                           type="button"
                           onClick={() => {
                             track("referral_gift_continue", { source: "onboarding", card: false });
@@ -1124,7 +1124,7 @@ function OnboardingFlow() {
                   </p>
                   {!trialExpired ? (
                     <button
-                      className="skip-intake-button"
+                      className="skip-intake-button paywall-skip"
                       type="button"
                       onClick={() => {
                         track("paywall_skip", { source: "onboarding" });
