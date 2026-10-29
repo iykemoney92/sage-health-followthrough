@@ -230,6 +230,23 @@ export default async function LandingPage() {
           <p>{NURA_PRODUCT.footerLine}</p>
           <StoreBadges placement="footer" compact />
           <p className="landing-crisis-line">{NURA_PRODUCT.crisisLine}</p>
+          {/* There's An AI For That verification badge. It must stay on this page
+              only (not a shared layout) so TAAFT's crawler verifies usenura.app. */}
+          <a
+            className="taaft-badge"
+            href="https://theresanaiforthat.com/ai/nura/?ref=featured&v=13743452"
+            target="_blank"
+            rel="nofollow noopener"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              width="300"
+              height="65"
+              src="https://media.theresanaiforthat.com/featured-on-taaft.png?width=600"
+              alt="Featured on There's An AI For That"
+              loading="lazy"
+            />
+          </a>
         </div>
         <nav aria-label="Legal links">
           <Link href="/guides">Guides</Link>

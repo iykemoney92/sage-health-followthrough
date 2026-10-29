@@ -701,3 +701,15 @@
   line-height: 1.45;
   opacity: 0.8;
 }
+
+.landing-v2 footer .taaft-badge {
+  display: inline-block;
+  margin-top: 0.75rem;
+  line-height: 0;
+}
+
+.landing-v2 footer .taaft-badge img {
+  width: 200px;
+  max-width: 100%;
+  height: auto;
+}
