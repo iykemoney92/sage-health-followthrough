@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 // The preview every shared link carries — WhatsApp, iMessage, X, LinkedIn, Slack.
 // Drawn in the landing page's own palette (app/landing.css) so the card and the
 // page it opens read as the same thing.
-export const alt = "Nura — Care that continues after the appointment.";
+export const alt = "Nura — A health and wellbeing companion that checks in on you.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -45,7 +45,7 @@ export default function OpengraphImage() {
           <div style={{ fontSize: 40, fontWeight: 700 }}>Nura</div>
         </div>
         <div style={{ fontSize: 72, lineHeight: 1.1, maxWidth: 1000, fontWeight: 700 }}>
-          Care continues after you leave.
+          A health and wellbeing companion that checks in on you.
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 44 }}>
           {steps.map((step) => (
