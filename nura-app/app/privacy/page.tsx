@@ -17,7 +17,7 @@ function buildSections(supportEmail: string) {
     },
     {
       title: "Who else processes your data",
-      body: "Nura uses a small set of providers to operate: Supabase (database, authentication, and storage), Anthropic (models that help organise shared context), ElevenLabs (voice check-ins and transcription), Twilio and Meta’s WhatsApp Business Platform (calls and WhatsApp delivery), RevenueCat and Stripe (billing), Vercel (hosting), and — if you accept cookies — Google Analytics (aggregated product usage), PostHog (product analytics and session recordings, hosted in the EU), the Quora Pixel and the Meta Pixel on our public web pages (ad measurement), and, in the Android app, Google Analytics for Firebase (see Cookies). Each only receives what it needs for that job, and none may use your health context for their own purposes.",
+      body: "Nura uses a small set of providers to operate: Supabase (database, authentication, and storage), Anthropic (models that help organise shared context), ElevenLabs (voice check-ins and transcription), Twilio and Meta’s WhatsApp Business Platform (calls and WhatsApp delivery), RevenueCat and Stripe (billing), Vercel (hosting, and cookieless visit counts on our public web pages, with no cookies and nothing stored on your device), and — if you accept cookies — Google Analytics (aggregated product usage), PostHog (product analytics and session recordings, hosted in the EU), the Quora Pixel and the Meta Pixel on our public web pages (ad measurement), and, in the Android app, Google Analytics for Firebase (see Cookies). Each only receives what it needs for that job, and none may use your health context for their own purposes.",
     },
     {
       title: "Apple Health and Health Connect",

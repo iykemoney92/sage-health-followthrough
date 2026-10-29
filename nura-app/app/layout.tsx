@@ -14,6 +14,7 @@ import { CookieConsent } from "@/components/cookie-consent";
 import { GoogleAnalytics } from "@/components/google-analytics";
 import { MetaPixel } from "@/components/meta-pixel";
 import { GoogleAdsTag } from "@/components/google-ads-tag";
+import { WebAnalytics } from "@/components/web-analytics";
 import { NativeSignupConversion } from "@/components/native-signup-conversion";
 import { NativeDeepLinks } from "@/components/native-deep-links";
 import { NativeHealthSync } from "@/components/native-health-sync";
@@ -89,6 +90,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <QuoraPixel />
           <MetaPixel />
           <GoogleAdsTag />
+          <WebAnalytics />
           <NativeSignupConversion />
           <PostHogIdentity />
         </ToastProvider>
