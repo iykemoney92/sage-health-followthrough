@@ -35,7 +35,7 @@ const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "ht
 // Search results cut descriptions at ~160 characters; the longer
 // NURA_PRODUCT.metaDescription still feeds the landing copy.
 const description =
-  "Nura is a health and wellbeing companion that helps you follow through after the GP, clinic or hospital, with Care plans and gentle check-ins.";
+  "Nura is a health and wellbeing companion that checks in on you, by message or a gentle call, and keeps a simple Care plan so the next step doesn’t slip.";
 const title = `Nura — ${NURA_PRODUCT.tagline}`;
 
 export const metadata: Metadata = {

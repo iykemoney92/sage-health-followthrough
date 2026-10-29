@@ -7,18 +7,18 @@ export const NURA_PRODUCT = {
   name: "Nura",
 
   /** Short lockup for metadata, footers, eyebrows */
-  tagline: "Care that continues after the appointment.",
+  tagline: "A health and wellbeing companion that checks in on you.",
 
   /** SEO / share description */
   metaDescription:
-    "Nura is care between clinical moments — a health and wellbeing companion that helps you follow through after you leave the GP, clinic, or hospital, alongside family, friends, and the people who support you.",
+    "Nura is a health and wellbeing companion. Tell it what’s going on in plain words, keep a simple Care plan, and get gentle check-ins by message or call, with family and carers alongside. It doesn’t diagnose or replace professional care.",
 
   /** Primary hero headline */
-  heroHeadline: "Care continues after you leave.",
+  heroHeadline: "A health and wellbeing companion that checks in on you.",
 
   /** Primary hero support line (keep short — full story sits in summary / why) */
   heroSupport:
-    "Clinicians treat in the visit. Most care after that is carried by you, family, friends, and carers. Nura stays in that space — within health and wellbeing.",
+    "Tell Nura what’s going on in plain words. It keeps a simple Care plan and checks in gently, by message or a short call, so the next step doesn’t slip when life gets busy.",
 
   /** One-paragraph product summary (About / support / pitch) */
   summary:
@@ -62,5 +62,5 @@ export const NURA_PRODUCT = {
   onboardingSupport:
     "Tell Nura what is happening in plain language. It turns what matters into Care plans and gentle check-ins — so the care that usually falls to you, family, and friends after the appointment doesn’t get lost.",
 
-  footerLine: "Care that continues after the appointment.",
+  footerLine: "A health and wellbeing companion that checks in on you.",
 } as const;
