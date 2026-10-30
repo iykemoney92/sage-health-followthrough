@@ -9,8 +9,10 @@ const html = checkInReminderEmailHtml({
   channel: "voice",
 });
 
+type SentBody = { topic_id?: string; reply_to?: string; headers: Record<string, string>; html: string; text: string };
+
 function captureSends() {
-  const sent: { key: string; body: Record<string, any> }[] = [];
+  const sent: { key: string; body: SentBody }[] = [];
   vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
     const headers = init.headers as Record<string, string>;
     sent.push({ key: headers.Authorization, body: JSON.parse(String(init.body)) });
