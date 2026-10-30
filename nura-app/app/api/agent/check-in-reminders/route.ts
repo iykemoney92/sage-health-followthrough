@@ -240,6 +240,7 @@ async function runCheckInReminders(request: NextRequest) {
         }),
         idempotencyKey: `checkin-reminder:${checkIn.id}`,
         attachments: nuraEmailLogoAttachment(),
+        optOut: true,
       });
       emailOk = sent.ok;
       if (!sent.ok) {
