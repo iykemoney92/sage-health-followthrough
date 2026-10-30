@@ -198,6 +198,15 @@ function OnboardingFlow() {
   const [attachingFiles, setAttachingFiles] = useState(false);
   const [intakeError, setIntakeError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Leaving for Today: set on the first press so a second one can't restart (and so cancel) the
+  // navigation. On a slow phone each press began a new 2–3 s load of /today and dropped the last,
+  // so a TAAFT visitor pressed Skip seven times and never got there (30 Oct 2026).
+  const [enteringToday, setEnteringToday] = useState(false);
+  const enterToday = () => {
+    if (enteringToday) return;
+    setEnteringToday(true);
+    router.replace("/today");
+  };
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [skippingSetup, setSkippingSetup] = useState(false);
   const [listening, setListening] = useState(false);
@@ -223,6 +232,11 @@ function OnboardingFlow() {
       cancelled = true;
     };
   }, []);
+
+  // Today is where every way out of the last step leads: fetched while the person reads it.
+  useEffect(() => {
+    if (step === 8) router.prefetch("/today");
+  }, [step, router]);
 
   useEffect(() => {
     track("onboarding_step_view", { step });
@@ -1054,12 +1068,14 @@ function OnboardingFlow() {
                         <button
                           className="skip-intake-button paywall-skip"
                           type="button"
+                          disabled={enteringToday}
                           onClick={() => {
+                            if (enteringToday) return;
                             track("referral_gift_continue", { source: "onboarding", card: false });
-                            router.replace("/today");
+                            enterToday();
                           }}
                         >
-                          Skip for now
+                          {enteringToday ? <><Loader2 size={12} className="spin" /> Opening your dashboard…</> : "Skip for now"}
                         </button>
                       </>
                     }
@@ -1067,12 +1083,14 @@ function OnboardingFlow() {
                       <button
                         className="primary-cta onboarding-primary paywall-cta"
                         type="button"
+                        disabled={enteringToday}
                         onClick={() => {
+                          if (enteringToday) return;
                           track("referral_gift_continue", { source: "onboarding" });
-                          router.replace("/today");
+                          enterToday();
                         }}
                       >
-                        <Gift size={18} /> Start my trial
+                        {enteringToday ? <Loader2 size={18} className="spin" /> : <Gift size={18} />} Start my trial
                       </button>
                     }
                   />
@@ -1126,12 +1144,14 @@ function OnboardingFlow() {
                     <button
                       className="skip-intake-button paywall-skip"
                       type="button"
+                      disabled={enteringToday}
                       onClick={() => {
+                        if (enteringToday) return;
                         track("paywall_skip", { source: "onboarding" });
-                        router.replace("/today");
+                        enterToday();
                       }}
                     >
-                      Skip for now
+                      {enteringToday ? <><Loader2 size={12} className="spin" /> Opening your dashboard…</> : "Skip for now"}
                     </button>
                   ) : null}
                 </div>
