@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { OPTOUT_TOPIC_ID, unsubscribeHeaders, unsubscribeUrl } from "@/lib/integrations/optout";
 
 type SendEmailInput = {
   to: string;
@@ -13,7 +14,16 @@ type SendEmailInput = {
     content: string; // base64
     contentId: string;
   }>;
+  /**
+   * A reminder rather than an account email: once RESEND_OPTOUT_API_KEY is set it goes through the Zapx
+   * opt-out list (lib/integrations/optout.ts), with an unsubscribe link and replies to hi@zapxlabs.com,
+   * where a "stop" opts them out.
+   */
+  optOut?: boolean;
 };
+
+/** Where nuraEmailShell's unsubscribe line goes; empty for everything but reminders. */
+const UNSUBSCRIBE_SLOT = "<!--unsubscribe-->";
 
 const EMAIL_LOGO_CID = "nura-logo";
 
@@ -46,8 +56,9 @@ export function getAuthEmailFrom() {
   return process.env.AUTH_EMAIL_FROM || "Nura <hello@usenura.app>";
 }
 
-export async function sendAuthEmail({ to, subject, html, text, idempotencyKey, attachments }: SendEmailInput) {
-  const apiKey = process.env.RESEND_API_KEY;
+export async function sendAuthEmail({ to, subject, html, text, idempotencyKey, attachments, optOut }: SendEmailInput) {
+  const optOutKey = optOut ? process.env.RESEND_OPTOUT_API_KEY?.trim() : undefined;
+  const apiKey = optOutKey || process.env.RESEND_API_KEY;
   if (!apiKey) {
     return { ok: false as const, error: "RESEND_API_KEY is not configured." };
   }
@@ -62,9 +73,24 @@ export async function sendAuthEmail({ to, subject, html, text, idempotencyKey, a
     from: getAuthEmailFrom(),
     to: [to],
     subject,
-    html,
+    html: html.replace(UNSUBSCRIBE_SLOT, ""),
     text,
   };
+
+  if (optOutKey) {
+    const url = await unsubscribeUrl(to);
+    payload.from = process.env.OPTOUT_EMAIL_FROM || "Nura <nura@send.zapxlabs.com>";
+    payload.reply_to = "hi@zapxlabs.com";
+    payload.topic_id = OPTOUT_TOPIC_ID;
+    payload.headers = unsubscribeHeaders(url);
+    payload.html = html.replace(
+      UNSUBSCRIBE_SLOT,
+      `<br/>Don’t want these emails? ${
+        url ? `<a href="${url}" style="color:#2f6847;">Unsubscribe</a> or reply “stop”.` : "Reply “stop”."
+      }`,
+    );
+    payload.text = `${text}Don’t want these emails? ${url ? `Unsubscribe: ${url} (or reply “stop”).` : "Reply “stop”."}\n`;
+  }
 
   if (attachments?.length) {
     payload.attachments = attachments.map((file) => ({
@@ -199,7 +225,7 @@ function nuraEmailShell({
             <tr>
               <td align="center" style="padding:22px 12px 0;font:400 12px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#7a8781;">
                 Your health context stays private and under your control.<br/>
-                <a href="${site}" style="color:#2f6847;text-decoration:none;font-weight:600;">usenura.app</a>
+                <a href="${site}" style="color:#2f6847;text-decoration:none;font-weight:600;">usenura.app</a>${UNSUBSCRIBE_SLOT}
               </td>
             </tr>
           </table>

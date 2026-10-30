@@ -126,6 +126,7 @@ async function runTrialLifecycle(request: NextRequest) {
       }),
       idempotencyKey: `trial-reminder-4d:${row.id}:${access.trialEndsAt.slice(0, 10)}`,
       attachments: nuraEmailLogoAttachment(),
+      optOut: true,
     });
 
     if (!sent.ok) {
