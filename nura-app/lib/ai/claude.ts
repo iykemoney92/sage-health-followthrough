@@ -85,8 +85,18 @@ async function viaGateway(params: CreateParams): Promise<Anthropic.Message> {
   return gateway.messages.create({ ...params, model: gatewayModelId(params.model) });
 }
 
+/**
+ * No Claude call gets fewer than this many output tokens. claude-sonnet-5 can spend most of a small
+ * budget thinking before it writes, so a 300-token cap returned half a JSON object and the caller
+ * quietly fell back to a template: on 31 Oct 2026 every onboarding Care plan came out generic for
+ * that reason (stop_reason max_tokens at 300). Prompts that ask for short replies still stop early;
+ * the floor only stops replies being cut off.
+ */
+export const CLAUDE_MIN_MAX_TOKENS = 2000;
+
 /** Direct Anthropic first, then AI Gateway on an outage. Throws AiUnavailableError if both fail. */
-export async function createClaudeMessage(source: string, params: CreateParams): Promise<Anthropic.Message> {
+export async function createClaudeMessage(source: string, requested: CreateParams): Promise<Anthropic.Message> {
+  const params: CreateParams = { ...requested, max_tokens: Math.max(requested.max_tokens ?? 0, CLAUDE_MIN_MAX_TOKENS) };
   const apiKey = process.env.ANTHROPIC_API_KEY;
   let directFailure = "ANTHROPIC_API_KEY not set";
   let directKind: AiFailureKind = "not_configured";

@@ -14,13 +14,13 @@ export default function Welcome() {
       <section className="mobile-welcome-screen">
         <div className="welcome-desktop-copy">
           <NuraLogo />
-          <span className="auth-kicker">CARE BETWEEN CLINICAL MOMENTS</span>
+          <span className="auth-kicker">YOUR HEALTH AND WELLBEING COMPANION</span>
           <h1>{NURA_PRODUCT.onboardingHeadline}</h1>
           <p>{NURA_PRODUCT.onboardingSupport}</p>
           <div className="welcome-desktop-points">
-            <span>Message, voice or upload context</span>
-            <span>Builds Care plans from what matters</span>
-            <span>Follows up through your preferred channel</span>
+            <span>Talk or type, any time</span>
+            <span>Keeps a simple plan around your day</span>
+            <span>Checks in by message, WhatsApp or a call</span>
           </div>
         </div>
         <div className="mobile-welcome-content">

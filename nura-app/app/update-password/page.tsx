@@ -363,7 +363,7 @@ export default function UpdatePasswordPage() {
       </section>
       <aside className="auth-visual" aria-hidden="true">
         <div>
-          <span className="eyebrow-pill">Health follow-through</span>
+          <span className="eyebrow-pill">Wellbeing companion</span>
           <h2>Get back to the next step.</h2>
           <p>Once your password is updated, Nura picks up your Care plans where you left off.</p>
         </div>

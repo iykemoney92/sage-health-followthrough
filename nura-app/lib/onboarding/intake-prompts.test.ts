@@ -10,7 +10,7 @@ describe("promptsForInterests", () => {
       "Recovery after birth",
       "Feeding & baby",
     ]);
-    expect(labels).not.toContain("GP follow-up");
-    expect(labels).not.toContain("New medication");
+    expect(labels).not.toContain("Sleep & routine");
+    expect(labels).not.toContain("Medication reminders");
   });
 });

@@ -22,6 +22,9 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { NuraLogo } from "@/components/nura-logo";
 import { PhoneNumberInput } from "@/components/phone-number-input";
 import { PushNotificationsToggle } from "@/components/push-notifications-toggle";
+import { HealthConsentActions } from "@/components/health-consent-actions";
+import { HealthConsentDisclosure } from "@/components/health-consent-disclosure";
+import { StoreBadges } from "@/components/store-badges";
 import { TrackedCheckoutLink } from "@/components/tracked-billing-links";
 import { PlatformCopy } from "@/components/platform-copy";
 import { UpgradeCta } from "@/components/upgrade-cta";
@@ -37,6 +40,9 @@ import {
 } from "@/lib/client/voice-recording";
 import { applyIntakePrompt, onboardingInterests, promptsForInterests } from "@/lib/onboarding/intake-prompts";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
+import { clearTryFirst, readTryFirst } from "@/lib/try-first";
+import { checkHealthAvailability, type HealthAvailability } from "@/lib/health/native-health";
+import { HEALTH_PLATFORM_LABELS } from "@/lib/health/metrics";
 
 type IntakeAttachment = {
   id: string;
@@ -48,14 +54,22 @@ type IntakeAttachment = {
 };
 
 const TOTAL_STEPS = 5;
+/**
+ * Connect Apple Health or Health Connect (Ike, 31 Oct 2026: onboarding should ask for health data,
+ * companion first). Numbered after the paywall step so the existing step numbers stay put; it runs
+ * between WhatsApp (6) and notifications (7). On a phone it needs the health-enabled app build; on
+ * the website it only appears once NEXT_PUBLIC_HEALTH_CONNECT_ENABLED says those builds are out.
+ */
+const HEALTH_STEP = 9;
+const HEALTH_ANNOUNCED = process.env.NEXT_PUBLIC_HEALTH_CONNECT_ENABLED === "true";
 const MAX_INTAKE_ATTACHMENT_BYTES = 4 * 1024 * 1024;
 const MAX_INTAKE_ATTACHMENTS = 4;
 const MAX_VOICE_MS = 60_000;
 
 const howItWorks = [
-  [MessageCircle, "Tell Nura what’s going on", "A message, a note from the visit, or just say it out loud."],
-  [FolderHeart, "It becomes a Care plan", "Nura keeps the important parts together so the care after the appointment doesn’t scatter."],
-  [BellRing, "Care continues", "Gentle check-ins so the next step — and the sense someone’s with you — doesn’t slip away."],
+  [MessageCircle, "Tell Nura what’s going on", "How you’re sleeping, what’s on your mind, a habit you want to keep. Type it or just say it."],
+  [FolderHeart, "It keeps a simple Care plan", "Nura holds what matters to you in one place, so nothing slips when life gets busy."],
+  [BellRing, "It checks in on you", "Gentle check-ins by message, WhatsApp or a short call, so you’re not doing it alone."],
 ] as const;
 
 function attachmentKind(file: File): IntakeAttachment["kind"] {
@@ -128,7 +142,17 @@ function giftEndDate(until: string) {
   return new Date(until).toLocaleDateString(undefined, { day: "numeric", month: "long" });
 }
 
-function DesktopCopy({ step, trialExpired, gift }: { step: number; trialExpired?: boolean; gift?: FriendGift | null }) {
+function DesktopCopy({
+  step,
+  trialExpired,
+  afterCheckIn,
+  gift,
+}: {
+  step: number;
+  trialExpired?: boolean;
+  afterCheckIn?: boolean;
+  gift?: FriendGift | null;
+}) {
   const copy =
     step === 2
       ? ["You talk. Nura organises. Life keeps moving.", "Three moves: share what’s going on, let it become a Care plan, and let Nura bring the next step back when you need it."]
@@ -140,10 +164,21 @@ function DesktopCopy({ step, trialExpired, gift }: { step: number; trialExpired?
             ? ["How Nura reaches you.", "Pick every channel that fits — chat in the app and/or WhatsApp, and check-ins by app, WhatsApp, or phone."]
             : step === 6
               ? ["Connect WhatsApp to this account.", "Open WhatsApp with your unique link code so Nura can match messages and check-ins to you."]
+              : step === HEALTH_STEP
+                ? ["Let Nura see how you’re really doing.", "Connect Apple Health or Health Connect so check-ins can notice your sleep, steps and energy, not just what you remember to say."]
               : step === 7
                 ? ["Stay in the loop.", "Turn on browser notifications so a check-in or reply from Nura reaches you even when the tab isn’t open. Optional — skip it if you’d rather not."]
                 : trialExpired
                   ? ["Your free trial has ended.", "Upgrade to Plus to unlock your Care plans and check-ins again. Everything you shared stays saved."]
+                  : afterCheckIn
+                    ? [
+                      "Your first check-in is done.",
+                      <PlatformCopy
+                        key="after-checkin-copy"
+                        web={`Start your ${CARD_TRIAL_DAYS}-day free trial to keep Nura checking in and following up. You won’t be charged for ${CARD_TRIAL_DAYS} days, and you can cancel anytime before then.`}
+                        native={`Start your ${CARD_TRIAL_DAYS}-day free trial to keep Nura checking in and following up. Nothing is charged for ${CARD_TRIAL_DAYS} days, and you can cancel anytime in your Apple subscriptions.`}
+                      />,
+                    ]
                   : gift
                     ? [
                       "Your 30-day free trial is on.",
@@ -165,7 +200,15 @@ function DesktopCopy({ step, trialExpired, gift }: { step: number; trialExpired?
   return (
     <aside className="onboarding-desktop-copy">
       <NuraLogo />
-      <span className="auth-kicker">{trialExpired && step === 8 ? "TRIAL ENDED" : gift && step === 8 ? "YOUR FREE TRIAL" : "SET UP YOUR NURA"}</span>
+      <span className="auth-kicker">
+        {trialExpired && step === 8
+          ? "TRIAL ENDED"
+          : afterCheckIn && step === 8
+            ? "KEEP NURA CHECKING IN"
+            : gift && step === 8
+              ? "YOUR FREE TRIAL"
+              : "SET UP YOUR NURA"}
+      </span>
       <h2>{copy[0]}</h2>
       <p>{copy[1]}</p>
       <div className="onboarding-desktop-note">
@@ -185,6 +228,8 @@ function OnboardingFlow() {
   const paywallReason = searchParams.get("reason");
   const [step, setStep] = useState(() => (searchParams.get("paywall") === "1" ? 8 : 1));
   const trialExpired = paywallReason === "expired";
+  // Sent here from Today once the free first check-in has gone out (lib/billing/free-checkin).
+  const afterCheckIn = paywallReason === "after_checkin";
   const [selected, setSelected] = useState<string[]>([]);
   const [interestError, setInterestError] = useState<string | null>(null);
   const [chatChannelsSelected, setChatChannelsSelected] = useState<string[]>(["In the app"]);
@@ -192,7 +237,11 @@ function OnboardingFlow() {
   const [channelError, setChannelError] = useState<string | null>(null);
   const [phone, setPhone] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
-  const [intake, setIntake] = useState("");
+  // What they typed into "Try Nura first" on the home page, if anything: their first Care plan
+  // starts from it so they don't type it twice. Read once, in the browser only.
+  const [triedText] = useState(() => (typeof window === "undefined" ? null : readTryFirst()));
+  const fromTryFirst = Boolean(triedText);
+  const [intake, setIntake] = useState(() => triedText ?? "");
   const [activePrompt, setActivePrompt] = useState<string | null>(null);
   const [intakeAttachments, setIntakeAttachments] = useState<IntakeAttachment[]>([]);
   const [attachingFiles, setAttachingFiles] = useState(false);
@@ -212,6 +261,7 @@ function OnboardingFlow() {
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [whatsappLinked, setWhatsappLinked] = useState(false);
+  const [healthAvailability, setHealthAvailability] = useState<HealthAvailability | null>(null);
   // Someone who arrived through an invite link has Plus already: no card screen for them.
   const [gift, setGift] = useState<FriendGift | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -219,6 +269,31 @@ function OnboardingFlow() {
   const chunksRef = useRef<Blob[]>([]);
   const voiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (fromTryFirst) track("try_first_carried_into_onboarding");
+  }, [fromTryFirst]);
+
+  useEffect(() => {
+    void checkHealthAvailability().then(setHealthAvailability);
+  }, []);
+  // Ask for health data where it can actually be connected (or, on the website, once the app can).
+  const showHealthStep = Boolean(healthAvailability && (healthAvailability.state !== "web" || HEALTH_ANNOUNCED));
+  const afterWhatsapp = () => setStep(showHealthStep ? HEALTH_STEP : 7);
+
+  // Where onboarding ends. The card screen used to be the last step for everyone, before Nura had
+  // done anything for them, and anyone who skipped it never got a check-in. Now it comes after the
+  // first check-in (Today sends them back here with reason=after_checkin). Invite-link users still
+  // see their gift screen: they already have Plus and it tells them until when.
+  const finishOnboarding = () => {
+    if (gift) {
+      setStep(8);
+      router.replace("/onboarding?paywall=1");
+      return;
+    }
+    track("onboarding_finished_without_card");
+    enterToday();
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -244,11 +319,11 @@ function OnboardingFlow() {
       track("referral_gift_view", { source: "onboarding" });
     } else if (step === 8) {
       track("paywall_view", {
-        reason: trialExpired ? "expired" : "trial",
+        reason: trialExpired ? "expired" : afterCheckIn ? "after_checkin" : "trial",
         source: "onboarding",
       });
     }
-  }, [step, trialExpired, gift]);
+  }, [step, trialExpired, afterCheckIn, gift]);
 
   useEffect(() => {
     if (searchParams.get("checkout") === "incomplete") {
@@ -413,8 +488,7 @@ function OnboardingFlow() {
       return;
     }
     if (step === 7) {
-      setStep(8);
-      router.replace("/onboarding?paywall=1");
+      finishOnboarding();
       return;
     }
     setStep((current) => current + 1);
@@ -472,11 +546,13 @@ function OnboardingFlow() {
         checkin_channels: checkinChannelsSelected.join(","),
       });
       if (!skip) {
-        track("first_care_plan_created", { source: "onboarding" });
+        track("first_care_plan_created", { source: "onboarding", from_try_first: fromTryFirst });
       }
+      clearTryFirst();
 
       // WhatsApp next (if chosen), then optional trial paywall last before dashboard.
-      setStep(needsWhatsappLink ? 6 : 7);
+      if (needsWhatsappLink) setStep(6);
+      else afterWhatsapp();
       setSubmitting(false);
     } catch {
       setSubmitError("Something went wrong saving that. Please try again.");
@@ -498,8 +574,7 @@ function OnboardingFlow() {
         throw new Error("Could not skip setup.");
       }
       track("onboarding_skip_setup");
-      setStep(8);
-      router.replace("/onboarding?paywall=1");
+      finishOnboarding();
     } catch {
       setSubmitError("Couldn’t skip setup right now. Please try again.");
       toast({
@@ -646,13 +721,13 @@ function OnboardingFlow() {
         <section className="mobile-welcome-screen">
           <div className="welcome-desktop-copy">
             <NuraLogo />
-            <span className="auth-kicker">CARE BETWEEN CLINICAL MOMENTS</span>
+            <span className="auth-kicker">YOUR HEALTH AND WELLBEING COMPANION</span>
             <h1>{NURA_PRODUCT.onboardingHeadline}</h1>
             <p>{NURA_PRODUCT.onboardingSupport}</p>
             <div className="welcome-desktop-points">
-              <span>Message, voice or upload context</span>
-              <span>Builds Care plans from what matters</span>
-              <span>Follows up through your preferred channel</span>
+              <span>Talk or type, any time</span>
+              <span>Keeps a simple plan around your day</span>
+              <span>Checks in by message, WhatsApp or a call</span>
             </div>
           </div>
           <div className="mobile-welcome-content">
@@ -683,24 +758,28 @@ function OnboardingFlow() {
       ) : (
         <>
           <header className="onboarding-header">
-            {step === 6 ? (
+            {step === 6 || step === HEALTH_STEP ? (
               <span className="onboarding-header-spacer" aria-hidden="true" />
             ) : (
-              <button className="onboarding-back" aria-label="Go back" onClick={() => setStep(step - 1)}>
+              <button
+                className="onboarding-back"
+                aria-label="Go back"
+                onClick={() => setStep(step === 7 && showHealthStep ? HEALTH_STEP : step - 1)}
+              >
                 <ArrowLeft />
               </button>
             )}
-            <span className="onboarding-step-count" aria-label={step >= 8 ? "Almost done" : `Step ${contentStep} of ${TOTAL_STEPS}`}>
-              {step >= 8 ? "Almost done" : `${contentStep} of ${TOTAL_STEPS}`}
+            <span className="onboarding-step-count" aria-label={step === 8 ? "Almost done" : `Step ${contentStep} of ${TOTAL_STEPS}`}>
+              {step === 8 ? "Almost done" : `${contentStep} of ${TOTAL_STEPS}`}
             </span>
             <span className="onboarding-header-spacer" aria-hidden="true" />
           </header>
           <div className="onboarding-progress">
-            <span style={{ width: `${(step >= 8 ? TOTAL_STEPS : progressStep) / TOTAL_STEPS * 100}%` }} />
+            <span style={{ width: `${(step === 8 || step === HEALTH_STEP ? TOTAL_STEPS : progressStep) / TOTAL_STEPS * 100}%` }} />
           </div>
 
           <div className="onboarding-desktop-layout">
-            <DesktopCopy step={step} trialExpired={trialExpired} gift={gift} />
+            <DesktopCopy step={step} trialExpired={trialExpired} afterCheckIn={afterCheckIn} gift={gift} />
             <section className="onboarding-card">
               {step === 2 && (
                 <>
@@ -780,7 +859,9 @@ function OnboardingFlow() {
                   <span className="auth-kicker">YOUR FIRST CARE PLAN</span>
                   <h1>Tell Nura what’s going on</h1>
                   <p className="onboarding-intro intake-intro">
-                    Starters below are shaped by what you picked — tap one to begin, then edit in your own words. Attach notes, summaries, or drug info if you have them.
+                    {fromTryFirst
+                      ? "We’ve brought over what you wrote on the home page. Edit it if you like, or add anything else that helps."
+                      : "Starters below are shaped by what you picked — tap one to begin, then edit in your own words. You can attach a note or photo if it helps."}
                   </p>
                   <div className="prompt-suggestions final-intake-prompts intake-prompt-grid" role="group" aria-label="Sample starters">
                     {visiblePrompts.map(([label]) => {
@@ -827,7 +908,7 @@ function OnboardingFlow() {
                       />
                       <button
                         aria-label="Attach notes or documents"
-                        title="Attach notes, summaries, or drug info"
+                        title="Attach a note or photo"
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={attachingFiles || intakeAttachments.length >= MAX_INTAKE_ATTACHMENTS}
@@ -1022,6 +1103,35 @@ function OnboardingFlow() {
                 </div>
               )}
 
+              {step === HEALTH_STEP && (
+                <div className="whatsapp-connect-screen health-connect-screen">
+                  <span className="auth-kicker">MAKE IT PERSONAL</span>
+                  <h1>
+                    {healthAvailability && healthAvailability.state !== "web"
+                      ? `Connect ${HEALTH_PLATFORM_LABELS[healthAvailability.platform]}`
+                      : "Connect your health data"}
+                  </h1>
+                  <p className="onboarding-intro channel-intro">
+                    Let Nura see your sleep, steps and energy, so check-ins notice how you’re really doing, not just what you remember to tell it. Optional, and you can disconnect any time.
+                  </p>
+                  {healthAvailability?.state === "ready" ? (
+                    <div className="health-connect-consent">
+                      <HealthConsentDisclosure source={HEALTH_PLATFORM_LABELS[healthAvailability.platform]} />
+                      <HealthConsentActions platform={healthAvailability.platform} onDone={() => setStep(7)} />
+                    </div>
+                  ) : healthAvailability?.state === "web" ? (
+                    <>
+                      <p className="control-note">
+                        Apple Health and Health Connect live on your phone. Open the Nura app on your iPhone or Android phone and connect it from Me → Connections.
+                      </p>
+                      <StoreBadges placement="onboarding_health" />
+                    </>
+                  ) : healthAvailability ? (
+                    <HealthConsentActions platform={healthAvailability.platform} />
+                  ) : null}
+                </div>
+              )}
+
               {step === 7 && (
                 <div className="whatsapp-connect-screen">
                   <span className="auth-kicker">STAY IN THE LOOP</span>
@@ -1099,19 +1209,30 @@ function OnboardingFlow() {
 
               {step === 8 && !(gift && !trialExpired) && (
                 <div className="paywall-screen">
-                  <span className="auth-kicker">{trialExpired ? "TRIAL ENDED" : "START YOUR TRIAL"}</span>
+                  <span className="auth-kicker">
+                    {trialExpired ? "TRIAL ENDED" : afterCheckIn ? "KEEP NURA CHECKING IN" : "START YOUR TRIAL"}
+                  </span>
                   <h1>
                     {trialExpired
                       ? "Your free trial has ended"
-                      : `Start your ${CARD_TRIAL_DAYS}-day free trial`}
+                      : afterCheckIn
+                        ? "Your first check-in is done"
+                        : `Start your ${CARD_TRIAL_DAYS}-day free trial`}
                   </h1>
                   <p className="onboarding-intro paywall-intro">
                     {trialExpired
                       ? "Nura is paused until you upgrade to Plus. Renew to keep your Care plans, check-ins, and conversations going."
-                      : (
+                      : afterCheckIn
+                        ? (
                           <PlatformCopy
-                            web={`Last step before your dashboard. Add a card to keep Nura going after the trial. You won’t be charged for ${CARD_TRIAL_DAYS} days, and you can cancel anytime before then.`}
-                            native={`Last step before your dashboard. Subscribe to Nura Plus through the App Store — the first ${CARD_TRIAL_DAYS} days are free, and you can cancel anytime before then.`}
+                            web={`That one was on us. Start your ${CARD_TRIAL_DAYS}-day free trial to keep Nura checking in and following up. You won’t be charged for ${CARD_TRIAL_DAYS} days, and you can cancel anytime before then.`}
+                            native={`That one was on us. Start your ${CARD_TRIAL_DAYS}-day free trial to keep Nura checking in and following up. The first ${CARD_TRIAL_DAYS} days are free, and you can cancel anytime before then.`}
+                          />
+                        )
+                        : (
+                          <PlatformCopy
+                            web={`Add a card to keep Nura going after the trial. You won’t be charged for ${CARD_TRIAL_DAYS} days, and you can cancel anytime before then.`}
+                            native={`Subscribe to Nura Plus through the App Store — the first ${CARD_TRIAL_DAYS} days are free, and you can cancel anytime before then.`}
                           />
                         )}
                   </p>
@@ -1147,11 +1268,11 @@ function OnboardingFlow() {
                       disabled={enteringToday}
                       onClick={() => {
                         if (enteringToday) return;
-                        track("paywall_skip", { source: "onboarding" });
+                        track("paywall_skip", { source: "onboarding", reason: afterCheckIn ? "after_checkin" : "trial" });
                         enterToday();
                       }}
                     >
-                      {enteringToday ? <><Loader2 size={12} className="spin" /> Opening your dashboard…</> : "Skip for now"}
+                      {enteringToday ? <><Loader2 size={12} className="spin" /> Opening your dashboard…</> : afterCheckIn ? "Not now" : "Skip for now"}
                     </button>
                   ) : null}
                 </div>
@@ -1203,10 +1324,20 @@ function OnboardingFlow() {
                     <button
                       className="primary-cta onboarding-primary"
                       type="button"
-                      onClick={() => setStep(7)}
+                      onClick={afterWhatsapp}
                     >
                       Continue <ArrowRight />
                     </button>
+                  ) : step === HEALTH_STEP ? (
+                    healthAvailability?.state === "ready" ? (
+                      <button className="skip-intake-button" type="button" onClick={() => setStep(7)}>
+                        Not now
+                      </button>
+                    ) : (
+                      <button className="primary-cta onboarding-primary" type="button" onClick={() => setStep(7)}>
+                        Continue <ArrowRight />
+                      </button>
+                    )
                   ) : step === 2 || step === 3 ? (
                     <>
                       <button

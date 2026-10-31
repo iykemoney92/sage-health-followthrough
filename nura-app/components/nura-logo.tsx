@@ -44,7 +44,7 @@ export function NuraLogo({
       <NuraMark size={compact ? 30 : 40} priority />
       <span className="nura-logo-copy">
         <b>Nura</b>
-        {!compact && tagline && <small>Health follow-through</small>}
+        {!compact && tagline && <small>Wellbeing companion</small>}
       </span>
     </Link>
   );

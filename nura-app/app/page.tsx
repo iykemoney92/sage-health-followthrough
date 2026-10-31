@@ -8,6 +8,7 @@ import { LandingReadMore } from "@/components/landing-read-more";
 import { LandingNavChrome } from "@/components/landing-nav-chrome";
 import { StoreBadges } from "@/components/store-badges";
 import { TrackedLink } from "@/components/tracked-link";
+import { TryFirst } from "@/components/try-first";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
 import "./landing.css";
@@ -25,7 +26,7 @@ const appJsonLd = {
   name: "Nura",
   alternateName: "Nura by Zapx Labs",
   description:
-    "Nura is care between clinical moments — a health and wellbeing companion that helps you follow through after you leave the GP, clinic, or hospital, alongside family, friends, and the people who support you. It does not diagnose, prescribe, or replace professional care.",
+    "Nura is an AI health and wellbeing companion that checks in on you. It gets to know how you’re sleeping, feeling and getting on, keeps a simple Care plan around your day, and checks in by message, WhatsApp or a short call, with Apple Health and Health Connect if you choose. It can also look out for someone you care for. It does not diagnose, prescribe, or replace professional care.",
   url: "https://usenura.app",
   applicationCategory: "HealthApplication",
   operatingSystem: "Web, iOS, Android",
@@ -135,9 +136,20 @@ export default async function LandingPage() {
                 Get started <ArrowRight size={18} />
               </TrackedLink>
             )}
-            <a href="#how" className="secondary-cta large">
-              See how it works
-            </a>
+            {isSignedIn ? (
+              <a href="#how" className="secondary-cta large">
+                See how it works
+              </a>
+            ) : (
+              <TrackedLink
+                href="#try"
+                className="secondary-cta large"
+                event="landing_cta_click"
+                eventParams={{ cta: "try_first", placement: "hero" }}
+              >
+                Try it first, no sign-up
+              </TrackedLink>
+            )}
           </div>
           <div className="landing-hero-apps">
             <p>Also on iPhone and Android</p>
@@ -156,6 +168,20 @@ export default async function LandingPage() {
           </div>
         </div>
       </section>
+
+      {isSignedIn ? null : (
+        <section id="try" className="landing-section landing-try" aria-label="Try Nura first">
+          <LandingReveal>
+            <span className="landing-section-kicker">Try it first</span>
+            <h2>Meet Nura before you sign up.</h2>
+            <p className="landing-section-lead">
+              Tell it how things are going: sleep, stress, energy, a habit you want to keep, or someone you look out for.
+              See the plan it would keep with you and how it would check in.
+            </p>
+          </LandingReveal>
+          <TryFirst />
+        </section>
+      )}
 
       <section id="how" className="landing-section">
         <LandingReveal>

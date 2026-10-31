@@ -175,7 +175,7 @@ function nuraEmailShell({
                     </td>
                     <td style="vertical-align:middle;">
                       <div style="font:700 24px/1 Georgia,'Times New Roman',serif;color:#183129;letter-spacing:-0.02em;">Nura</div>
-                      <div style="padding-top:2px;font:500 12px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#5f6f68;letter-spacing:0.04em;text-transform:uppercase;">Health follow-through</div>
+                      <div style="padding-top:2px;font:500 12px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#5f6f68;letter-spacing:0.04em;text-transform:uppercase;">Wellbeing companion</div>
                     </td>
                   </tr>
                 </table>
@@ -258,7 +258,7 @@ export function passwordResetEmailHtml({
 
 export function passwordResetEmailText({ resetUrl, firstName }: { resetUrl: string; firstName?: string }) {
   const greeting = firstName ? `Hi ${firstName},` : "Hi,";
-  return `Nura — Health follow-through
+  return `Nura — Wellbeing companion
 
 ${greeting}
 
@@ -292,7 +292,7 @@ export function confirmEmailHtml({
 
 export function confirmEmailText({ confirmUrl, firstName }: { confirmUrl: string; firstName?: string }) {
   const greeting = firstName ? `Hi ${firstName},` : "Hi,";
-  return `Nura — Health follow-through
+  return `Nura — Wellbeing companion
 
 ${greeting}
 
@@ -351,7 +351,7 @@ export function trialReminderEmailText({
 }) {
   const greeting = firstName ? `Hi ${firstName},` : "Hi,";
   const endLabel = formatTrialEndDate(trialEndsAt);
-  return `Nura — Health follow-through
+  return `Nura — Wellbeing companion
 
 ${greeting}
 
@@ -440,7 +440,7 @@ export function checkInReminderEmailText({
     minutesBefore >= 60 && minutesBefore % 60 === 0
       ? `${minutesBefore / 60} hour${minutesBefore === 60 ? "" : "s"}`
       : `${minutesBefore} minutes`;
-  return `Nura — Health follow-through
+  return `Nura — Wellbeing companion
 
 ${greeting}
 
@@ -490,7 +490,7 @@ export function missedCheckInEmailText({
   message: string;
 }) {
   const greeting = firstName ? `Hi ${firstName},` : "Hi,";
-  return `Nura — Health follow-through
+  return `Nura — Wellbeing companion
 
 ${greeting}
 
