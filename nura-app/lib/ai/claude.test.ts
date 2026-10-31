@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls: Array<{ baseURL?: string; apiKey?: string; model: string }> = [];
+const maxTokensSeen: Array<number | undefined> = [];
 let directResult: () => Promise<unknown>;
 let gatewayResult: () => Promise<unknown>;
 
@@ -13,11 +14,12 @@ vi.mock("@anthropic-ai/sdk", async (importOriginal) => {
     static APIError = actual.default.APIError;
     static APIConnectionError = actual.default.APIConnectionError;
     static APIConnectionTimeoutError = actual.default.APIConnectionTimeoutError;
-    messages: { create: (params: { model: string }) => Promise<unknown> };
+    messages: { create: (params: { model: string; max_tokens?: number }) => Promise<unknown> };
     constructor(opts: { apiKey?: string; baseURL?: string }) {
       this.messages = {
         create: (params) => {
           calls.push({ baseURL: opts.baseURL, apiKey: opts.apiKey, model: params.model });
+          maxTokensSeen.push(params.max_tokens);
           return opts.baseURL ? gatewayResult() : directResult();
         },
       };
@@ -26,7 +28,8 @@ vi.mock("@anthropic-ai/sdk", async (importOriginal) => {
   return { ...actual, default: FakeAnthropic };
 });
 
-const { AiUnavailableError, classifyAiError, createClaudeMessage, gatewayModelId, isProviderOutage } = await import("./claude");
+const { AiUnavailableError, CLAUDE_MIN_MAX_TOKENS, classifyAiError, createClaudeMessage, gatewayModelId, isProviderOutage } =
+  await import("./claude");
 
 function apiError(status: number, message: string) {
   return Anthropic.APIError.generate(status, { error: { type: "error", message } }, message, new Headers());
@@ -74,6 +77,21 @@ describe("createClaudeMessage", () => {
 
   afterEach(() => {
     errorLog.mockRestore();
+  });
+
+  it("never sends fewer than the minimum output tokens, on either route", async () => {
+    maxTokensSeen.length = 0;
+    directResult = async () => {
+      throw apiError(529, "overloaded");
+    };
+    gatewayResult = async () => ok;
+    await createClaudeMessage("test", { ...params, max_tokens: 300 });
+    expect(maxTokensSeen).toEqual([CLAUDE_MIN_MAX_TOKENS, CLAUDE_MIN_MAX_TOKENS]);
+
+    maxTokensSeen.length = 0;
+    directResult = async () => ok;
+    await createClaudeMessage("test", { ...params, max_tokens: 8000 });
+    expect(maxTokensSeen).toEqual([8000]);
   });
 
   it("uses Anthropic directly when it works", async () => {

@@ -1,35 +1,34 @@
 import type { LucideIcon } from "lucide-react";
-import {
-  Activity,
-  Baby,
-  Brain,
-  BriefcaseMedical,
-  ClipboardPlus,
-  Droplets,
-  Ellipsis,
-  Moon,
-  Pill,
-  Stethoscope,
-} from "lucide-react";
+import { Activity, Baby, Brain, BriefcaseMedical, Droplets, Ellipsis, HeartHandshake, Moon, Pill, Sparkles } from "lucide-react";
 
+// Companion first (Ike, 31 Oct 2026): onboarding leads with how someone is living and feeling
+// (sleep, stress, energy, habits, the people they look out for), not with GPs, clinics or drugs.
+// Medication stays as one option further down for people who want reminders.
 export const onboardingInterests = [
-  ["Stress or emotional wellbeing", Brain],
-  ["Pregnancy & postpartum", Baby],
-  ["Personal health and hygiene", Droplets],
-  ["Medication follow-through", Pill],
-  ["GP or clinic follow-up", Stethoscope],
-  ["Symptoms I want to track", Activity],
   ["Sleep and routine", Moon],
+  ["Stress or emotional wellbeing", Brain],
+  ["Energy, movement and habits", Activity],
   ["Work stress or burnout", BriefcaseMedical],
-  ["Recovery or return to work", BriefcaseMedical],
-  ["General health organisation", ClipboardPlus],
+  ["Looking out for someone I care for", HeartHandshake],
+  ["Pregnancy & postpartum", Baby],
+  ["Getting back on track after time off", Sparkles],
+  ["Personal health and hygiene", Droplets],
+  ["Remembering medication", Pill],
   ["Something else", Ellipsis],
 ] as const satisfies ReadonlyArray<readonly [string, LucideIcon]>;
 
 export type OnboardingInterest = (typeof onboardingInterests)[number][0];
 
 export const intakePromptCatalog = [
-  ["GP follow-up", "I saw my GP today and they asked me to keep an eye on symptoms and come back if anything changes."],
+  ["Sleep & routine", "My sleep and daily routine have been off — I want gentle check-ins to get back on track."],
+  ["Feeling overwhelmed", "I’ve been feeling overwhelmed lately and it’s spilling into sleep, work, and how I look after myself."],
+  ["More energy", "I want more energy day to day — moving more, drinking more water, and not crashing in the afternoon."],
+  ["A habit that sticks", "I keep starting healthier habits and dropping them after a week. I’d like someone to check in so this one sticks."],
+  ["Work stress", "Work stress has been building and it’s affecting my sleep, mood, and how I look after myself."],
+  [
+    "Someone I care for",
+    "I want to keep an eye on someone I care for. They live on their own and I’d like gentle check-ins on how they’re doing.",
+  ],
   [
     "Pregnancy & postpartum",
     "I’m pregnant or postpartum and want gentle, midwife-like check-ins on how I’m doing — recovery, feeding, mood, or pregnancy follow-through.",
@@ -46,38 +45,33 @@ export const intakePromptCatalog = [
     "Pregnancy check-ins",
     "I’m pregnant and want help holding onto antenatal advice, appointments, and how I’m feeling between visits.",
   ],
+  ["Back on track", "I’ve had some time off and I want to ease back into my routine without overdoing it."],
   [
     "Personal health & hygiene",
     "I want help staying on top of personal health and hygiene routines — daily care, habits, and gentle check-ins so nothing slips.",
   ],
-  ["New medication", "I started a new medication and I want help remembering doses and how I’m responding."],
-  ["Feeling overwhelmed", "I’ve been feeling overwhelmed lately and it’s spilling into sleep, work, and how I look after myself."],
-  ["Work stress", "Work stress has been building and it’s affecting my sleep, mood, and how I look after myself."],
-  ["Clinic summary", "I have clinic notes or a summary I want Nura to help me organise into clear next steps."],
-  ["Sleep & routine", "My sleep and daily routine have been off — I want gentle check-ins to get back on track."],
-  ["Drug / prescription info", "I have prescription or drug information to keep with this Care plan so nothing gets lost."],
+  ["Medication reminders", "I want a gentle reminder to take my medication, and someone to notice if I keep missing it."],
 ] as const;
 
 export type IntakePromptLabel = (typeof intakePromptCatalog)[number][0];
 
 /** Only these labels appear when the matching interest is selected — no unrelated fillers. */
 const INTEREST_TO_PROMPTS: Record<string, IntakePromptLabel[]> = {
-  "Stress or emotional wellbeing": ["Feeling overwhelmed", "Sleep & routine"],
+  "Sleep and routine": ["Sleep & routine", "Feeling overwhelmed", "A habit that sticks"],
+  "Stress or emotional wellbeing": ["Feeling overwhelmed", "Sleep & routine", "Work stress"],
+  "Energy, movement and habits": ["More energy", "A habit that sticks", "Sleep & routine"],
+  "Work stress or burnout": ["Work stress", "Feeling overwhelmed", "Sleep & routine"],
+  "Looking out for someone I care for": ["Someone I care for"],
   "Pregnancy & postpartum": [
     "Pregnancy & postpartum",
     "Pregnancy check-ins",
     "Recovery after birth",
     "Feeding & baby",
   ],
-  "Personal health and hygiene": ["Personal health & hygiene", "Sleep & routine"],
-  "Medication follow-through": ["New medication", "Drug / prescription info"],
-  "GP or clinic follow-up": ["GP follow-up", "Clinic summary"],
-  "Symptoms I want to track": ["GP follow-up", "Feeling overwhelmed", "Clinic summary"],
-  "Sleep and routine": ["Sleep & routine", "Feeling overwhelmed"],
-  "Work stress or burnout": ["Work stress", "Feeling overwhelmed", "Sleep & routine"],
-  "Recovery or return to work": ["Work stress", "Sleep & routine", "GP follow-up"],
-  "General health organisation": ["Clinic summary", "GP follow-up", "Personal health & hygiene"],
-  "Something else": ["Feeling overwhelmed", "GP follow-up"],
+  "Getting back on track after time off": ["Back on track", "More energy", "Sleep & routine"],
+  "Personal health and hygiene": ["Personal health & hygiene", "A habit that sticks"],
+  "Remembering medication": ["Medication reminders"],
+  "Something else": ["Feeling overwhelmed", "More energy", "Sleep & routine"],
 };
 
 export function applyIntakePrompt(label: string) {

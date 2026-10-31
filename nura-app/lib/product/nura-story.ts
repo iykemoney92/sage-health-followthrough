@@ -22,45 +22,45 @@ export const NURA_PRODUCT = {
 
   /** One-paragraph product summary (About / support / pitch) */
   summary:
-    "Nura is built on a simple idea: healthcare doesn’t end when the appointment ends. A clinician treats in the visit; after that, the day-to-day care of a person’s health and wellbeing is carried by family, friends, the person themselves, carers, social workers, and community. Nura is an agent that cares in that in-between — organising what matters, gently following up, and holding continuity — without replacing doctors, therapists, or emergency care. It works strictly within health, medical, and wellbeing: memory, care plans, check-ins, and encouragement so follow-through doesn’t disappear into busy life.",
+    "Nura is an AI health and wellbeing companion. It gets to know how you’re living and feeling — sleep, energy, stress, routines, and the people you look out for — keeps a simple Care plan around your day, and checks in by message, WhatsApp or a short call so what matters to you doesn’t slip. Connect Apple Health or Health Connect and its check-ins can notice your sleep and steps too. Nura organises, remembers and encourages; it does not diagnose, prescribe, or replace doctors, therapists, or emergency care.",
 
   /** Shorter in-app blurb */
   shortSummary:
-    "Nura cares between clinical moments — helping you follow through on health and wellbeing after you leave the appointment, alongside the people who support you. It organises and checks in; it does not diagnose, prescribe, or replace professional care.",
+    "An AI health and wellbeing companion that gets to know your days and checks in on you — by message, WhatsApp or a short call. It does not diagnose, prescribe, or replace professional care.",
 
   howItWorksLead:
-    "Nura is for the time between care — when remembering, noticing, and following through usually falls to you and the people around you.",
+    "Nura is the companion that remembers: what you said you’d try, how you’ve been sleeping, and when to check in.",
 
   howItWorks: [
     {
       title: "Tell Nura what’s going on",
-      copy: "In plain language — a message, a note from the visit, or something a carer or clinician asked you to watch.",
+      copy: "In plain words: how you’re sleeping, what’s stressing you, a habit you want to stick to, or someone you’re looking out for.",
     },
     {
-      title: "It becomes a Care plan",
-      copy: "Nura keeps the important parts together so context doesn’t scatter across chats, paper, and memory.",
+      title: "It keeps a simple Care plan",
+      copy: "Nura holds what matters to you in one place, and can read your sleep and steps from Apple Health or Health Connect if you want it to.",
     },
     {
-      title: "Care continues with check-ins",
-      copy: "Gentle follow-ups bring the next step back when life gets busy — the kind of continuity family and friends try to give, without the load falling only on them.",
+      title: "It checks in on you",
+      copy: "Gentle check-ins by message, WhatsApp or a short call, at the times that suit you, so you’re never doing it alone.",
     },
   ] as const,
 
-  whyHeadline: "Treatment happens in moments. Care happens in between.",
+  whyHeadline: "Looking after yourself happens on ordinary days.",
 
   whyLead:
-    "You leave with advice. Work gets loud. Sleep shifts. A symptom changes. Someone who loves you asks how you’re doing. Nura holds the Care plan so the next step — and the sense that someone is still with you in it — is still there when you need it.",
+    "Work gets loud. Sleep shifts. Energy dips. Someone you love needs looking out for. Nura notices, remembers what you said mattered, and checks in — so you’re not carrying it all on your own.",
 
   trustLead:
     "Nura organises, remembers, and follows up within health and wellbeing. It does not diagnose, prescribe, or replace professional care. You decide what it remembers.",
 
   roleSupport:
-    "Nura is care after the visit: it organises, remembers, and follows up within health, medical, and wellbeing. It does not diagnose, prescribe, change medication, or replace clinicians, therapists, or the people who care for you in real life.",
+    "Nura is a health and wellbeing companion: it organises, remembers, and checks in. It does not diagnose, prescribe, change medication, or replace clinicians, therapists, or the people who care for you in real life.",
 
-  onboardingHeadline: "Your health, cared for between appointments.",
+  onboardingHeadline: "A companion that checks in on you.",
 
   onboardingSupport:
-    "Tell Nura what is happening in plain language. It turns what matters into Care plans and gentle check-ins — so the care that usually falls to you, family, and friends after the appointment doesn’t get lost.",
+    "Tell Nura how things are going in plain words. It keeps a simple Care plan around your day and checks in gently — by message, WhatsApp or a short call.",
 
   footerLine: "A health and wellbeing companion that checks in on you.",
 

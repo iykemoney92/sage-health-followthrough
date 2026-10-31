@@ -7574,3 +7574,44 @@ footer .store-badges,.legal-footer .store-badges{margin-top:14px}
 .billing-lock-signout{margin:0;min-height:42px;padding:0 18px;border:1px solid rgba(24,49,41,.14);border-radius:999px;background:#fff;color:#2f4036;font-size:14px;font-weight:650;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .billing-lock-signout svg{width:16px;height:16px}
 .billing-lock-footnote{margin-top:0;font-size:12.5px;color:#8a938e}
+
+/* Today: after the free first check-in, the trial card (components/trial-after-checkin.tsx). */
+.today-trial-after-checkin {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 22px;
+  padding: 16px 18px;
+  border: 1px solid #d9e6dc;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f6fbf7 0%, #eef6f0 100%);
+}
+.today-trial-after-checkin strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #1f3a2b;
+  font-size: 15px;
+}
+.today-trial-after-checkin p {
+  margin: 0;
+  color: #4d5f55;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.today-trial-after-checkin .primary-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .today-trial-after-checkin {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .today-trial-after-checkin .primary-cta {
+    justify-content: center;
+  }
+}

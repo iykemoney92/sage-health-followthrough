@@ -17,7 +17,14 @@ import { HEALTH_CONSENT_VERSION, HEALTH_METRICS, HEALTH_PLATFORM_LABELS, type He
  * Agree → record consent → OS permission sheet → first sync. Consent is saved
  * before the sheet so nothing is ever read that the person hasn't agreed to here.
  */
-export function HealthConsentActions({ platform: guessedPlatform }: { platform: HealthPlatform }) {
+export function HealthConsentActions({
+  platform: guessedPlatform,
+  onDone,
+}: {
+  platform: HealthPlatform;
+  /** Where to go once connected. Me → Health returns to Connections; onboarding carries on to its next step. */
+  onDone?: () => void;
+}) {
   const router = useRouter();
   const [availability, setAvailability] = useState<HealthAvailability | null>(null);
   const [step, setStep] = useState<"idle" | "saving" | "permission" | "syncing">("idle");
@@ -56,7 +63,11 @@ export function HealthConsentActions({ platform: guessedPlatform }: { platform: 
     setStep("syncing");
     clearHealthSyncThrottle();
     await syncHealthData({ lastSyncedAt: null, force: true }).catch(() => null);
-    track("health_connected", { platform });
+    track("health_connected", { platform, source: onDone ? "onboarding" : "me" });
+    if (onDone) {
+      onDone();
+      return;
+    }
     router.replace("/me/connections");
     router.refresh();
   }

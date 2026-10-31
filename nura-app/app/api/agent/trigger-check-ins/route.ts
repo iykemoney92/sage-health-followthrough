@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSubscriptionAccess } from "@/lib/billing/subscription";
+import { ownersWhoUsedFreeCheckIn, pickFreeCheckIns } from "@/lib/billing/free-checkin";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { placeOutboundCall, isElevenLabsCallingConfigured, getConversationOutcome } from "@/lib/integrations/elevenlabs";
 import { buildVoiceCheckinContext, NO_CIRCLE_PASS_ON } from "@/lib/domain/voice-checkin-context";
@@ -437,6 +438,13 @@ async function runTriggerCheckIns(request: NextRequest) {
   await Promise.all(Array.from(new Set(claimedCheckIns.map((c) => c.owner_id))).map(async (ownerId) => {
     plusByOwner.set(ownerId, (await getSubscriptionAccess(supabase, ownerId)).hasPlus);
   }));
+  // The first check-in is free for everyone; the trial screen comes after it (lib/billing/free-checkin).
+  const freeOwners = Array.from(plusByOwner.entries()).filter(([, hasPlus]) => !hasPlus).map(([ownerId]) => ownerId);
+  const freeCheckInIds = pickFreeCheckIns(
+    claimedCheckIns,
+    plusByOwner,
+    await ownersWhoUsedFreeCheckIn(supabase, freeOwners),
+  );
 
   const recipientsByPlan = await loadRecipientsForPlans(supabase, claimedCheckIns.map((c) => c.plan_id));
 
@@ -448,7 +456,7 @@ async function runTriggerCheckIns(request: NextRequest) {
   const whatsappTargets: Array<{ checkIn: DueCheckIn; phone: string }> = [];
 
   for (const checkIn of claimedCheckIns) {
-    if (!plusByOwner.get(checkIn.owner_id)) {
+    if (!plusByOwner.get(checkIn.owner_id) && !freeCheckInIds.has(checkIn.id)) {
       gatedCheckInIds.push(checkIn.id);
       continue;
     }

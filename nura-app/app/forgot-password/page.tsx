@@ -123,7 +123,7 @@ export default function ForgotPasswordPage() {
       </section>
       <aside className="auth-visual" aria-hidden="true">
         <div>
-          <span className="eyebrow-pill">Health follow-through</span>
+          <span className="eyebrow-pill">Wellbeing companion</span>
           <h2>We’ll help you get back to your Care plans.</h2>
           <p>Resetting your password doesn’t change what Nura remembers — only how you sign back in.</p>
         </div>

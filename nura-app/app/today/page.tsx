@@ -24,6 +24,9 @@ import { getUserAvatarUrl } from "@/lib/avatar";
 import { categoryLabel, channelLabel, displayJourneyFocus, formatCheckInWhen, isUsefulDisplayText } from "@/lib/domain/journey-naming";
 import { getOrCreateWhatsappLink } from "@/lib/channel-links";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { getSubscriptionAccess, isSubscriptionLockedOut } from "@/lib/billing/subscription";
+import { hasUsedFreeCheckIn } from "@/lib/billing/free-checkin";
+import { TrialAfterCheckIn } from "@/components/trial-after-checkin";
 import { listSharedWithMe } from "@/lib/care-circle";
 import { createWhatsappHref } from "@/lib/whatsapp-link";
 import { hasSeenWalkthrough } from "@/lib/walkthrough";
@@ -96,6 +99,11 @@ export default async function TodayPage({
   const whatsappLink = user ? await getOrCreateWhatsappLink(supabase, user.id) : null;
   const whatsappLinkCode = whatsappLink?.linked ? null : whatsappLink?.code ?? null;
   const whatsappHref = user ? createWhatsappHref(whatsappLinkCode) : null;
+  // The trial screen comes after the free first check-in, not at the end of onboarding.
+  const [access, usedFreeCheckIn] = user
+    ? await Promise.all([getSubscriptionAccess(supabase, user.id), hasUsedFreeCheckIn(supabase, user.id)])
+    : [null, false];
+  const showTrialAfterCheckIn = Boolean(access && !access.hasPlus && !isSubscriptionLockedOut(access) && usedFreeCheckIn);
 
   const today = new Date();
   const weekStart = startOfWeek(today);
@@ -250,6 +258,7 @@ export default async function TodayPage({
           <CareDisclaimer compact />
         </header>
         <WelcomeWalkthrough show={Boolean(user) && !hasSeenWalkthrough(user)} firstName={firstName} />
+        <TrialAfterCheckIn show={showTrialAfterCheckIn} />
 
         <div className="today-layout">
           <section className="today-main-column">

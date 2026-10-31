@@ -306,7 +306,7 @@ export default function LoginPage() {
       </section>
       <aside className="auth-visual" aria-hidden="true">
         <div>
-          <span className="eyebrow-pill">Health follow-through</span>
+          <span className="eyebrow-pill">Wellbeing companion</span>
           <h2>Come back to the next step, not a blank slate.</h2>
           <p>Nura keeps the context you choose, holds it in a Care plan, and checks back in when life gets busy.</p>
         </div>

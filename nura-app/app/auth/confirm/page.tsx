@@ -272,7 +272,7 @@ export default function AuthConfirmPage() {
       </section>
       <aside className="auth-visual" aria-hidden="true">
         <div>
-          <span className="eyebrow-pill">Health follow-through</span>
+          <span className="eyebrow-pill">Wellbeing companion</span>
           <h2>One more step, then you’re in.</h2>
           <p>Once your email is confirmed, Nura can keep your Care plans ready for the next check-in.</p>
         </div>
