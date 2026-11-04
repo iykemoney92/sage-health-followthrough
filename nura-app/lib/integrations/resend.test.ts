@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OPTOUT_TOPIC_ID } from "@/lib/integrations/optout";
-import { checkInReminderEmailHtml, sendAuthEmail } from "@/lib/integrations/resend";
+import { checkInEmailHtml, checkInEmailText, checkInReminderEmailHtml, sendAuthEmail } from "@/lib/integrations/resend";
 
 const html = checkInReminderEmailHtml({
   workspaceUrl: "https://usenura.app/workspace",
@@ -64,5 +64,25 @@ describe("sendAuthEmail and the Zapx opt-out list", () => {
     await sendAuthEmail({ to: "ada@example.com", subject: "Check-in", html, text: "Hi\n", optOut: true });
     expect(sent[0]!.key).toBe("Bearer re_nura");
     expect(sent[0]!.body.topic_id).toBeUndefined();
+  });
+});
+
+describe("check-in email", () => {
+  const input = {
+    workspaceUrl: "https://usenura.app/workspace?planId=p1",
+    planTitle: "Making new habits stick",
+    opener: "Hi Sam, which habit <b>first</b>?",
+  };
+
+  it("carries the opener, escaped, with a link back into the conversation", () => {
+    const html = checkInEmailHtml(input);
+    expect(html).toContain("which habit &lt;b&gt;first&lt;/b&gt;?");
+    expect(html).toContain("Reply to Nura");
+    expect(html).toContain(input.workspaceUrl);
+    expect(checkInEmailText(input)).toContain(input.workspaceUrl);
+  });
+
+  it("says why it came by email", () => {
+    expect(checkInEmailText(input)).toContain("notifications are off");
   });
 });

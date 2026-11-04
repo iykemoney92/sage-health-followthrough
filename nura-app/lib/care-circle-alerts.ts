@@ -22,6 +22,7 @@ const LOOKBACK_DAYS = 14;
 const NOT_THE_OWNERS_MISS = new Set([
   "skipped_plus_required",
   "missed_consolidated",
+  "missed_undelivered",
   "processing",
   "placed",
   "redial_pending",

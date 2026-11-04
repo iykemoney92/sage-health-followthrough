@@ -4,6 +4,7 @@ import { claudeClient } from "@/lib/ai/claude";
 import { primaryCheckinChannel } from "@/lib/domain/checkin-channel";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { draftNextCheckInAfterCompletion } from "@/lib/domain/journey-create";
+import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 const requestSchema = z.object({
@@ -151,6 +152,9 @@ export async function POST(request: NextRequest) {
       note,
       allowedChannels,
       preferredChannel,
+      timeZone: await resolveUserTimeZone(supabase, user.id, {
+        authMetadata: (user.user_metadata ?? null) as Record<string, unknown> | null,
+      }),
     });
 
     const { error: nextCheckInError } = await supabase.from("nura_check_ins").insert({

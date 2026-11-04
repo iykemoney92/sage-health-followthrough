@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   fallbackNextCheckIn,
+  formatCheckInWhenForCopy,
   parseJourneyCreateCheckIn,
   parseJourneyCreatePlanFields,
 } from "./journey-create";
@@ -85,5 +86,19 @@ describe("parseJourneyCreateCheckIn", () => {
     );
     expect(parsed.prompt).toBe("Still useful prompt");
     expect(new Date(parsed.when).getTime()).toBeGreaterThan(Date.now() - 1000);
+  });
+});
+
+describe("formatCheckInWhenForCopy", () => {
+  const when = "2026-11-05T15:00:00.000Z";
+
+  it("shows the time on the person's own clock", () => {
+    expect(formatCheckInWhenForCopy(when, "Asia/Calcutta")).toContain("20:30");
+    expect(formatCheckInWhenForCopy(when, "America/Toronto")).toContain("10:00");
+    expect(formatCheckInWhenForCopy(when, "Europe/London")).toContain("15:00");
+  });
+
+  it("names the zone so the time can't be misread", () => {
+    expect(formatCheckInWhenForCopy(when, "Asia/Calcutta")).toMatch(/GMT\+5:30|IST/);
   });
 });

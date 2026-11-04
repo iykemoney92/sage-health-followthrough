@@ -507,6 +507,45 @@ usenura.app
 `;
 }
 
+/**
+ * A check-in itself, by email: for people with no push set up (most web sign-ups never allow
+ * notifications), so the check-in reaches them instead of silently failing.
+ */
+export function checkInEmailHtml({
+  workspaceUrl,
+  planTitle,
+  opener,
+}: {
+  workspaceUrl: string;
+  planTitle: string;
+  /** Nura's own opening line (it already greets them), the same text the chat shows. */
+  opener: string;
+}) {
+  return nuraEmailShell({
+    preview: opener.slice(0, 140),
+    eyebrow: "Check-in",
+    title: `Checking in about ${escapeHtml(planTitle)}.`,
+    bodyHtml: `${escapeHtml(opener).replace(/\n/g, "<br/>")}<br/><br/>Tap below to reply. It only takes a minute.`,
+    ctaLabel: "Reply to Nura",
+    ctaUrl: workspaceUrl,
+    footerNote: `You're getting this by email because notifications are off. Turn them on in Nura's Preferences to get check-ins on your phone.`,
+  });
+}
+
+export function checkInEmailText({ workspaceUrl, planTitle, opener }: { workspaceUrl: string; planTitle: string; opener: string }) {
+  return `Nura — Wellbeing companion
+
+${opener}
+
+Reply to Nura about ${planTitle}:
+${workspaceUrl}
+
+You're getting this by email because notifications are off. Turn them on in Nura's Preferences to get check-ins on your phone.
+
+usenura.app
+`;
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")

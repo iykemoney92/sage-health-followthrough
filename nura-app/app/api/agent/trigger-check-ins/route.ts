@@ -6,6 +6,7 @@ import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { placeOutboundCall, isElevenLabsCallingConfigured, getConversationOutcome } from "@/lib/integrations/elevenlabs";
 import { buildVoiceCheckinContext, NO_CIRCLE_PASS_ON } from "@/lib/domain/voice-checkin-context";
 import { sendPushToOwner } from "@/lib/integrations/push";
+import { checkInEmailHtml, checkInEmailText, nuraEmailLogoAttachment, sendAuthEmail } from "@/lib/integrations/resend";
 import { sendWhatsappText } from "@/lib/integrations/whatsapp";
 import { composeCheckinOpener, composeMissedCallFollowup } from "@/lib/domain/message-intake";
 import { scheduleIdleWellnessCheckIns, isWithinQuietHours, nextTimeOutsideQuietHours } from "@/lib/domain/idle-wellness";
@@ -28,6 +29,16 @@ import {
 
 function toE164(digits: string) {
   return digits.startsWith("+") ? digits : `+${digits}`;
+}
+
+function appBaseUrl() {
+  return (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://usenura.app").replace(/\/$/, "");
+}
+
+// Google sign-ups get their email address as display_name; never greet someone as "Hi jo@gmail.com".
+function firstNameOf(displayName: string) {
+  const first = displayName.trim().split(" ").filter(Boolean)[0] ?? "";
+  return first && !first.includes("@") ? first : "there";
 }
 
 // Every proactive check-in - regardless of which channel actually delivered it - should show
@@ -62,6 +73,45 @@ async function notifyOwnerAboutRecipientCall(
 ) {
   await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, body);
   await sendPushToOwner(checkIn.owner_id, { title, body, url: `/plans/${checkIn.plan_id}` }).catch(() => null);
+}
+
+// Push first, then email. Most web sign-ups never allow notifications (no real user who signed up
+// 31 Oct-4 Nov 2026 had push), so a push-only check-in silently failed and the free check-in never
+// reached anyone. Email carries the same opener with a link straight back into the conversation.
+async function pushOrEmail(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  checkIn: DueCheckIn,
+  opener: string,
+  pushTitle: string,
+): Promise<{ via: "push" | "email" | null; error: string | null }> {
+  const path = `/workspace?planId=${checkIn.plan_id}`;
+  const pushResult = await sendPushToOwner(checkIn.owner_id, { title: pushTitle, body: opener, url: path }).catch(() => null);
+  if (pushResult && pushResult.sent > 0) return { via: "push", error: null };
+
+  const pushError =
+    pushResult?.skipped === "no_subscriptions"
+      ? "No browser push subscription"
+      : pushResult?.skipped === "not_configured"
+        ? "Browser push is not configured on the server"
+        : pushResult?.error || "Push notification was not delivered";
+
+  const { data: authData } = await supabase.auth.admin.getUserById(checkIn.owner_id).catch(() => ({ data: null }));
+  const email = authData?.user?.email ?? null;
+  // Demo accounts (sarah.nura.demo@example.com etc.) would only bounce and hurt sending reputation.
+  if (!email || /@example\.(com|org|net)$/i.test(email)) return { via: null, error: `${pushError}; no email address.` };
+
+  const planTitle = checkIn.nura_plans?.title ?? "your Care plan";
+  const emailInput = { workspaceUrl: `${appBaseUrl()}${path}`, planTitle, opener };
+  const sent = await sendAuthEmail({
+    to: email,
+    subject: `Nura: checking in about ${planTitle}`,
+    html: checkInEmailHtml(emailInput),
+    text: checkInEmailText(emailInput),
+    idempotencyKey: `checkin-email:${checkIn.id}`,
+    attachments: nuraEmailLogoAttachment(),
+    optOut: true,
+  });
+  return sent.ok ? { via: "email", error: `${pushError}; sent by email.` } : { via: null, error: `${pushError}; email failed: ${sent.error}` };
 }
 
 // Dispatcher lag (a stalled droplet tick, a manual re-fire after downtime) can still leave a
@@ -121,9 +171,17 @@ type StaleCheckIn = {
   prompt: string;
   recurrence: string | null;
   contact_phone: string | null;
+  call_status: string;
+  call_attempts: number | null;
 };
 
-// Once voice + WhatsApp + push have all failed (or been exhausted) for a check-in, nothing used
+// "failed" with no call ever placed means nothing reached the person at all. Those become
+// `missed_undelivered`, which doesn't use up the free check-in (lib/billing/free-checkin.ts).
+function isUndelivered(row: StaleCheckIn) {
+  return row.call_status === "failed" && !(row.call_attempts && row.call_attempts > 0);
+}
+
+// Once voice + WhatsApp + push + email have all failed (or been exhausted) for a check-in, nothing used
 // to ever revisit it - it just stayed incomplete forever. This sweep marks those rows
 // `missed_stale` (a status messages/route.ts already surfaces as conversation context, but never
 // actually got written anywhere) and, for one-off Care plans with no other open check-in, lays
@@ -132,7 +190,7 @@ async function sweepStaleCheckIns(supabase: ReturnType<typeof getSupabaseServerC
   const cutoff = new Date(Date.now() - STALE_GRACE_HOURS * 60 * 60_000).toISOString();
   const { data: staleRows } = await supabase
     .from("nura_check_ins")
-    .select("id, owner_id, plan_id, prompt, recurrence, contact_phone")
+    .select("id, owner_id, plan_id, prompt, recurrence, contact_phone, call_status, call_attempts")
     .in("call_status", TERMINAL_UNREACHED_STATUSES)
     .is("completed_at", null)
     .lte("triggered_at", cutoff)
@@ -141,10 +199,14 @@ async function sweepStaleCheckIns(supabase: ReturnType<typeof getSupabaseServerC
   const rows = (staleRows ?? []) as StaleCheckIn[];
   if (rows.length === 0) return { marked: 0, requeued: 0 };
 
-  await supabase
-    .from("nura_check_ins")
-    .update({ call_status: "missed_stale" })
-    .in("id", rows.map((r) => r.id));
+  const undeliveredIds = rows.filter(isUndelivered).map((r) => r.id);
+  const staleIds = rows.filter((r) => !isUndelivered(r)).map((r) => r.id);
+  if (staleIds.length > 0) {
+    await supabase.from("nura_check_ins").update({ call_status: "missed_stale" }).in("id", staleIds);
+  }
+  if (undeliveredIds.length > 0) {
+    await supabase.from("nura_check_ins").update({ call_status: "missed_undelivered" }).in("id", undeliveredIds);
+  }
 
   // Recurring series already lay down their next occurrence independently - only one-off
   // check-ins with nothing else open for the plan need a fresh follow-up here.
@@ -516,38 +578,19 @@ async function runTriggerCheckIns(request: NextRequest) {
     await Promise.all(
       pushCheckIns.map(async (checkIn) => {
         const displayName = (nameByOwner.get(checkIn.owner_id) ?? "").trim();
-        const firstName = displayName.split(" ").filter(Boolean)[0] || "there";
+        const firstName = firstNameOf(displayName);
         const planTitle = checkIn.nura_plans?.title ?? "your Care plan";
         const opener = await composeCheckinOpener(firstName, planTitle, checkIn.prompt, checkIn.nura_plans?.category);
         await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, opener);
 
-        const pushResult = await sendPushToOwner(checkIn.owner_id, {
-          title: "Nura",
-          body: opener,
-          url: `/workspace?planId=${checkIn.plan_id}`,
-        }).catch(() => null);
-
-        const delivered = Boolean(pushResult && pushResult.sent > 0);
+        const reach = await pushOrEmail(supabase, checkIn, opener, "Nura");
+        const status = reach.via === "push" ? "sent_push" : reach.via === "email" ? "sent_email" : "failed";
         await supabase
           .from("nura_check_ins")
-          .update({
-            triggered_at: nowIso,
-            call_status: delivered ? "sent_push" : "failed",
-            call_error: delivered
-              ? null
-              : pushResult?.skipped === "no_subscriptions"
-                ? "No browser push subscription — ask the user to enable notifications in Preferences."
-                : pushResult?.skipped === "not_configured"
-                  ? "Browser push is not configured on the server."
-                  : pushResult?.error || "Push notification was not delivered.",
-          })
+          .update({ triggered_at: nowIso, call_status: status, call_error: reach.error })
           .eq("id", checkIn.id);
 
-        results.push({
-          checkInId: checkIn.id,
-          status: delivered ? "sent_push" : "failed",
-          push: pushResult,
-        });
+        results.push({ checkInId: checkIn.id, status, error: reach.error });
       }),
     );
   }
@@ -556,7 +599,7 @@ async function runTriggerCheckIns(request: NextRequest) {
     await Promise.all(
       whatsappTargets.map(async ({ checkIn, phone }) => {
         const displayName = (nameByOwner.get(checkIn.owner_id) ?? "").trim();
-        const firstName = displayName.split(" ").filter(Boolean)[0] || "there";
+        const firstName = firstNameOf(displayName);
         const planTitle = checkIn.nura_plans?.title ?? "your Care plan";
         const opener = await composeCheckinOpener(
           firstName,
@@ -579,28 +622,18 @@ async function runTriggerCheckIns(request: NextRequest) {
         } catch (error) {
           const message = error instanceof Error ? error.message : "WhatsApp send failed.";
           await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, opener);
-          const pushResult = await sendPushToOwner(checkIn.owner_id, {
-            title: "Nura",
-            body: opener,
-            url: `/workspace?planId=${checkIn.plan_id}`,
-          }).catch(() => null);
-          const delivered = Boolean(pushResult && pushResult.sent > 0);
+          const reach = await pushOrEmail(supabase, checkIn, opener, "Nura");
+          const status = reach.via === "push" ? "escalated_push" : reach.via === "email" ? "escalated_email" : "failed";
 
           await supabase
             .from("nura_check_ins")
             .update({
               triggered_at: nowIso,
-              call_status: delivered ? "escalated_push" : "failed",
-              call_error: delivered ? `WhatsApp failed (${message}); sent browser push instead.` : message,
+              call_status: status,
+              call_error: reach.via ? `WhatsApp failed (${message}); sent ${reach.via} instead.` : `WhatsApp failed (${message}); ${reach.error}`,
             })
             .eq("id", checkIn.id);
-          results.push({
-            checkInId: checkIn.id,
-            planTitle,
-            status: delivered ? "escalated_push" : "failed",
-            error: message,
-            push: pushResult,
-          });
+          results.push({ checkInId: checkIn.id, planTitle, status, error: message });
         }
       }),
     );
@@ -640,7 +673,7 @@ async function runTriggerCheckIns(request: NextRequest) {
     const backlog = sorted.slice(1);
     const planTitle = primary.nura_plans?.title ?? "your Care plan";
     const displayName = (nameByOwner.get(primary.owner_id) ?? "").trim();
-    const firstName = displayName.split(" ").filter(Boolean)[0] || "there";
+    const firstName = firstNameOf(displayName);
     const allowed = allowedChannelsByOwner.get(primary.owner_id) ?? ["voice", "whatsapp", "in_app"];
     const toNumber = toE164(phoneKey);
     const minutesOverdue = (now.getTime() - new Date(primary.scheduled_for).getTime()) / 60_000;
@@ -698,16 +731,11 @@ async function runTriggerCheckIns(request: NextRequest) {
 
       if (status === "failed") {
         await insertOpenerMessage(supabase, primary.owner_id, primary.plan_id, opener);
-        const pushResult = await sendPushToOwner(primary.owner_id, {
-          title: "Nura",
-          body: opener,
-          url: `/workspace?planId=${primary.plan_id}`,
-        }).catch(() => null);
-        const delivered = Boolean(pushResult && pushResult.sent > 0);
-        status = delivered ? "escalated_push" : "failed";
-        callError = delivered
-          ? `Skipped stale voice call (${Math.round(minutesOverdue)}m overdue); sent push instead.`
-          : `Skipped stale voice call (${Math.round(minutesOverdue)}m overdue); no WhatsApp/push delivery.`;
+        const reach = await pushOrEmail(supabase, primary, opener, "Nura");
+        status = reach.via === "push" ? "escalated_push" : reach.via === "email" ? "escalated_email" : "failed";
+        callError = reach.via
+          ? `Skipped stale voice call (${Math.round(minutesOverdue)}m overdue); sent ${reach.via} instead.`
+          : `Skipped stale voice call (${Math.round(minutesOverdue)}m overdue); no WhatsApp/push/email delivery (${reach.error}).`;
       }
 
       await supabase
@@ -814,14 +842,9 @@ async function runTriggerCheckIns(request: NextRequest) {
 
       if (status === "failed") {
         await insertOpenerMessage(supabase, primary.owner_id, primary.plan_id, opener);
-        const pushResult = await sendPushToOwner(primary.owner_id, {
-          title: "Nura tried to call",
-          body: opener,
-          url: `/workspace?planId=${primary.plan_id}`,
-        }).catch(() => null);
-        const delivered = Boolean(pushResult && pushResult.sent > 0);
-        status = delivered ? "escalated_push" : "failed";
-        callError = delivered ? `Call failed (${message}); sent push instead.` : message;
+        const reach = await pushOrEmail(supabase, primary, opener, "Nura tried to call");
+        status = reach.via === "push" ? "escalated_push" : reach.via === "email" ? "escalated_email" : "failed";
+        callError = reach.via ? `Call failed (${message}); sent ${reach.via} instead.` : `${message} (${reach.error})`;
       }
 
       await supabase

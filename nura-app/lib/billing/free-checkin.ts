@@ -7,13 +7,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * only check-in blocked). Now the trial screen comes after that first check-in instead of before it.
  *
  * A check-in counts as the free one once Nura has tried to reach the person through any channel:
- * a push or WhatsApp sent, a call placed, answered, re-dialled or missed. Failures, skips and the
- * row being claimed right now don't count, so a delivery error never uses it up.
+ * a push, WhatsApp or email sent, a call placed, answered, re-dialled or missed. Failures, skips and
+ * the row being claimed right now don't count, so a delivery error never uses it up. That includes
+ * `missed_undelivered`: until 4 Nov 2026 a check-in that reached nobody (no push set up) was swept
+ * to `missed_stale` and silently used up the free one.
  */
 export const FREE_CHECKIN_USED_STATUSES = [
   "sent_push",
   "sent_whatsapp",
+  "sent_email",
   "escalated_push",
+  "escalated_whatsapp",
+  "escalated_email",
   "placed",
   "redial_pending",
   "completed",
