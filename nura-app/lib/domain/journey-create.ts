@@ -1,4 +1,5 @@
 import { claudeClient } from "@/lib/ai/claude";
+import { describeNowForTimeZone, formatInTimeZone } from "@/lib/timezone";
 import type { PlanForJourney } from "@/lib/domain/plan-journey";
 import {
   journeyCreateCheckInSchema,
@@ -28,6 +29,19 @@ export function fallbackNextCheckIn(
     prompt,
     channel,
   };
+}
+
+/**
+ * The "now" line for the scheduling prompts. Without the person's zone Claude picks a time on the
+ * UTC clock, so someone in India was booked for 15:00 UTC (20:30 their time) on 4 Nov 2026.
+ */
+function schedulingNowLine(timeZone?: string) {
+  if (!timeZone) return `Current time is ${new Date().toISOString()}.`;
+  const now = describeNowForTimeZone(timeZone);
+  return (
+    `Current time is ${now.utcIso}; for this person it is ${now.localLabel} (${now.timeZone}). ` +
+    'Pick a time that suits their local day and give "when" as ISO8601 with their UTC offset.'
+  );
 }
 
 export function parseJourneyCreatePlanFields(
@@ -65,6 +79,8 @@ export async function draftNextCheckInAfterCompletion(input: {
   note: string;
   allowedChannels: Array<"whatsapp" | "in_app" | "voice">;
   preferredChannel: "whatsapp" | "in_app" | "voice";
+  /** The person's IANA zone, so the time is chosen on their clock. */
+  timeZone?: string;
 }): Promise<JourneyCreateCheckIn> {
   const fallback = fallbackNextCheckIn(
     input.preferredChannel,
@@ -74,7 +90,6 @@ export async function draftNextCheckInAfterCompletion(input: {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return fallback;
 
-  const nowIso = new Date().toISOString();
   try {
     const client = claudeClient("journey-create");
     const message = await client.messages.create({
@@ -86,7 +101,7 @@ export async function draftNextCheckInAfterCompletion(input: {
         "Respond with ONLY a JSON object, no markdown: " +
         '{"when": ISO8601 datetime, "prompt": string, "channel": "whatsapp"|"in_app"|"voice"}. ' +
         `Channel must be one of: ${input.allowedChannels.join(", ")}. Prefer "${input.preferredChannel}" (calls over WhatsApp when both are allowed) unless the user's report clearly points elsewhere. ` +
-        `Current time is ${nowIso}. when must be in the future. Never diagnose or prescribe.`,
+        `${schedulingNowLine(input.timeZone)} when must be in the future. Never diagnose or prescribe.`,
       messages: [
         {
           role: "user",
@@ -115,6 +130,8 @@ export async function draftFirstCheckInFromIntake(input: {
   intake: string;
   allowedChannels: Array<"whatsapp" | "in_app" | "voice">;
   preferredChannel: "whatsapp" | "in_app" | "voice";
+  /** The person's IANA zone, so the time is chosen on their clock. */
+  timeZone?: string;
 }): Promise<JourneyCreateCheckIn> {
   const fallback = fallbackNextCheckIn(
     input.preferredChannel,
@@ -124,7 +141,6 @@ export async function draftFirstCheckInFromIntake(input: {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return fallback;
 
-  const nowIso = new Date().toISOString();
   try {
     const client = claudeClient("journey-create");
     const message = await client.messages.create({
@@ -136,7 +152,7 @@ export async function draftFirstCheckInFromIntake(input: {
         "Respond with ONLY a JSON object, no markdown: " +
         '{"when": ISO8601 datetime, "prompt": string, "channel": "whatsapp"|"in_app"|"voice"}. ' +
         `Channel must be one of: ${input.allowedChannels.join(", ")}. Prefer "${input.preferredChannel}" (calls over WhatsApp when both are allowed). ` +
-        `Current time is ${nowIso}. when must be in the future. Never diagnose or prescribe.`,
+        `${schedulingNowLine(input.timeZone)} when must be in the future. Never diagnose or prescribe.`,
       messages: [
         {
           role: "user",
@@ -155,8 +171,10 @@ export async function draftFirstCheckInFromIntake(input: {
   }
 }
 
-export function formatCheckInWhenForCopy(iso: string) {
+/** "Thu 5 Nov, 20:30 GMT+5:30" on the person's own clock; server time (UTC) only when the zone is unknown. */
+export function formatCheckInWhenForCopy(iso: string, timeZone?: string) {
   try {
+    if (timeZone) return formatInTimeZone(iso, timeZone) || "soon";
     return new Date(iso).toLocaleString("en-GB", {
       weekday: "short",
       day: "numeric",

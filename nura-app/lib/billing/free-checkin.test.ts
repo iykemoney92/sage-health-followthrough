@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickFreeCheckIns } from "@/lib/billing/free-checkin";
+import { FREE_CHECKIN_USED_STATUSES, pickFreeCheckIns } from "@/lib/billing/free-checkin";
 
 describe("pickFreeCheckIns", () => {
   const due = [
@@ -33,5 +33,18 @@ describe("pickFreeCheckIns", () => {
   it("treats an unknown owner as not Plus", () => {
     const free = pickFreeCheckIns([{ id: "z", owner_id: "unknown", scheduled_for: null }], new Map(), new Set());
     expect([...free]).toEqual(["z"]);
+  });
+});
+
+describe("FREE_CHECKIN_USED_STATUSES", () => {
+  it("counts a check-in that reached them by email", () => {
+    expect(FREE_CHECKIN_USED_STATUSES).toContain("sent_email");
+    expect(FREE_CHECKIN_USED_STATUSES).toContain("escalated_email");
+  });
+
+  it("never counts one that reached nobody", () => {
+    for (const status of ["failed", "missed_undelivered", "skipped_plus_required", "processing"]) {
+      expect(FREE_CHECKIN_USED_STATUSES).not.toContain(status);
+    }
   });
 });

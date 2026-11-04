@@ -16,6 +16,7 @@ import {
 import { grantConsentOnBehalf } from "@/lib/care-recipient-admin";
 import { isValidTimeZone, normalizeTimeZone } from "@/lib/timezone";
 import { primaryCheckinChannel } from "@/lib/domain/checkin-channel";
+import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { draftPlanFromIntake } from "@/lib/domain/draft-plan-from-intake";
 import {
   draftFirstCheckInFromIntake,
@@ -216,6 +217,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const userTimeZone = await resolveUserTimeZone(supabase, user.id, {
+    authMetadata: (user.user_metadata ?? null) as Record<string, unknown> | null,
+  });
   const firstCheckIn = await withTimeout(
     draftFirstCheckInFromIntake({
       plan: {
@@ -228,6 +232,7 @@ export async function POST(request: NextRequest) {
       intake: `${draftIntake.trim()}\n${attachmentNotes.join("\n")}`.trim(),
       allowedChannels,
       preferredChannel: preferredCheckInForDraft,
+      timeZone: userTimeZone,
     }),
     {
       when: (() => {
@@ -243,7 +248,7 @@ export async function POST(request: NextRequest) {
   );
 
   const followUpChannel = firstCheckIn.channel;
-  const whenLabel = formatCheckInWhenForCopy(firstCheckIn.when);
+  const whenLabel = formatCheckInWhenForCopy(firstCheckIn.when, userTimeZone);
 
   // A plan about someone else: record who they are and how they'll agree. No call is booked
   // until they have - for "on_behalf" that's now, for "link" it's when they tap Yes.

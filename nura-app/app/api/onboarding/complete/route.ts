@@ -11,6 +11,7 @@ import { ensureJourney } from "@/lib/domain/plan-journey";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { isValidTimeZone } from "@/lib/timezone";
+import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 // Trial starts on the post-onboarding paywall (card 14-day or soft 7-day), not here.
 
 export const maxDuration = 45;
@@ -279,6 +280,12 @@ export async function POST(request: NextRequest) {
       ? preferredCheckinChannel
       : "whatsapp";
 
+  const userTimeZone =
+    resolvedTimezone ??
+    (await resolveUserTimeZone(supabase, user.id, {
+      phoneDigits: normalizedPhone || null,
+      authMetadata: (user.user_metadata ?? null) as Record<string, unknown> | null,
+    }));
   const firstCheckIn = await withTimeout(
     draftFirstCheckInFromIntake({
       plan: {
@@ -291,6 +298,7 @@ export async function POST(request: NextRequest) {
       intake: `${intake.trim()}\n${attachmentNotes.join("\n")}`.trim(),
       allowedChannels,
       preferredChannel: preferredCheckInForDraft,
+      timeZone: userTimeZone,
     }),
     // Soft fallback only — not a product rule of "tomorrow 19:30".
     {
@@ -307,7 +315,7 @@ export async function POST(request: NextRequest) {
   );
 
   const followUpChannel = firstCheckIn.channel;
-  const whenLabel = formatCheckInWhenForCopy(firstCheckIn.when);
+  const whenLabel = formatCheckInWhenForCopy(firstCheckIn.when, userTimeZone);
   const assistantCopy =
     `I’ve built a Care plan from what you shared — tailored to you, not a template — and scheduled a check-in for ${whenLabel}. ` +
     `We can change the timing anytime.`;
