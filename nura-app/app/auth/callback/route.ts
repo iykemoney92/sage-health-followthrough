@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { safeNextPath } from "@/lib/auth/safe-path";
+import { isNewAccount } from "@/lib/auth/new-account";
 
 /**
  * Handles legacy Supabase PKCE `?code=` redirects using cookie-stored verifiers.
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
     },
   );
 
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     const failed = new URL("/auth/confirm", url.origin);
     failed.searchParams.set("error", "pkce");
@@ -68,5 +69,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(failed);
   }
 
+  // A provider sign-in that just made the account goes by /joined, which counts the sign-up as the email
+  // form does (only after Accept on the cookie notice), then carries on to where it was going.
+  if (requestedNext && isNewAccount(data.user?.created_at)) {
+    const joined = new URL("/joined", url.origin);
+    joined.searchParams.set("next", requestedNext);
+    const via = NextResponse.redirect(joined);
+    response.cookies.getAll().forEach((c) => via.cookies.set(c));
+    return via;
+  }
+
   return response;
 }
+

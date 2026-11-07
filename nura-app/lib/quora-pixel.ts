@@ -27,7 +27,8 @@ export const AD_CONSENT_KEY = "nura_ad_measurement_consent:meta";
 export const AD_CONSENT_EVENT = "nura-ad-measurement-consent";
 
 /** Pages the pixel may run on. Everything else is the signed-in product. */
-const PUBLIC_PATHS = ["/", "/signup", "/privacy", "/terms", "/data-use"];
+// /joined: the one-moment page a new Google or Apple account passes through, to count its sign-up.
+const PUBLIC_PATHS = ["/", "/signup", "/joined", "/privacy", "/terms", "/data-use"];
 
 export type QuoraEvent = "ViewContent" | "Generic" | "CompleteRegistration";
 export type AdConsent = "granted" | "denied";
