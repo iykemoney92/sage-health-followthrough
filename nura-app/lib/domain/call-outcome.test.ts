@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decideCallOutcome, MAX_VOICE_ATTEMPTS } from "./call-outcome";
+import { parseConversationOutcome } from "@/lib/integrations/elevenlabs";
 
 const connected = { status: "done", callSuccessful: "success", durationSecs: 42, hasTranscript: true };
 
@@ -63,5 +64,50 @@ describe("decideCallOutcome", () => {
 
   it("caps voice attempts at first-attempt + one redial", () => {
     expect(MAX_VOICE_ATTEMPTS).toBe(2);
+  });
+});
+
+describe("voicemail and dead-air calls", () => {
+  const turn = (role: string, message: string, extra: Record<string, unknown> = {}) => ({ role, message, ...extra });
+
+  it("does not count a call where nobody spoke (only '...' timeout turns) as connected", () => {
+    const outcome = parseConversationOutcome({
+      status: "done",
+      analysis: { call_successful: "success" },
+      metadata: { call_duration_secs: 36 },
+      transcript: [
+        turn("agent", "Hi, it's Nura - I said I'd check in."),
+        turn("user", "...", { platform_event: "user_turn_timeout" }),
+        turn("agent", "Are you still there?"),
+        turn("user", "...", { platform_event: "user_turn_timeout" }),
+      ],
+    });
+    expect(outcome?.hasTranscript).toBe(false);
+    expect(decideCallOutcome(outcome, false)).toEqual({ kind: "not_connected", reason: "The call wasn't answered." });
+  });
+
+  it("does not count a call where voicemail detection fired as connected, even with a greeting transcribed", () => {
+    const outcome = parseConversationOutcome({
+      status: "done",
+      analysis: { call_successful: "success" },
+      metadata: { call_duration_secs: 25 },
+      transcript: [
+        turn("agent", "Hi, it's Nura."),
+        turn("user", "You've reached Sam, please leave a message after the tone."),
+        turn("agent", "", { tool_calls: [{ tool_name: "voicemail_detection" }] }),
+      ],
+    });
+    expect(outcome?.reachedVoicemail).toBe(true);
+    expect(decideCallOutcome(outcome, false)).toEqual({ kind: "not_connected", reason: "The call went to voicemail." });
+  });
+
+  it("still counts a real conversation as connected", () => {
+    const outcome = parseConversationOutcome({
+      status: "done",
+      analysis: { call_successful: "success" },
+      metadata: { call_duration_secs: 60 },
+      transcript: [turn("agent", "Hi, it's Nura."), turn("user", "Hiya, yeah not bad thanks.")],
+    });
+    expect(decideCallOutcome(outcome, false)).toEqual({ kind: "connected" });
   });
 });

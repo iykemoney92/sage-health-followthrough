@@ -49,8 +49,9 @@ export type CallOutcomeDecision =
  * actually connected, is still pending, or should be treated as not-connected.
  *
  * A call only counts as "connected" when it's not an explicit failure, ran a meaningful length,
- * and actually produced a transcript - a call that rings to voicemail or is declined tends to be
- * a few seconds with no transcript, even though the provider still reports it as "done".
+ * and the person actually spoke - a call that rings to voicemail, is declined or is answered by
+ * dead air has no real user words (only "..." timeout turns), even though the provider still
+ * reports it as "done". A call where the agent's voicemail detection fired never counts.
  */
 export function decideCallOutcome(outcome: ConversationOutcome | null, isStuck: boolean): CallOutcomeDecision {
   if (!outcome) {
@@ -64,6 +65,10 @@ export function decideCallOutcome(outcome: ConversationOutcome | null, isStuck: 
     return isStuck
       ? { kind: "not_connected", reason: "Call ended but the outcome never finished processing." }
       : { kind: "pending" };
+  }
+
+  if (outcome.reachedVoicemail) {
+    return { kind: "not_connected", reason: "The call went to voicemail." };
   }
 
   const wentThrough =
