@@ -21,7 +21,13 @@ export type ConversationOutcome = {
   status: string;
   callSuccessful: string | null;
   durationSecs: number;
+  /**
+   * The person actually said something. ElevenLabs writes a "..." user turn every time nobody
+   * replies, so a call to voicemail or dead air still has a transcript - those turns don't count.
+   */
   hasTranscript: boolean;
+  /** The agent's voicemail_detection tool fired (it left the voicemail message and hung up). */
+  reachedVoicemail?: boolean;
   /** ElevenLabs' own short summary of the conversation, once it has finished processing. */
   summary?: string | null;
 };
@@ -74,10 +80,24 @@ export async function placeOutboundCall({ toNumber, dynamicVariables, agentId, f
 export type RawConversationBody = {
   status?: string;
   call_successful?: string | boolean | null;
-  metadata?: { call_duration_secs?: number; duration_secs?: number } | null;
+  metadata?: { call_duration_secs?: number; duration_secs?: number; termination_reason?: string | null } | null;
   analysis?: { call_successful?: string | boolean | null; transcript_summary?: string | null } | null;
   transcript?: unknown[] | null;
 };
+
+type TranscriptTurn = {
+  role?: string;
+  message?: string | null;
+  platform_event?: string | null;
+  tool_calls?: Array<{ tool_name?: string } | null> | null;
+} | null;
+
+/** A user turn with real words in it - not the "..." placeholder ElevenLabs writes on a turn timeout. */
+function isRealUserTurn(turn: TranscriptTurn) {
+  if (turn?.role !== "user" || turn.platform_event) return false;
+  const text = (turn.message ?? "").replace(/[.\s…]/g, "");
+  return text.length > 0;
+}
 
 /**
  * Shared shape parser for a conversation outcome — used both by the polling GET below and by
@@ -100,13 +120,18 @@ export function parseConversationOutcome(body: RawConversationBody | null): Conv
 
   const durationSecs =
     Number(body.metadata?.call_duration_secs ?? body.metadata?.duration_secs ?? 0) || 0;
-  const hasTranscript = Array.isArray(body.transcript) && body.transcript.length > 0;
+  const turns = (Array.isArray(body.transcript) ? body.transcript : []) as TranscriptTurn[];
+  const hasTranscript = turns.some(isRealUserTurn);
+  const reachedVoicemail =
+    turns.some((turn) => (turn?.tool_calls ?? []).some((call) => call?.tool_name === "voicemail_detection")) ||
+    /voicemail/i.test(body.metadata?.termination_reason ?? "");
 
   return {
     status: String(body.status ?? "unknown"),
     callSuccessful,
     durationSecs,
     hasTranscript,
+    reachedVoicemail,
     summary: body.analysis?.transcript_summary?.trim() || null,
   };
 }
