@@ -21,6 +21,9 @@ import {
   wallTimeInTimeZoneToUtcIso,
 } from "@/lib/timezone";
 
+/** Whether scheduled check-ins will actually go out for this person (free plan: the first one only). */
+export type CheckInAccess = { hasPlus: boolean; freeCheckInUsed: boolean };
+
 export type CheckInRecurrence = "none" | "daily" | "weekdays" | "weekly";
 
 export type NextCheckIn = {
@@ -132,6 +135,23 @@ function isValidNextCheckIn(value: unknown): value is NextCheckIn {
   return candidate.channel === "voice" || candidate.channel === "whatsapp" || candidate.channel === "in_app" || candidate.channel === undefined;
 }
 
+/**
+ * 9 Nov 2026: Nura told a free user "I'll send you a greeting every morning at 6am"; the second
+ * one was skipped as `skipped_plus_required` and they asked why it never came. The model now knows
+ * which check-ins will really go out, so it can say so instead of promising them.
+ */
+export function checkInAccessGuidance(access: CheckInAccess | null): string {
+  if (!access || access.hasPlus) return "";
+  const rule = access.freeCheckInUsed
+    ? "They have already had their one free check-in, so any check-in you schedule now will NOT be sent unless they start Nura Plus (it has a 14-day free trial)."
+    : "Their FIRST scheduled check-in is free. After that, check-ins - including daily or weekly repeating ones - only go out with Nura Plus (it has a 14-day free trial).";
+  return (
+    "\n\nCHECK-IN ACCESS (be honest about this): this user is on the free plan. " + rule + " " +
+    "Still schedule what they ask for, but whenever you set up a check-in, or they ask for daily, weekly or automatic messages, say this plainly in one short sentence in their language. " +
+    "Never promise ongoing automatic check-ins as if they are included for free. "
+  );
+}
+
 async function classifyWithClaude(
   content: string,
   plans: PlanSummary[],
@@ -147,6 +167,7 @@ async function classifyWithClaude(
   timeZone: string = DEFAULT_TIME_ZONE,
   preferredChannel: string | null = null,
   routineTimes: RoutineTimes = {},
+  checkInAccess: CheckInAccess | null = null,
 ): Promise<NuraDecision> {
   const hasPhoneOnFile = Boolean(phoneOnFile);
   // A channel can be allowed by preference but still unusable right now (voice with no phone
@@ -193,6 +214,8 @@ async function classifyWithClaude(
         "If its time is NOT saved, never guess: ask once, briefly, what time that usually is for them (e.g. \"What time do you usually finish work?\") and leave has_next_check_in false until they answer. Ask about the routine only, not anything else, in that reply. " +
         "Whenever the user tells you a usual time for one of these (in this message or earlier in this thread), or says it has changed, put it in routine_times as 24-hour HH:MM in their local time so Nura remembers it, and schedule using it if they asked for a check-in. A one-off exception (\"I'm finishing late on Friday, call at 8\") is NOT a new routine: schedule that time and leave routine_times empty. " +
         "\n\nIMPORTANT - recurring vs one-off: next_check_in only ever represents a SINGLE point in time by itself, so if the user asks for an ONGOING or REPEATING pattern you MUST also set next_check_in.recurrence, not just pick one date. Phrases like 'check in on me daily', 'remind me every day to take my meds', 'check in each morning', 'check in on weekdays', or 'check in with me weekly' describe a repeating cadence - set recurrence to \"daily\", \"weekdays\", or \"weekly\" accordingly, and set next_check_in.when to the FIRST occurrence only (pick a sensible time of day for the purpose - e.g. morning for a medication reminder - unless the user specifies a time). The system will automatically lay down the full recurring series from that first occurrence; you never need to schedule each one yourself. For a normal single follow-up (the common case), leave recurrence as \"none\". Setting up a recurring reminder REPLACES any previous schedule for that Care plan, so say clearly in your reply what the new pattern is (e.g. 'I'll check in with you every morning at 9am about your medication') rather than only confirming a single date. " +
+        "\n\nNEVER claim a check-in you didn't schedule: only say a check-in is set, booked, scheduled or 'done' when has_next_check_in is true in this same reply, at the time you state. If their time is vague ('before I sleep', 'in the evening', 'Sunday'), suggest one concrete local time and schedule it (e.g. '10:30pm, just before you sleep - I'll check in then, tell me if another time suits') instead of agreeing to a check-in with no time. " +
+        checkInAccessGuidance(checkInAccess) +
         "\n\nNura CAN place a real proactive phone check-in call (voice), or follow up on WhatsApp or in-app - never say you are unable to call or check in. " +
         `\n\nThe user has allowed Nura to proactively check in via: ${effectiveAllowedChannels.join(", ")}. next_check_in.channel must always be one of these - never propose a channel they haven't allowed, even if it would otherwise fit. If the user asks for a channel they haven't enabled (e.g. asks you to call when voice isn't in that list), gently say in your reply that you can't call them yet and they can turn calls on in Settings, then schedule the follow-up on the closest allowed channel instead. ` +
         `\n\nThis conversation is happening over ${sourceChannel === "whatsapp" ? "WhatsApp" : "the in-app chat"}. When you DO schedule a next_check_in and the user did not pick a mode, default its channel to "${defaultCheckInChannel}" (calls preferred when allowed). Do NOT default to WhatsApp just because this chat is on WhatsApp — only use WhatsApp when they ask for a text, voice isn't allowed, or call isn't possible. Honour an explicit preference (call / WhatsApp / in-app) within their allowed channels. ` +
@@ -418,6 +441,7 @@ export async function resolveDecision(
   timeZone: string = DEFAULT_TIME_ZONE,
   preferredChannel: string | null = null,
   routineTimes: RoutineTimes = {},
+  checkInAccess: CheckInAccess | null = null,
 ): Promise<NuraDecision> {
   const fallback = outageDecision(AI_SLOW_REPLY, requestedPlan?.id ?? null);
 
@@ -437,6 +461,7 @@ export async function resolveDecision(
       timeZone,
       preferredChannel,
       routineTimes,
+      checkInAccess,
     ),
     fallback,
     DECISION_TIMEOUT_MS,
@@ -584,6 +609,22 @@ function generateRecurringOccurrences(start: Date, recurrence: "daily" | "weekda
   return occurrences;
 }
 
+/**
+ * The decision's `when` is already an absolute instant: classifyWithClaude converts the model's
+ * local wall time to UTC (".000Z"). Until 9 Nov 2026 this step converted it a second time,
+ * reading the UTC digits as the user's local clock, so every chat-booked check-in moved by the
+ * user's UTC offset (06:00 in India became 00:30). Anything with a Z or an offset is used as is;
+ * only a bare wall time is read in the user's zone.
+ */
+export function checkInInstantIso(when: string, timeZone: string): string {
+  const raw = when.trim();
+  if (/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(raw)) {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+  return wallTimeInTimeZoneToUtcIso(raw, timeZone);
+}
+
 export async function applyNextCheckIn(
   supabase: SupabaseClient,
   ownerId: string,
@@ -591,13 +632,13 @@ export async function applyNextCheckIn(
   nextCheckIn: NextCheckIn,
   timeZone: string = DEFAULT_TIME_ZONE,
 ) {
-  const whenUtc = wallTimeInTimeZoneToUtcIso(nextCheckIn.when, timeZone);
+  const whenUtc = checkInInstantIso(nextCheckIn.when, timeZone);
   const normalized: NextCheckIn = { ...nextCheckIn, when: whenUtc };
 
   if (normalized.recurrence && normalized.recurrence !== "none") {
     // A recurring ask replaces whatever was previously scheduled for this Journey -
     // clear any open check-ins (single or from an earlier series) before laying the new one down.
-    await supabase.from("nura_check_ins").delete().eq("owner_id", ownerId).eq("plan_id", planId).is("completed_at", null);
+    await supabase.from("nura_check_ins").delete().eq("owner_id", ownerId).eq("plan_id", planId).is("completed_at", null).is("triggered_at", null);
 
     const occurrences = generateRecurringOccurrences(new Date(normalized.when), normalized.recurrence);
     const rows = occurrences.map((date) => ({
@@ -619,7 +660,7 @@ export async function applyNextCheckIn(
 
   // Clear any previously open check-ins for this Journey - including leftover rows from an
   // earlier recurring series - so a one-off reschedule doesn't leave orphaned future occurrences.
-  await supabase.from("nura_check_ins").delete().eq("owner_id", ownerId).eq("plan_id", planId).is("completed_at", null);
+  await supabase.from("nura_check_ins").delete().eq("owner_id", ownerId).eq("plan_id", planId).is("completed_at", null).is("triggered_at", null);
 
   await supabase.from("nura_check_ins").insert({
     owner_id: ownerId,
