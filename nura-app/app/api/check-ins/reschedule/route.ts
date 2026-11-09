@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
     .eq("owner_id", user.id)
     .eq("plan_id", planId)
     .is("completed_at", null)
+    .is("triggered_at", null)
     .order("scheduled_for", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -56,7 +57,10 @@ export async function POST(request: NextRequest) {
     .delete()
     .eq("owner_id", user.id)
     .eq("plan_id", planId)
-    .is("completed_at", null);
+    .is("completed_at", null)
+    // Keep check-ins that already went out: they are the record of what Nura sent, and the
+    // free-check-in rule reads them.
+    .is("triggered_at", null);
 
   if (clearError) {
     return NextResponse.json({ ok: false, error: clearError.message }, { status: 500 });

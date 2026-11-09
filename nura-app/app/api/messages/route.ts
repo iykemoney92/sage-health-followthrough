@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { loadRoutineTimes, saveRoutineTimes } from "@/lib/domain/routine-times";
-import { enforceThreadLimit, requirePlusAccess } from "@/lib/billing/subscription";
+import { enforceThreadLimit, getSubscriptionAccess, requirePlusAccess } from "@/lib/billing/subscription";
+import { hasUsedFreeCheckIn } from "@/lib/billing/free-checkin";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { resolveDecision, applyPlanDecision, applyNextCheckIn, insertConversationTurn, extractPhoneNumber, type PlanContext, type HistoryTurn, type MissedCheckIn } from "@/lib/domain/message-intake";
@@ -258,7 +259,9 @@ export async function POST(request: NextRequest) {
     ...((contexts ?? []) as PlanContext[]),
   ];
   const routineTimes = await loadRoutineTimes(supabase, user.id);
-  const decision = await resolveDecision(modelContent, plans ?? [], sanitizedAttachments, modelContexts, requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels, timeZone, preferredChannel, routineTimes);
+  // So Nura doesn't promise a free user check-ins the trigger will skip (see checkInAccessGuidance).
+  const checkInAccess = await loadCheckInAccess(user.id);
+  const decision = await resolveDecision(modelContent, plans ?? [], sanitizedAttachments, modelContexts, requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels, timeZone, preferredChannel, routineTimes, checkInAccess);
   await saveRoutineTimes(supabase, user.id, routineTimes, decision.routine_times);
   const threadLimit = await enforceThreadLimit(supabase, user.id, plans?.length ?? 0, decision.action === "new_plan");
   if (threadLimit) return threadLimit;
@@ -323,4 +326,19 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, reply: decision.reply, planId, planTitle, transcript: voiceNotes.length > 0 ? storedContent : null });
+}
+
+async function loadCheckInAccess(ownerId: string) {
+  try {
+    const admin = getSupabaseAdminClient();
+    const [access, freeCheckInUsed] = await Promise.all([
+      getSubscriptionAccess(admin, ownerId),
+      hasUsedFreeCheckIn(admin, ownerId),
+    ]);
+    return { hasPlus: access.hasPlus, freeCheckInUsed };
+  } catch (err) {
+    // Unknown access only drops the extra honesty line from the prompt; the chat still answers.
+    console.error("[messages] check-in access lookup failed:", err);
+    return null;
+  }
 }
