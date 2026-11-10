@@ -367,6 +367,88 @@ usenura.app
 `;
 }
 
+/** 24 hours after a sign-up that stopped part-way through setup. Sent once. */
+export function onboardingNudgeEmailHtml({ onboardingUrl, firstName }: { onboardingUrl: string; firstName?: string }) {
+  const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : "Hi,";
+  return nuraEmailShell({
+    preview: "Your Nura setup takes about two minutes, and your first check-in is free.",
+    eyebrow: "Finish setting up",
+    title: "You're a couple of minutes away.",
+    bodyHtml: `${greeting}<br/><br/>You started setting up Nura but didn't get to the end. It takes about two minutes: tell Nura what you'd like support with and when you'd like to hear from it.<br/><br/>Your first check-in is free.`,
+    ctaLabel: "Finish setting up",
+    ctaUrl: onboardingUrl,
+    footerNote: "If you've already finished, you can ignore this email.",
+  });
+}
+
+export function onboardingNudgeEmailText({ onboardingUrl, firstName }: { onboardingUrl: string; firstName?: string }) {
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  return `Nura — Wellbeing companion
+
+${greeting}
+
+You started setting up Nura but didn't get to the end. It takes about two minutes: tell Nura what you'd like support with and when you'd like to hear from it.
+
+Your first check-in is free.
+
+Finish setting up:
+${onboardingUrl}
+
+If you've already finished, you can ignore this email.
+
+usenura.app
+`;
+}
+
+/** When a scheduled check-in is skipped because it needs Plus. At most once a week per person. */
+export function plusSkipNoticeEmailHtml({
+  billingUrl,
+  planTitle,
+  firstName,
+}: {
+  billingUrl: string;
+  planTitle: string;
+  firstName?: string;
+}) {
+  const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : "Hi,";
+  return nuraEmailShell({
+    preview: `Your check-in about ${planTitle} didn't go out. Here's why.`,
+    eyebrow: "Check-in paused",
+    title: "Your check-in didn't go out.",
+    bodyHtml: `${greeting}<br/><br/>Nura was due to check in with you about <strong>${escapeHtml(planTitle)}</strong>, but it didn't. Your first check-in was free; regular check-ins come with Nura Plus.<br/><br/>Your plan and everything you've told Nura are saved, and you can still chat with Nura any time.`,
+    ctaLabel: "See Nura Plus",
+    ctaUrl: billingUrl,
+    footerNote: "If you've already upgraded, you can ignore this email.",
+  });
+}
+
+export function plusSkipNoticeEmailText({
+  billingUrl,
+  planTitle,
+  firstName,
+}: {
+  billingUrl: string;
+  planTitle: string;
+  firstName?: string;
+}) {
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  return `Nura — Wellbeing companion
+
+${greeting}
+
+Nura was due to check in with you about ${planTitle}, but it didn't. Your first check-in was free; regular check-ins come with Nura Plus.
+
+Your plan and everything you've told Nura are saved, and you can still chat with Nura any time.
+
+See Nura Plus:
+${billingUrl}
+
+If you've already upgraded, you can ignore this email.
+
+usenura.app
+`;
+}
+
 function formatCheckInWhen(iso: string, timeZone?: string) {
   return new Date(iso).toLocaleString("en-GB", {
     weekday: "long",

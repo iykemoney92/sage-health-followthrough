@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSubscriptionAccess } from "@/lib/billing/subscription";
 import { ownersWhoUsedFreeCheckIn, pickFreeCheckIns } from "@/lib/billing/free-checkin";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
+import { sendPlusSkipNotices } from "@/lib/domain/nudges";
 import { placeOutboundCall, isElevenLabsCallingConfigured, getConversationOutcome } from "@/lib/integrations/elevenlabs";
 import { buildVoiceCheckinContext, NO_CIRCLE_PASS_ON } from "@/lib/domain/voice-checkin-context";
 import { sendPushToOwner } from "@/lib/integrations/push";
@@ -647,6 +648,11 @@ async function runTriggerCheckIns(request: NextRequest) {
     for (const id of gatedCheckInIds) {
       results.push({ checkInId: id, status: "skipped_plus_required" });
     }
+    // Tell them, at most once a week, instead of going quiet (lib/domain/nudges).
+    const gated = new Set(gatedCheckInIds);
+    await sendPlusSkipNotices(supabase, claimedCheckIns.filter((c) => gated.has(c.id))).catch((error) =>
+      console.error("[trigger-check-ins] skip notices failed", error),
+    );
   }
 
   if (noConsentCheckInIds.length > 0) {

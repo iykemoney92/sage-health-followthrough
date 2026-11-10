@@ -11,6 +11,7 @@ import {
   trialReminderEmailText,
 } from "@/lib/integrations/resend";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
+import { sendOnboardingNudges } from "@/lib/domain/nudges";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -160,8 +161,15 @@ async function runTrialLifecycle(request: NextRequest) {
     if (access.status === "expired" && !access.hasPlus) expiredMarked += 1;
   }
 
+  // The once-a-day setup reminder rides on this job rather than a new cron (lib/domain/nudges).
+  const onboarding = await sendOnboardingNudges(supabase).catch((error) => {
+    console.error("[billing/trial-reminders] onboarding nudges failed", error);
+    return { sent: 0, failed: -1 };
+  });
+
   return NextResponse.json({
     ok: true,
+    onboardingNudges: onboarding,
     remindersSent,
     reminderFailures,
     expiredMarked,
