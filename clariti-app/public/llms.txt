@@ -44,6 +44,7 @@ Attach a document, take a photo, or paste the text, and Clariti explains one doc
 - [What is a CPT code on my medical bill?](https://useclariti.app/guides/cpt-code-on-medical-bill)
 - [What is an ICD-10 code on a medical bill or EOB?](https://useclariti.app/guides/icd-10-code-on-medical-bill)
 - [How to check a hospital bill for errors, step by step](https://useclariti.app/guides/how-to-check-a-hospital-bill-for-errors)
+- [How to spot a fake medical bill, and a real one that’s wrong](https://useclariti.app/guides/how-to-spot-a-fake-medical-bill)
 - [Why did I get two bills for one hospital visit?](https://useclariti.app/guides/why-two-bills-for-one-hospital-visit)
 - [ER visit levels 99281–99285 on a bill, explained](https://useclariti.app/guides/er-visit-level-codes-99281-99285)
 - [Good faith estimate: what it is and the $400 rule](https://useclariti.app/guides/good-faith-estimate)

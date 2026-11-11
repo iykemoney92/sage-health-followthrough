@@ -285,3 +285,26 @@
   color: #4d5e59;
   font-size: 0.9375rem;
 }
+
+/* A real product screenshot under the answer (topics with `media`). */
+.guide-media {
+  margin: 22px 0 0;
+  border: 1px solid #d9e6e1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+.guide-media img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.guide-media figcaption {
+  padding: 12px 16px;
+  border-top: 1px solid #d9e6e1;
+  color: #4d5e59;
+  font-size: 0.9375rem;
+}
+.guide-media figcaption a {
+  font-weight: 600;
+}
