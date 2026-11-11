@@ -176,54 +176,116 @@ export const ROUTINE_GUIDES: Guide[] = [
   {
     slug: "what-is-a-care-and-support-plan",
     category: "routines",
-    question: "What is a care and support plan, and how do you keep track of yours?",
-    title: "What is a care and support plan?",
+    question: "What is a care and support plan, and when should it be reviewed?",
+    title: "Care and support plans: a guide for carers",
     description:
-      "A council care and support plan sets out the support you need after an assessment. Here's what's in it, how to get one, and how to keep it working.",
+      "What a council care and support plan includes, who can get one, when it should be reviewed, and how to keep it working for someone you look after.",
     answer:
-      "In England, a care and support plan is the written plan your local council produces after a needs or carer's assessment, setting out what support you need, how it will be given, and how much the council will spend. You should get a copy within a few weeks of the assessment.",
+      "In England, a care and support plan is the written plan your local council makes after a needs assessment or a carer's assessment. It sets out the support needed, how and when it will be given, and how much the council will spend. It's usually reviewed within the first few months of support starting and then once a year, and you can ask for a review at any time.",
     why:
-      "\"Care plan\" means different things in different places: the council's care and support plan, a hospital discharge care plan, or a plan a GP or specialist writes for a long-term condition. That's confusing when you're trying to find out what you're entitled to. The council plan matters because it's how support such as help at home, equipment or respite is arranged, and because it should be reviewed to check it's still working.",
+      "\"Care plan\" means different things in different places: the council's care and support plan, a plan a hospital writes when someone leaves, or a plan a GP or specialist writes for a long-term condition. That makes it hard to know what you're entitled to. The council plan is the one that arranges practical support such as help at home, equipment, day centres or a break for the carer, and it only keeps working if someone checks it against what actually happens.",
+    sections: [
+      {
+        heading: "Who can get a care and support plan?",
+        paras: [
+          "Anyone can ask their local council for a needs assessment, and it's free. If you look after someone, you can also ask for a carer's assessment for yourself: it's free for anyone over 18, it's separate from the assessment the person you care for might have, and you can ask for both to be done at the same time.",
+          "After the assessment the council decides whether support is needed. If it is, the support is written up as a care and support plan, and you should get a copy within a few weeks. If the council decides you don't qualify, it should still give you free advice about help in your community. You'll usually also have a financial assessment, a means test, to work out whether you pay towards the cost.",
+        ],
+      },
+      {
+        heading: "What to include in a care and support plan",
+        paras: ["The NHS says a care and support plan should cover:"],
+        list: [
+          "What's important to the person, and what they can still do themselves.",
+          "The equipment or care they need, and how and when it will happen.",
+          "What their family and friends think.",
+          "Who to contact with questions about the care.",
+          "The personal budget (the weekly amount the council will spend) and any direct payments.",
+          "For a carer's plan: options for a break (respite), local support groups and training, such as how to lift safely.",
+        ],
+      },
+      {
+        heading: "When should a care plan be reviewed?",
+        paras: [
+          "The NHS says reviews usually happen within the first few months of support starting and then once a year. They check what's working, what isn't, and whether it's still the right support.",
+          "You don't have to wait for the yearly review. If you're unhappy with the care at any point, call adult social services at the local council and ask for a review. Good reasons to ask: visits are late, short or missed; the person's needs have changed; equipment isn't working for them; or you, as the carer, can't keep up any more.",
+        ],
+      },
+      {
+        heading: "If you disagree with the assessment or the plan",
+        paras: [
+          "You have a right to complain. Start with your local council, which should have a formal complaints procedure on its website. If you're not happy with how the council handles it, you can go to the Local Government and Social Care Ombudsman, which looks into complaints independently. If explaining things is hard, an advocate can speak up for you and is often free.",
+        ],
+      },
+    ],
     steps: [
       {
-        title: "Get assessed",
-        body: "Contact social services at your local council. A needs assessment is for people who need care; a carer's assessment is for people who care for someone. Both are free.",
+        title: "Ask for the assessments",
+        body: "Contact adult social services at the local council. Ask for a needs assessment for the person who needs care and, if you look after them, a carer's assessment for you. Both are free, and you can ask for them at the same time.",
       },
       {
-        title: "Know what should be in the plan",
-        body: "What's important to you, what you can do yourself, what equipment or care you need, what your family and friends think, who to contact with questions, your personal budget, and how and when care will happen. Carers' plans also cover respite and support groups.",
+        title: "Prepare with real examples",
+        body: "Write down everyday tasks that are hard, even small ones like turning taps. The NHS notes that leaving things out might reduce the care recommended. Have a friend or relative there to take notes if you can.",
       },
       {
-        title: "Get a copy",
-        body: "The NHS says you should get a copy within a few weeks.",
+        title: "Check the plan you're given",
+        body: "Go through it against the list above: what matters to the person, what they can do, the care and equipment, who to contact, the budget and how and when care happens. Ask about anything missing.",
       },
       {
-        title: "Check it against real life",
-        body: "Is the support happening as planned? Note what's working and what isn't, with dates.",
+        title: "Keep a simple log",
+        body: "Note when support turns up, what goes well and what doesn't, with dates. A few lines a week is enough, and it turns a vague worry into something a reviewer can act on.",
       },
       {
-        title: "Use the reviews",
-        body: "Plans are usually reviewed in the first few months and then once a year. If you're unhappy at any point, call adult social services and ask for a review.",
+        title: "Use the reviews, and ask early if things change",
+        body: "Bring your log to the first review and the yearly ones. If something changes in between, ring adult social services and ask for a review rather than waiting.",
       },
     ],
     avoid: [
       "Leaving things out of the assessment because they seem small. The NHS notes that leaving things out might reduce the care recommended.",
+      "Going in alone if explaining things is hard. The NHS suggests taking a friend or relative, or using an advocate.",
       "Filing the plan away and never checking it against what's actually happening.",
-      "Waiting for the annual review when something has clearly changed.",
+      "Waiting for the yearly review when something has clearly changed.",
     ],
     nura:
-      "Nura's \"Care plans\" are something different: they're your own plans inside the app, made from what you tell Nura, that keep track of what matters and check in on next steps. They don't replace a council care and support plan or anything a clinician writes. They can help you keep track of one, though: tell Nura what your council plan says, or send a photo of it, and Nura can check in on whether the support is happening and remind you before a review.",
+      "Nura's Care plans are your own plans inside the app, not a council care and support plan, and they don't replace one. They help with the part councils can't do: noticing between reviews whether things are actually going well. If you look after someone, you can start a Care plan for them. Once they say yes on a link you send, Nura gives them a short phone call now and then, only in their daytime, asks how things are going and tells you how it went, and they can say \"stop\" on any call. You can also tell Nura what the council plan says, or attach a photo of it, and Nura checks in with you on whether the support is happening.",
     faqs: [
       {
         q: "How often is a care and support plan reviewed?",
         a: "The NHS says usually within the first few months of support starting and then once a year. You can ask for a review at any time.",
       },
       {
+        q: "Who is eligible for a care and support plan?",
+        a: "Anyone can ask for a free needs assessment, and any carer over 18 can ask for a carer's assessment. The council then decides whether support is needed and, if it is, writes the plan.",
+      },
+      {
+        q: "Do you have to pay for the care in a care plan?",
+        a: "Often you pay something. If the assessment finds support is needed, a financial assessment (means test) works out whether the council pays towards it.",
+      },
+      {
         q: "Is a care and support plan the same as a hospital care plan?",
-        a: "No. A council care and support plan follows a needs or carer's assessment. Hospitals produce a discharge care plan if you need more care after leaving hospital.",
+        a: "No. A council care and support plan follows a needs or carer's assessment. A hospital writes its own plan if someone needs more care after leaving.",
       },
     ],
-    sources: [SRC.careSupportPlans, SRC.needsAssessment, SRC.carerAssessment, SRC.discharge],
-    related: ["looking-after-yourself-as-a-carer", "what-to-do-after-being-discharged-from-hospital", "how-to-check-on-an-elderly-parent-who-lives-alone"],
+    sources: [SRC.careSupportPlans, SRC.needsAssessment, SRC.carerAssessment, SRC.meansTest, SRC.advocate, SRC.discharge],
+    related: ["looking-after-yourself-as-a-carer", "how-to-check-on-an-elderly-parent-who-lives-alone", "daily-check-in-calls-for-elderly-parents", "caring-for-a-parent-from-a-distance"],
+    media: {
+      src: "/guides/try-plan-checking-in-on-mum.webp",
+      width: 1000,
+      height: 755,
+      alt: "A plan Nura wrote from one sentence about a mum who lives alone: checking in on her remotely, with a suggested Saturday check-in asking how she's doing with eating and getting out for walks",
+      caption: "A real plan from the try-it box on Nura's home page, written from one sentence: \"My mum lives on her own two hours away. I'd like to know she's eating properly and getting out for a walk most days.\"",
+      link: { href: "/#try", label: "Try it with your own situation, no sign-up", cta: "try_first" },
+    },
+    teaser: {
+      src: "/guides/someone-i-care-for.webp",
+      width: 600,
+      height: 1022,
+      alt: "Nura's Care plan screen with \"Someone I care for\" chosen: Nura calls them, with their OK, and tells you how it went, only in their daytime",
+      title: "Can't call every day? Nura can check in for you",
+      body: "Choose \"Someone I care for\", add their name and number, and send them a link. Once they say yes, Nura gives them a short call now and then and tells you how it went.",
+      href: "signup",
+      label: "Start a Care plan free",
+      cta: "care_for_someone",
+    },
   },
 ];

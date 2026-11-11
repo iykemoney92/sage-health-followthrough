@@ -54,4 +54,39 @@ export type Guide = {
   sources: GuideSource[];
   /** Slugs of related guides. Must exist in GUIDES. */
   related: string[];
+  /** Extra sections shown after "why", for guides that answer several searched questions. */
+  sections?: GuideSection[];
+  /** A real product image shown under the answer (public/guides/...). Never mock-ups. */
+  media?: GuideMedia;
+  /** A mid-article product teaser: real image, one line and a call to action. */
+  teaser?: GuideTeaser;
+};
+
+export type GuideSection = {
+  heading: string;
+  paras: string[];
+  list?: string[];
+};
+
+export type GuideMedia = {
+  src: string;
+  width: number;
+  height: number;
+  alt: string;
+  caption: string;
+  /** Optional link under the caption, e.g. the try-it box on the home page. */
+  link?: { href: string; label: string; cta: string };
+};
+
+export type GuideTeaser = {
+  src: string;
+  width: number;
+  height: number;
+  alt: string;
+  title: string;
+  body: string;
+  /** "signup" goes to the guide sign-up link; anything else is a site path. */
+  href: "signup" | string;
+  label: string;
+  cta: string;
 };
