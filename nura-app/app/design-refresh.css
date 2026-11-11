@@ -7615,3 +7615,57 @@ footer .store-badges,.legal-footer .store-badges{margin-top:14px}
     justify-content: center;
   }
 }
+
+/* One-time notifications ask on Today (components/push-ask-card.tsx), app users only. */
+.today-push-ask {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 22px;
+  padding: 16px 18px;
+  border: 1px solid #d9e6dc;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f6fbf7 0%, #eef6f0 100%);
+}
+.today-push-ask strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #1f3a2b;
+  font-size: 15px;
+}
+.today-push-ask p {
+  margin: 0;
+  color: #4d5f55;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.today-push-ask-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.today-push-ask .primary-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.today-push-ask-later {
+  border: 0;
+  background: none;
+  color: #4d5f55;
+  font-size: 14px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+@media (max-width: 640px) {
+  .today-push-ask {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .today-push-ask-actions {
+    justify-content: space-between;
+  }
+}
