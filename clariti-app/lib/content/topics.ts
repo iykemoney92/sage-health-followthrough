@@ -62,6 +62,8 @@ export type TopicGuide = {
   sources: TopicSource[];
   /** Slugs from GUIDES or TOPICS. */
   related: string[];
+  /** A real product screenshot under the answer (public/guides/...). Never mock-ups. */
+  media?: { src: string; width: number; height: number; alt: string; caption: string; link?: { href: string; label: string } };
 };
 
 export const TOPIC_CATEGORIES: { id: TopicCategory; heading: string; blurb: string }[] = [
@@ -90,6 +92,8 @@ export const TOPIC_CATEGORIES: { id: TopicCategory; heading: string; blurb: stri
 const HC = "https://www.healthcare.gov";
 const SRC = {
   billRights: { label: "CMS.gov — Medical bill rights (No Surprises Act)", url: "https://www.cms.gov/medical-bill-rights" },
+  ftcDebtCollectors: { label: "FTC — Fake and abusive debt collectors", url: "https://consumer.ftc.gov/articles/fake-abusive-debt-collectors" },
+  cfpbScam: { label: "CFPB — How to tell if a debt collector is legitimate or a scam", url: "https://www.consumerfinance.gov/ask-cfpb/how-do-i-tell-if-a-debt-collector-is-legitimate-or-a-scam-en-1699/" },
   allowed: { label: "HealthCare.gov — Allowed amount", url: `${HC}/glossary/allowed-amount/` },
   balance: { label: "HealthCare.gov — Balance billing", url: `${HC}/glossary/balance-billing/` },
   deductible: { label: "HealthCare.gov — Deductible", url: `${HC}/glossary/deductible/` },
@@ -772,7 +776,107 @@ export const TOPICS: TopicGuide[] = [
       },
     ],
     sources: [SRC.billRights, SRC.hcpcs],
-    related: ["understand-your-medical-bill", "why-two-bills-for-one-hospital-visit", "cpt-code-on-medical-bill"],
+    related: ["understand-your-medical-bill", "how-to-spot-a-fake-medical-bill", "why-two-bills-for-one-hospital-visit", "cpt-code-on-medical-bill"],
+  },
+  {
+    slug: "how-to-spot-a-fake-medical-bill",
+    category: "bills",
+    metaTitle: "How to spot a fake medical bill (or a wrong one)",
+    metaDescription:
+      "Fake bills and debt collectors exist, but most bad bills are real bills with mistakes. How to tell them apart, check one against your EOB, and dispute it.",
+    kicker: "FAKE OR WRONG BILL",
+    h1: "How to spot a fake medical bill, and a real one that’s wrong",
+    answer:
+      "Check that the bill is from a provider you actually saw, for a date you were treated, and that it matches what your insurer’s explanation of benefits (EOB) says you owe. A bill you can’t link to any care, or a collector who won’t give a mailing address or threatens arrest, may be a scam. A real bill that asks for more than the EOB usually went out before insurance was applied, is balance billing, or has an error, so ask before you pay.",
+    why: [
+      "Scams are real. The FTC warns that some callers who say you owe a debt are not real debt collectors at all, and the warning signs are a debt you don’t recognize, a refusal to give a mailing address or phone number, and threats of arrest or of reporting you to the police.",
+      "But “I don’t recognize this” isn’t proof a bill is fake. One hospital visit can produce separate bills from the hospital and from the anesthesia, radiology, lab or emergency physician groups, often weeks later and under names you never heard during your care.",
+      "And a real bill can still be wrong. Providers sometimes bill before the insurer has paid and applied its discount, so the first bill asks for the full charge, and itemized bills can carry duplicate lines, wrong dates or services you didn’t receive.",
+    ],
+    reading: [
+      "1. Match the who and the when. Find the provider name and the date of service on the bill and check them against your own records, your insurer’s portal or your appointment history. A separate group billing for the same visit is normal.",
+      "2. Find the EOB for that date. Your insurer’s EOB shows what was allowed, what the plan paid and your patient responsibility. That figure is what the bill should ask for.",
+      "3. If the bill asks for more than the EOB, work out the gap. If it equals the difference between the billed and allowed amounts, the discount may not have been applied, or the provider is balance billing.",
+      "4. Contact the provider using details you already trust, such as your previous paperwork, your insurer or the provider’s own website, and ask for an itemized bill and whether insurance has been applied.",
+      "5. If a debt collector contacts you, ask for the validation information the FTC describes: the collector’s name and mailing address, the creditor’s name, and how much is owed with interest, fees, payments and credits. If you don’t think the debt is yours, send a dispute letter within 30 days; the FTC says the collector must stop collecting until it sends written verification.",
+      "6. If you were uninsured or self-paying and had a good faith estimate, compare the bill with it. CMS says you may be able to dispute a bill that is at least $400 more than the estimate.",
+      "7. Report fake or abusive debt collectors to your state attorney general, the FTC and the CFPB.",
+    ],
+    example: {
+      caption: "An invented example: a bill compared with the EOB for the same visit.",
+      rows: [
+        { label: "Amount billed (EOB)", value: "$310.00", reading: "The provider’s full charge before any insurance discount." },
+        { label: "Allowed amount (EOB)", value: "$180.00", reading: "What the plan agreed the visit is worth." },
+        { label: "Plan paid (EOB)", value: "$140.00", reading: "The insurer’s payment to the provider." },
+        { label: "Patient responsibility (EOB)", value: "$40.00", reading: "Here it’s all copay: what the EOB says you may owe." },
+        { label: "Amount due (provider’s bill)", value: "$170.00", reading: "$130 more than the EOB. That’s exactly billed minus allowed, so ask whether the discount was applied." },
+      ],
+      takeaway: "The bill isn’t fake, but it asks for $130 more than the EOB. That gap is worth a phone call before paying.",
+    },
+    notMean: [
+      "That a bill from a name you don’t recognize is fake. Specialist groups often bill separately from the hospital.",
+      "That an official-looking letter proves a bill is real. Check it against the EOB and contact the provider using details you already have.",
+      "That a bill you’re questioning can be ignored. Keep talking to the provider, or dispute in writing with a collector, while it’s checked.",
+      "That every unfamiliar line is an error. Some charges look odd but are correct, so ask rather than assume.",
+    ],
+    whereSeen: [
+      "Paper bills and patient-portal statements, including bills from groups you didn’t meet in person.",
+      "Calls, letters and messages from debt collectors about medical debt.",
+    ],
+    questions: [
+      {
+        who: "Ask the provider’s billing office",
+        items: [
+          "Can you send me an itemized bill with the codes for each charge?",
+          "Has my insurer’s payment and discount been applied to this bill?",
+          "Why does this bill ask for more than my EOB?",
+          "Can you put the account on hold while I check it?",
+        ],
+      },
+      {
+        who: "Ask a debt collector",
+        items: [
+          "What is your company’s name, mailing address and phone number?",
+          "Who is the original creditor, and what is the amount with interest, fees, payments and credits?",
+          "Please send me the validation information in writing.",
+        ],
+      },
+      {
+        who: "Ask your insurer",
+        items: ["Is this claim final, or still being processed?", "Was this provider in network for this visit?"],
+      },
+    ],
+    clariti:
+      "Attach the bill and the EOB, and Clariti explains each charge in plain words, quoting the lines it reads, and flags ones worth checking. It can’t tell you whether a bill or a caller is genuine; only the provider, your insurer or the collector’s documents can confirm that. For a single EOB line, the free EOB decoder checks whether the bill matches.",
+    ctaPrompt: "Not sure about a medical bill? Attach it with your EOB, and Clariti will explain each charge and what to ask before you pay.",
+    faqs: [
+      {
+        question: "How can I tell if a medical debt collector is real?",
+        answer: "The CFPB says a legitimate collector can tell you their name, company, mailing address and phone number and give details of the debt. It could be a scam if they won’t, if they threaten you, or if they ask for your personal financial information.",
+      },
+      {
+        question: "What if I get a bill for a visit I don’t remember?",
+        answer: "Check the provider name and date against your records and your insurer’s EOBs. Separate groups such as anesthesia, radiology or lab often bill on their own for the same visit. If you still can’t place it, contact the provider using details you already trust and ask what the charge is for.",
+      },
+      {
+        question: "Why is my bill higher than my EOB?",
+        answer: "Usually because the bill went out before the claim finished processing, the provider is balance billing, or there’s a billing error. Ask for an itemized bill and ask your insurer whether the claim is final.",
+      },
+      {
+        question: "Where do I report a fake debt collector?",
+        answer: "The FTC says to report fake or abusive debt collectors to your state attorney general’s office, the FTC and the CFPB.",
+      },
+    ],
+    sources: [SRC.ftcDebtCollectors, SRC.cfpbScam, SRC.billRights, SRC.balance],
+    related: ["how-to-check-a-hospital-bill-for-errors", "eob-vs-medical-bill", "why-two-bills-for-one-hospital-visit", "good-faith-estimate"],
+    media: {
+      src: "/guides/eob-decoder-bill-mismatch.webp",
+      width: 1000,
+      height: 845,
+      alt: "Clariti’s free EOB decoder result: the EOB says you may owe $40, and the bill asks for $130 more, which equals the gap between the billed and allowed amounts",
+      caption: "The free EOB decoder, run on the invented example below: it spots that the bill asks for $130 more than the EOB and explains the likely reasons.",
+      link: { href: "/tools/eob-decoder", label: "Check your own bill against your EOB, free" },
+    },
   },
   {
     slug: "why-two-bills-for-one-hospital-visit",

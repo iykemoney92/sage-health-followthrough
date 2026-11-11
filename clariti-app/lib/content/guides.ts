@@ -198,7 +198,7 @@ export const GUIDES: Guide[] = [
       },
     ],
     ctaPrompt: "Got a bill that doesn’t add up? Attach it or take a photo, and Clariti will explain each charge and what to ask.",
-    related: ["how-to-check-a-hospital-bill-for-errors", "cpt-code-on-medical-bill", "why-two-bills-for-one-hospital-visit", "how-to-read-an-eob"],
+    related: ["how-to-check-a-hospital-bill-for-errors", "how-to-spot-a-fake-medical-bill", "cpt-code-on-medical-bill", "why-two-bills-for-one-hospital-visit", "how-to-read-an-eob"],
   },
   {
     slug: "lab-results-explained",

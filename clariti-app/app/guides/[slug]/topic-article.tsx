@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { ClaritiShell } from "@/components/clariti-shell";
@@ -57,6 +58,27 @@ export function TopicArticle({ topic, appUrl }: { topic: TopicGuide; appUrl: str
         <p className="clariti-kicker">{topic.kicker}</p>
         <h1>{topic.h1}</h1>
         <p className="guide-answer">{topic.answer}</p>
+        {topic.media && (
+          <figure className="guide-media">
+            <Image
+              src={topic.media.src}
+              width={topic.media.width}
+              height={topic.media.height}
+              alt={topic.media.alt}
+              sizes="(max-width: 760px) 100vw, 720px"
+              fetchPriority="high"
+            />
+            <figcaption>
+              {topic.media.caption}
+              {topic.media.link && (
+                <>
+                  {" "}
+                  <Link href={topic.media.link.href}>{topic.media.link.label} →</Link>
+                </>
+              )}
+            </figcaption>
+          </figure>
+        )}
         <ToolPromo slug={topic.slug} />
 
         <h2>Why it’s confusing</h2>

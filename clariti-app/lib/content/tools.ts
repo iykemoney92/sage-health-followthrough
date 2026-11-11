@@ -27,6 +27,7 @@ export const EOB_DECODER: ClaritiTool = {
     "allowed-amount-on-eob",
     "deductible-copay-coinsurance",
     "claim-denied-on-eob",
+    "how-to-spot-a-fake-medical-bill",
   ],
 };
 
