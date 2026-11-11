@@ -26,8 +26,8 @@ type Status = "checking" | "unsupported" | "denied" | "missing_key" | "off" | "o
 // Only true inside the Capacitor-wrapped iOS/Android app (nura-mobile) — false
 // for every browser, including mobile Safari/Chrome, where the web-push path
 // below applies instead.
-const isNative = Capacitor.isNativePlatform();
-const nativePlatform = Capacitor.getPlatform();
+export const isNative = Capacitor.isNativePlatform();
+export const nativePlatform = Capacitor.getPlatform();
 const NATIVE_TOKEN_STORAGE_KEY = "nura_native_push_token";
 
 // The Android build currently has no google-services.json, so there is no default
@@ -43,7 +43,7 @@ const NATIVE_TOKEN_STORAGE_KEY = "nura_native_push_token";
 // is in place and verified on a real device/build - no app-store release needed,
 // since this flag is read from the live web bundle the WebView loads.
 const ANDROID_PUSH_READY = process.env.NEXT_PUBLIC_ANDROID_PUSH_ENABLED === "true";
-const nativePushReady = nativePlatform !== "android" || ANDROID_PUSH_READY;
+export const nativePushReady = nativePlatform !== "android" || ANDROID_PUSH_READY;
 
 async function checkNativeStatus(): Promise<Status> {
   if (nativePlatform !== "ios" && nativePlatform !== "android") return "unsupported";
@@ -103,7 +103,12 @@ async function registerNativeDevice(): Promise<string> {
   );
 }
 
-export function PushNotificationsToggle({ autoRequest = false }: { autoRequest?: boolean } = {}) {
+/**
+ * The push state and actions shared by the settings toggle below and the one-time ask on Today
+ * (components/push-ask-card.tsx), so both go through exactly the same permission and
+ * registration path.
+ */
+export function usePushNotifications({ autoRequest = false }: { autoRequest?: boolean } = {}) {
   const { toast } = useToast();
   const [status, setStatus] = useState<Status>("checking");
   const [busy, setBusy] = useState(false);
@@ -301,6 +306,11 @@ export function PushNotificationsToggle({ autoRequest = false }: { autoRequest?:
     }
   }
 
+  return { status, busy, isIos, enable, disable };
+}
+
+export function PushNotificationsToggle({ autoRequest = false }: { autoRequest?: boolean } = {}) {
+  const { status, busy, isIos, enable, disable } = usePushNotifications({ autoRequest });
   const Icon = busy ? Loader2 : status === "on" ? BellRing : status === "denied" ? BellOff : Bell;
 
   return (
