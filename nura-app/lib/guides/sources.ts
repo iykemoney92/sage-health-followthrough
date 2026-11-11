@@ -58,6 +58,14 @@ export const SRC = {
     label: "NHS: Getting a care needs assessment",
     url: "https://www.nhs.uk/social-care-and-support/help-from-social-services-and-charities/getting-a-needs-assessment/",
   },
+  meansTest: {
+    label: "NHS: Financial assessment (means test) for social care",
+    url: "https://www.nhs.uk/social-care-and-support/help-from-social-services-and-charities/financial-assessment-means-test/",
+  },
+  advocate: {
+    label: "NHS: Someone to speak up for you (advocate)",
+    url: "https://www.nhs.uk/social-care-and-support/help-from-social-services-and-charities/someone-to-speak-up-for-you-advocate/",
+  },
   careSupportPlans: {
     label: "NHS: Care and support plans",
     url: "https://www.nhs.uk/social-care-and-support/help-from-social-services-and-charities/care-and-support-plans/",

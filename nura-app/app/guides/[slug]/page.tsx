@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
@@ -70,6 +71,13 @@ export default async function GuidePage({ params }: Props) {
               text: guide.steps.map((step) => `${step.title}: ${step.body}`).join(" "),
             },
           },
+          ...(guide.sections ?? [])
+            .filter((section) => section.heading.endsWith("?"))
+            .map((section) => ({
+              "@type": "Question",
+              name: section.heading,
+              acceptedAnswer: { "@type": "Answer", text: section.paras.join(" ") },
+            })),
           ...guide.faqs.map((faq) => ({
             "@type": "Question",
             name: faq.q,
@@ -111,6 +119,34 @@ export default async function GuidePage({ params }: Props) {
               a search engine or AI assistant will quote. */}
           <p className="guide-answer">{guide.answer}</p>
 
+          {guide.media && (
+            <figure className="guide-media">
+              <Image
+                src={guide.media.src}
+                width={guide.media.width}
+                height={guide.media.height}
+                alt={guide.media.alt}
+                sizes="(max-width: 760px) 100vw, 720px"
+                fetchPriority="high"
+              />
+              <figcaption>
+                {guide.media.caption}
+                {guide.media.link && (
+                  <>
+                    {" "}
+                    <TrackedLink
+                      href={guide.media.link.href}
+                      event="guide_cta_click"
+                      eventParams={{ cta: guide.media.link.cta, placement: "guide_media", guide: guide.slug }}
+                    >
+                      {guide.media.link.label} →
+                    </TrackedLink>
+                  </>
+                )}
+              </figcaption>
+            </figure>
+          )}
+
           {tool && (
             <aside className="guide-tool" aria-label={tool.name}>
               <div>
@@ -128,6 +164,22 @@ export default async function GuidePage({ params }: Props) {
             <p>{guide.why}</p>
           </section>
 
+          {guide.sections?.map((section) => (
+            <section className="guide-section" key={section.heading}>
+              <h2>{section.heading}</h2>
+              {section.paras.map((para) => (
+                <p key={para}>{para}</p>
+              ))}
+              {section.list && (
+                <ul className="guide-list">
+                  {section.list.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ))}
+
           <section className="guide-section">
             <h2>What should you do?</h2>
             <ol className="guide-steps">
@@ -139,6 +191,30 @@ export default async function GuidePage({ params }: Props) {
               ))}
             </ol>
           </section>
+
+          {guide.teaser && (
+            <aside className="guide-teaser" aria-label={guide.teaser.title}>
+              <Image
+                src={guide.teaser.src}
+                width={guide.teaser.width}
+                height={guide.teaser.height}
+                alt={guide.teaser.alt}
+                sizes="(max-width: 640px) 60vw, 220px"
+              />
+              <div>
+                <h2>{guide.teaser.title}</h2>
+                <p>{guide.teaser.body}</p>
+                <TrackedLink
+                  href={guide.teaser.href === "signup" ? GUIDE_SIGNUP_HREF : guide.teaser.href}
+                  className="guide-button"
+                  event="guide_cta_click"
+                  eventParams={{ cta: guide.teaser.cta, placement: "guide_teaser", guide: guide.slug }}
+                >
+                  {guide.teaser.label} <ArrowRight size={16} />
+                </TrackedLink>
+              </div>
+            </aside>
+          )}
 
           <section className="guide-section">
             <h2>What tends not to work</h2>
