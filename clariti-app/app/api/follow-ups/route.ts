@@ -4,6 +4,7 @@ import { z } from "zod";
 import { claritiAnalysisSchema } from "@/lib/ai/clariti-analysis";
 import { getSubscriptionAccess, type PlusFeature } from "@/lib/billing/subscription";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { reportError } from "@/lib/observability/report-error";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
 
 const requestSchema = z.object({
@@ -230,13 +231,22 @@ export async function POST(request: NextRequest) {
     const { analysis_payload: analysisPayloadForNewerSchema, phone_number: phoneNumberForNewerSchema, ...fallbackPayload } = insertPayload;
     void analysisPayloadForNewerSchema;
     void phoneNumberForNewerSchema;
-    const { data: fallbackData } = await supabase
+    const { data: fallbackData, error: fallbackError } = await supabase
       .from("clariti_follow_ups")
       .insert(fallbackPayload)
       .select("id")
       .maybeSingle();
+    // The fallback's own failure used to be dropped: the route still answered ok,
+    // wrote "Done. I'll email you…" into the chat and returned a made-up id, while
+    // no row existed for the hourly sender to find. Nothing scheduled must never
+    // read as scheduled.
+    if (fallbackError) {
+      reportError("follow-ups", fallbackError, { stage: "insert_fallback", firstError: error.message });
+      return NextResponse.json({ ok: false, error: "check_in_not_saved" }, { status: 500 });
+    }
     persistedId = (fallbackData?.id as string | undefined) ?? null;
   } else if (error) {
+    reportError("follow-ups", error, { stage: "insert" });
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   } else {
     persistedId = (data?.id as string | undefined) ?? null;
