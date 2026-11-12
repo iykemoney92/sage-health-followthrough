@@ -12,8 +12,8 @@ const SEEN_KEY = "nura.pushAsk.seen";
  * never turned notifications on. New users are asked during onboarding; this reaches everyone who
  * installed before Android push was switched on (11 Nov 2026), or who skipped that step.
  *
- * Shown once per device: tapping either button records it, and it never shows on the web, where
- * the settings toggle already covers browser notifications.
+ * Shown once per device: tapping either button records it (on iPhone, being shown does), and it
+ * never shows on the web, where the settings toggle already covers browser notifications.
  */
 export function PushAskCard({ show }: { show: boolean }) {
   const eligible = show && isNative && nativePushReady;
@@ -32,9 +32,22 @@ export function PushAskCard({ show }: { show: boolean }) {
 
   const visible = eligible && !seen && status === "off";
 
+  // App Store guideline 5.1.1(iv): on iPhone a message before the system permission prompt may not
+  // offer a way out, so there the card has only "Turn on" and counts as seen once it has shown.
+  // It sits inline on Today and blocks nothing; scrolling past it is the "no".
+  const ios = nativePlatform === "ios";
+
   useEffect(() => {
-    if (visible) track("push_ask_shown", { platform: nativePlatform });
-  }, [visible]);
+    if (!visible) return;
+    track("push_ask_shown", { platform: nativePlatform });
+    if (ios) {
+      try {
+        localStorage.setItem(SEEN_KEY, `shown:${Date.now()}`);
+      } catch {
+        // Private storage blocked: the card may show again next time.
+      }
+    }
+  }, [visible, ios]);
 
   if (!visible && !(eligible && !seen && busy)) return null;
 
@@ -69,9 +82,11 @@ export function PushAskCard({ show }: { show: boolean }) {
         <button type="button" className="primary-cta" onClick={onEnable} disabled={busy}>
           {busy ? <Loader2 size={16} className="spin" /> : <BellRing size={16} />} Turn on
         </button>
-        <button type="button" className="today-push-ask-later" onClick={onDismiss} disabled={busy}>
-          Not now
-        </button>
+        {ios ? null : (
+          <button type="button" className="today-push-ask-later" onClick={onDismiss} disabled={busy}>
+            Not now
+          </button>
+        )}
       </div>
     </section>
   );
