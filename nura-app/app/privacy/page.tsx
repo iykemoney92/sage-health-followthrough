@@ -37,7 +37,7 @@ function buildSections(supportEmail: string) {
     },
     {
       title: "Invite links",
-      body: "You have a personal link you can share to invite friends to Nura. When someone creates an account through it, we record that they joined through your link so their free Plus can be switched on. The link and the message that goes with it say nothing about your health, and someone who opens it only sees your first name. You only ever see how many people have joined through your link, never who they are. These records are deleted with either account.",
+      body: "You have a personal link you can share to invite friends to Nura. When someone creates an account through it, we record that they joined through your link so their free Plus can be switched on. The link and the message that goes with it say nothing about your health, and someone who opens it only sees your first name. You only ever see how many people have joined through your link, never who they are. Opening a link saves an essential cookie in that browser for seven days so the gift reaches the account you then create; opening your own link while signed in saves nothing. These records are deleted with either account.",
     },
     {
       title: "Your control",
