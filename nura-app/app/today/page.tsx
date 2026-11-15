@@ -28,6 +28,7 @@ import { getSubscriptionAccess, isSubscriptionLockedOut } from "@/lib/billing/su
 import { hasUsedFreeCheckIn } from "@/lib/billing/free-checkin";
 import { TrialAfterCheckIn } from "@/components/trial-after-checkin";
 import { PushAskCard } from "@/components/push-ask-card";
+import { HealthAskCard } from "@/components/health-ask-card";
 import { listSharedWithMe } from "@/lib/care-circle";
 import { createWhatsappHref } from "@/lib/whatsapp-link";
 import { hasSeenWalkthrough } from "@/lib/walkthrough";
@@ -261,6 +262,7 @@ export default async function TodayPage({
         <WelcomeWalkthrough show={Boolean(user) && !hasSeenWalkthrough(user)} firstName={firstName} />
         <TrialAfterCheckIn show={showTrialAfterCheckIn} />
         <PushAskCard show={(plans?.length ?? 0) > 0 && !showTrialAfterCheckIn} />
+        <HealthAskCard show={(plans?.length ?? 0) > 0 && !showTrialAfterCheckIn} />
 
         <div className="today-layout">
           <section className="today-main-column">

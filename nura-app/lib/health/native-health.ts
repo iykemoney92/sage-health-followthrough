@@ -2,6 +2,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { Health, type HealthDataType } from "@capgo/capacitor-health";
+import { track } from "@/lib/analytics";
 import { addDays } from "@/lib/health/health-brief";
 import { HEALTH_METRICS, type HealthDailyRow, type HealthMetric, type HealthPlatform } from "@/lib/health/metrics";
 import { deviceDay, rollupAggregates, rollupBloodPressure, rollupSleep } from "@/lib/health/rollup";
@@ -67,6 +68,20 @@ export async function requestHealthPermission() {
   return Health.requestAuthorization({ read: READ_TYPES });
 }
 
+/**
+ * Android only: how many of Nura's read types the person actually allowed in Health Connect.
+ * Null on iPhone (HealthKit never says which reads were refused) or when it can't be checked.
+ */
+export async function healthConnectGrantedCount(): Promise<number | null> {
+  if (nativeHealthPlatform() !== "health_connect" || !isHealthPluginPresent()) return null;
+  try {
+    const status = await Health.checkAuthorization({ read: READ_TYPES });
+    return status.readAuthorized.length;
+  } catch {
+    return null;
+  }
+}
+
 export async function openHealthSettings() {
   if (Capacitor.getPlatform() === "android") await Health.openHealthConnectSettings();
 }
@@ -130,13 +145,29 @@ export async function syncHealthData(options: { lastSyncedAt: string | null; for
   const endDate = now.toISOString();
 
   const days: HealthDailyRow[] = [];
+  const withData: HealthMetric[] = [];
+  const failed: HealthMetric[] = [];
   for (const metric of HEALTH_METRICS) {
     try {
-      days.push(...(await readMetric(metric, startDate, endDate)));
+      const rows = await readMetric(metric, startDate, endDate);
+      if (rows.length > 0) withData.push(metric);
+      days.push(...rows);
     } catch {
       // One unreadable type (denied, unsupported on this device) must not block the rest.
+      failed.push(metric);
     }
   }
+  // Counts and metric names only, never values: tells an empty Health store apart from
+  // refused permissions or a read that throws, which "no data" alone can't.
+  const granted = await healthConnectGrantedCount();
+  track("health_sync", {
+    platform,
+    first_sync: !options.lastSyncedAt,
+    days: days.length,
+    metrics_with_data: withData.join(",") || "none",
+    metrics_failed: failed.join(",") || "none",
+    ...(granted === null ? {} : { types_allowed: granted }),
+  });
 
   const response = await fetch("/api/health/sync", {
     method: "POST",

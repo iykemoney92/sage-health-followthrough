@@ -7,6 +7,7 @@ import { track } from "@/lib/analytics";
 import {
   checkHealthAvailability,
   clearHealthSyncThrottle,
+  healthConnectGrantedCount,
   nativeHealthPlatform,
   openHealthSettings,
   syncHealthData,
@@ -19,13 +20,6 @@ type Connection = {
   last_synced_at: string | null;
   last_sync_status: "ok" | "no_data" | "error" | null;
 };
-
-/**
- * Until the health-enabled binaries are approved, only an install that already has the
- * plugin sees the real card (that is what App Review gets). Everyone else keeps the
- * "coming soon" note, unless this flag is switched on after release.
- */
-const ANNOUNCED = process.env.NEXT_PUBLIC_HEALTH_CONNECT_ENABLED === "true";
 
 function formatSynced(iso: string) {
   return new Date(iso).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -50,19 +44,6 @@ async function loadConnections(): Promise<Connections> {
   return { connection: body?.connection ?? null, others: body?.other_platforms ?? [] };
 }
 
-function ComingSoon() {
-  return (
-    <section>
-      <h3>
-        Future health connections <span className="preview-badge">Coming soon</span>
-      </h3>
-      <p className="muted">
-        Apple Health, wearables and clinic record links are on the roadmap. Nothing here shares data until you connect it.
-      </p>
-    </section>
-  );
-}
-
 export function HealthConnectionCard() {
   const [availability, setAvailability] = useState<HealthAvailability | null>(null);
   const [connection, setConnection] = useState<Connection | null>(null);
@@ -70,6 +51,8 @@ export function HealthConnectionCard() {
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState<"sync" | "disconnect" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Android only: how many types the person allowed, to explain an empty sync.
+  const [allowed, setAllowed] = useState<number | null>(null);
 
   const refresh = useCallback(
     () =>
@@ -84,6 +67,7 @@ export function HealthConnectionCard() {
   useEffect(() => {
     void checkHealthAvailability().then(setAvailability);
     void refresh();
+    void healthConnectGrantedCount().then(setAllowed);
   }, [refresh]);
 
   if (!availability || !loaded) return null;
@@ -92,10 +76,6 @@ export function HealthConnectionCard() {
   const label = platform ? HEALTH_PLATFORM_LABELS[platform] : "Apple Health or Health Connect";
   const pluginReady = availability.state === "ready";
   const otherLabels = others.map((p) => HEALTH_PLATFORM_LABELS[p]).join(" and ");
-
-  // Someone already connected on their other phone gets the real card, so this phone says
-  // why it can't connect yet (update the app, install Health Connect) instead of "coming soon".
-  if (!connection && others.length === 0 && !pluginReady && !ANNOUNCED) return <ComingSoon />;
 
   async function syncNow() {
     if (!connection) return;
@@ -143,10 +123,16 @@ export function HealthConnectionCard() {
     status = <span className="connection-status-pill is-connected">Connected</span>;
     body =
       connection.last_sync_status === "no_data" ? (
-        <>
-          No data from {label} yet. If you turned some types off, you can allow them in{" "}
-          {connection.platform === "apple_health" ? "the Health app → your profile → Apps → Nura" : "Health Connect settings"}.
-        </>
+        connection.platform === "apple_health" ? (
+          <>No data from Apple Health yet. If you turned some types off, you can allow them in the Health app → your profile → Apps → Nura.</>
+        ) : allowed === 0 ? (
+          <>Nura isn’t allowed to read anything from Health Connect yet. Tap Manage permissions and turn on Steps and Sleep, then Sync now.</>
+        ) : (
+          <>
+            No sleep or steps in Health Connect yet. It only holds what other apps save to it: if you use Samsung Health, Google
+            Fit or a watch app, turn on its Health Connect sync, then tap Sync now.
+          </>
+        )
       ) : connection.last_synced_at ? (
         <>Last synced {formatSynced(connection.last_synced_at)}. Nura reads daily summaries only when you open the app.</>
       ) : (
