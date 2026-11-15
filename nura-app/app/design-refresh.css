@@ -7669,3 +7669,8 @@ footer .store-badges,.legal-footer .store-badges{margin-top:14px}
     justify-content: space-between;
   }
 }
+/* Health-data ask on Today (components/health-ask-card.tsx); same look as the notifications ask. */
+.today-health-ask .store-badges {
+  margin-top: 12px;
+  justify-content: flex-start;
+}

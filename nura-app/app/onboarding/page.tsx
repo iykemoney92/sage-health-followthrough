@@ -57,11 +57,10 @@ const TOTAL_STEPS = 5;
 /**
  * Connect Apple Health or Health Connect (Ike, 31 Oct 2026: onboarding should ask for health data,
  * companion first). Numbered after the paywall step so the existing step numbers stay put; it runs
- * between WhatsApp (6) and notifications (7). On a phone it needs the health-enabled app build; on
- * the website it only appears once NEXT_PUBLIC_HEALTH_CONNECT_ENABLED says those builds are out.
+ * between WhatsApp (6) and notifications (7). Everyone sees it: in the app it connects this phone;
+ * on the website it points to the iPhone and Android apps, which can connect since 1.1 (24 Oct 2026).
  */
 const HEALTH_STEP = 9;
-const HEALTH_ANNOUNCED = process.env.NEXT_PUBLIC_HEALTH_CONNECT_ENABLED === "true";
 const MAX_INTAKE_ATTACHMENT_BYTES = 4 * 1024 * 1024;
 const MAX_INTAKE_ATTACHMENTS = 4;
 const MAX_VOICE_MS = 60_000;
@@ -277,8 +276,8 @@ function OnboardingFlow() {
   useEffect(() => {
     void checkHealthAvailability().then(setHealthAvailability);
   }, []);
-  // Ask for health data where it can actually be connected (or, on the website, once the app can).
-  const showHealthStep = Boolean(healthAvailability && (healthAvailability.state !== "web" || HEALTH_ANNOUNCED));
+  // Ask everyone for health data: connect here in the app, or get pointed to the app from the website.
+  const showHealthStep = Boolean(healthAvailability);
   const afterWhatsapp = () => setStep(showHealthStep ? HEALTH_STEP : 7);
 
   // Where onboarding ends. The card screen used to be the last step for everyone, before Nura had
