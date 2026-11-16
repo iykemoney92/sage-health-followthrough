@@ -501,13 +501,18 @@ async function runTriggerCheckIns(request: NextRequest) {
   await Promise.all(Array.from(new Set(claimedCheckIns.map((c) => c.owner_id))).map(async (ownerId) => {
     plusByOwner.set(ownerId, (await getSubscriptionAccess(supabase, ownerId)).hasPlus);
   }));
-  // The first check-in is free for everyone; the trial screen comes after it (lib/billing/free-checkin).
-  const freeOwners = Array.from(plusByOwner.entries()).filter(([, hasPlus]) => !hasPlus).map(([ownerId]) => ownerId);
-  const freeCheckInIds = pickFreeCheckIns(
-    claimedCheckIns,
-    plusByOwner,
-    await ownersWhoUsedFreeCheckIn(supabase, freeOwners),
-  );
+  // No free check-in any more: a card comes first (Ike, 16 Nov 2026), so check-ins go to Plus only.
+  // (lib/billing/free-checkin keeps the picker should a free first check-in come back.)
+  const freeCheckInIds = FREE_FIRST_CHECKIN
+    ? pickFreeCheckIns(
+      claimedCheckIns,
+      plusByOwner,
+      await ownersWhoUsedFreeCheckIn(
+        supabase,
+        Array.from(plusByOwner.entries()).filter(([, hasPlus]) => !hasPlus).map(([ownerId]) => ownerId),
+      ),
+    )
+    : new Set<string>();
 
   const recipientsByPlan = await loadRecipientsForPlans(supabase, claimedCheckIns.map((c) => c.plan_id));
 
@@ -875,6 +880,9 @@ async function runTriggerCheckIns(request: NextRequest) {
 }
 
 /** Vercel Cron uses GET; agent/manual triggers use POST. */
+
+/** The free first check-in for people without Plus (31 Oct 2026), off since the card comes first. */
+const FREE_FIRST_CHECKIN = false;
 export async function GET(request: NextRequest) {
   return runTriggerCheckIns(request);
 }

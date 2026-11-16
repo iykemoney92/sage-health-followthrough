@@ -141,7 +141,13 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Primary path: RevenueCat Web Purchase (Stripe is only a fallback if RC isn't configured).
+  // Primary path: Nura's own Stripe Checkout, whose return checks that the card can pay before the
+  // trial unlocks anything (lib/billing/card-check.ts; Ike, 16 Nov 2026). RevenueCat's hosted checkout
+  // never came back through that check. Its subscriptions are followed by syncPlusFromStripe.
+  const stripeFirst = await createStripeCheckout(request, user);
+  if (stripeFirst) return stripeFirst;
+
+  // Fallback: RevenueCat Web Purchase, if Stripe isn't configured.
   const purchaseUrl = getRevenueCatPurchaseUrl();
   if (purchaseUrl) {
     const checkoutUrl = new URL(purchaseUrl);
@@ -150,9 +156,6 @@ export async function GET(request: NextRequest) {
     checkoutUrl.searchParams.set("skip_purchase_success", "true");
     return markCheckoutPending(NextResponse.redirect(checkoutUrl));
   }
-
-  const stripeCheckout = await createStripeCheckout(request, user);
-  if (stripeCheckout) return stripeCheckout;
 
   return NextResponse.json({ ok: false, error: "billing_not_configured" }, { status: 503 });
 }

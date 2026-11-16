@@ -33,10 +33,11 @@ async function stripeHasActiveCustomer(email: string | null | undefined) {
   );
   if (!subs.ok) return false;
   const subPayload = (await subs.json()) as {
-    data?: Array<{ status?: string; trial_end?: number | null }>;
+    data?: Array<{ status?: string; trial_end?: number | null; metadata?: Record<string, string> | null }>;
   };
   return (subPayload.data ?? []).some((sub) => {
     const status = sub.status ?? "";
+    if ((sub.metadata?.card_check ?? "").startsWith("failed")) return false;
     if (status === "active" || status === "trialing" || status === "past_due") return true;
     return false;
   });
