@@ -126,6 +126,7 @@ export const VIDEOS: NuraVideo[] = [
     height: 1280,
     seconds: 42,
     uploadDate: "2026-11-16",
+    youtubeId: "rod3mNc9Y1I",
     hasVoice: false,
     note: "There is no voice-over; the transcript below is the on-screen text, plus a short description of each scene. The app screens are real recordings of usenura.app with a demo account.",
     scenes: [

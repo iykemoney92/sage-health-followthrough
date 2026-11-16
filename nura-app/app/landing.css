@@ -448,7 +448,18 @@
 
 .landing-v2 footer nav {
   display: flex;
-  gap: 18px;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+
+/* The store badges sat flush against the crisis line: `footer p { margin: 0 }` beat its margin. */
+.landing-v2 footer .landing-crisis-line {
+  margin-top: 12px;
+}
+
+/* Keep each link on one line; the row wraps instead (it overflowed on phones). */
+.landing-v2 footer nav a {
+  white-space: nowrap;
 }
 
 .landing-v2 footer nav a:hover {
