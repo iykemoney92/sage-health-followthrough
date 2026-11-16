@@ -5,6 +5,7 @@ import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
 import { appUrl } from "@/lib/url";
+import { checkTrialCard } from "@/lib/billing/card-check";
 
 export const runtime = "nodejs";
 
@@ -73,6 +74,18 @@ export async function GET(request: NextRequest) {
     const url = appUrl("/billing", request);
     url.searchParams.set("checkout", "failed");
     return NextResponse.redirect(url);
+  }
+
+  // The card must be able to pay before the trial unlocks anything (lib/billing/card-check.ts).
+  const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+  if (subscriptionId) {
+    const check = await checkTrialCard(getStripeSecretKey(), subscriptionId);
+    if (check === "failed") {
+      const paywall = appUrl("/onboarding", request);
+      paywall.searchParams.set("paywall", "1");
+      paywall.searchParams.set("checkout", "card_declined");
+      return NextResponse.redirect(paywall);
+    }
   }
 
   const now = new Date();
