@@ -308,3 +308,67 @@
 .guide-media figcaption a {
   font-weight: 600;
 }
+
+/* Phone screenshots: a narrow column beside the caption, not a 1,500px-tall strip. */
+.guide-media-portrait {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) 1fr;
+  align-items: end;
+}
+.guide-media-portrait img {
+  max-height: 560px;
+  object-fit: cover;
+  object-position: top;
+}
+.guide-media-portrait figcaption {
+  border-top: 0;
+  border-left: 1px solid #d9e6e1;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+@media (max-width: 620px) {
+  .guide-media-portrait {
+    grid-template-columns: 1fr;
+  }
+  .guide-media-portrait img {
+    max-height: 460px;
+  }
+  .guide-media-portrait figcaption {
+    border-left: 0;
+    border-top: 1px solid #d9e6e1;
+  }
+}
+.guide-cta-teaser {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+.guide-cta-shot {
+  flex: 0 0 132px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #cfe1db;
+  background: #fff;
+  align-self: stretch;
+  max-height: 210px;
+}
+.guide-cta-shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.guide-cta-body {
+  min-width: 0;
+  flex: 1;
+}
+@media (max-width: 520px) {
+  .guide-cta-shot {
+    flex-basis: 96px;
+    max-height: 170px;
+  }
+}

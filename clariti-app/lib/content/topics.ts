@@ -24,8 +24,11 @@
  */
 
 import type { GuideExampleRow } from "@/lib/content/guides";
+import { SHOT_BILL_NEXT_STEPS, SHOT_BILL_SUMMARY, type GuideShot } from "@/lib/content/guide-shots";
+import { CODE_TOPICS } from "@/lib/content/topics-codes";
+import { BILLING_TOPICS } from "@/lib/content/topics-billing";
 
-export type TopicCategory = "insurance" | "bills" | "labs" | "hospital";
+export type TopicCategory = "insurance" | "bills" | "codes" | "labs" | "hospital";
 
 export type TopicSource = { label: string; url: string };
 
@@ -76,6 +79,11 @@ export const TOPIC_CATEGORIES: { id: TopicCategory; heading: string; blurb: stri
     id: "bills",
     heading: "Medical bills and codes",
     blurb: "Billing codes, surprise bills, estimates and how to check a bill before you pay.",
+  },
+  {
+    id: "codes",
+    heading: "Billing codes, one by one",
+    blurb: "What a single CPT or HCPCS code on your bill or EOB stands for, and what to ask about it.",
   },
   {
     id: "labs",
@@ -130,7 +138,7 @@ const SRC = {
   discharge: { label: "MedlinePlus — Leaving the hospital: your discharge plan", url: "https://medlineplus.gov/ency/patientinstructions/000867.htm" },
 } satisfies Record<string, TopicSource>;
 
-export const TOPICS: TopicGuide[] = [
+const BASE_TOPICS: TopicGuide[] = [
   // ——— Insurance EOBs and claims ———
   {
     slug: "eob-vs-medical-bill",
@@ -1517,6 +1525,19 @@ export const TOPICS: TopicGuide[] = [
     related: ["discharge-summary-explained", "lab-results-explained", "cbc-results-explained"],
   },
 ];
+
+/** Wave 3 (16 Nov 2026): billing and prior-authorization questions, then one page per common code. */
+export const TOPICS: TopicGuide[] = [...BASE_TOPICS, ...BILLING_TOPICS, ...CODE_TOPICS];
+
+/**
+ * The screenshot in the mid-page teaser card: a real bill analysis for the money
+ * pages, a different screen from the one at the top. Lab and hospital pages have no
+ * matching screenshot yet, so they keep the plain card rather than show a bill.
+ */
+export function teaserFor(topic: TopicGuide): GuideShot | undefined {
+  if (topic.category === "labs" || topic.category === "hospital") return undefined;
+  return topic.media?.src === SHOT_BILL_NEXT_STEPS.src ? SHOT_BILL_SUMMARY : SHOT_BILL_NEXT_STEPS;
+}
 
 export function getTopic(slug: string) {
   return TOPICS.find((topic) => topic.slug === slug);

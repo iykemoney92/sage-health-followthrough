@@ -23,6 +23,27 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "localhost"],
 
+  // www.useclariti.app answered 200 with the same pages, so Search Console filed
+  // them as "alternate page with proper canonical". One host for crawlers: send
+  // www to the apex permanently. /api is left alone so no in-flight POST from an
+  // old client is turned into a redirect it can't follow.
+  async redirects() {
+    return [
+      {
+        source: "/",
+        has: [{ type: "host", value: "www.useclariti.app" }],
+        destination: "https://useclariti.app/",
+        permanent: true,
+      },
+      {
+        source: "/:path((?!api/).*)",
+        has: [{ type: "host", value: "www.useclariti.app" }],
+        destination: "https://useclariti.app/:path",
+        permanent: true,
+      },
+    ];
+  },
+
   async headers() {
     return [
       {

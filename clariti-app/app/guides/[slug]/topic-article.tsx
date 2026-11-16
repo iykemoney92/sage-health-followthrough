@@ -4,7 +4,7 @@ import { ShieldCheck } from "lucide-react";
 import { ClaritiShell } from "@/components/clariti-shell";
 import { getGuide } from "@/lib/content/guides";
 import { RADILY_PHRASES_URL } from "@/lib/content/guide-links";
-import { getTopic, type TopicGuide } from "@/lib/content/topics";
+import { getTopic, teaserFor, type TopicGuide } from "@/lib/content/topics";
 import { GuideCta, GuideFoot, ToolPromo } from "../guide-parts";
 
 // One question, answered: the second-wave layout for lib/content/topics.ts.
@@ -59,13 +59,13 @@ export function TopicArticle({ topic, appUrl }: { topic: TopicGuide; appUrl: str
         <h1>{topic.h1}</h1>
         <p className="guide-answer">{topic.answer}</p>
         {topic.media && (
-          <figure className="guide-media">
+          <figure className={topic.media.height > topic.media.width ? "guide-media guide-media-portrait" : "guide-media"}>
             <Image
               src={topic.media.src}
               width={topic.media.width}
               height={topic.media.height}
               alt={topic.media.alt}
-              sizes="(max-width: 760px) 100vw, 720px"
+              sizes={topic.media.height > topic.media.width ? "(max-width: 760px) 80vw, 300px" : "(max-width: 760px) 100vw, 720px"}
               fetchPriority="high"
             />
             <figcaption>
@@ -147,7 +147,7 @@ export function TopicArticle({ topic, appUrl }: { topic: TopicGuide; appUrl: str
           <p>{topic.clariti}</p>
         </aside>
 
-        <GuideCta prompt={topic.ctaPrompt} />
+        <GuideCta prompt={topic.ctaPrompt} teaser={teaserFor(topic)} />
 
         <h2>Common questions</h2>
         <dl className="guide-faq">

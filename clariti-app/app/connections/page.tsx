@@ -12,6 +12,7 @@ import "../connections.css";
 
 export const metadata: Metadata = {
   title: "Connect your records",
+  alternates: { canonical: "/connections" },
   description:
     "Every way to get a health document in front of Clariti: photograph the letter in your hand, or download the PDF your health service already holds for you.",
 };
