@@ -307,6 +307,7 @@ export default async function LandingPage() {
         <nav aria-label="Legal links">
           <Link href="/guides">Guides</Link>
           <Link href="/faq">FAQ</Link>
+          <Link href="/videos">Videos</Link>
           <Link href="/tools/medicine-schedule">Medicine schedule maker</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>

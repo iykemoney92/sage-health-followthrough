@@ -68,7 +68,8 @@ export default function FaqPage() {
         <p className="guide-lead">
           {FAQ_COUNT} answers about Nura, the AI health and wellbeing companion that checks in on you: how check-ins
           work, checking in on someone you care for, Care plans, your data, and what it costs. For everyday topics like
-          sleep, routines and caring for a parent, see the <Link href="/guides">guides</Link>.
+          sleep, routines and caring for a parent, see the <Link href="/guides">guides</Link>, or watch Nura in a{" "}
+          <Link href="/videos">short video</Link>.
         </p>
 
         <nav className="faq-toc" aria-label="FAQ sections">

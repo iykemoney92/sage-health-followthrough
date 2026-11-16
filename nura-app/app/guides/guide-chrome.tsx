@@ -18,7 +18,7 @@ export function GuideChrome({
   /** The nav button's tagged link; tool pages pass their own utm_content. */
   signupHref?: string;
   /** Which nav link is highlighted. */
-  active?: "guides" | "faq";
+  active?: "guides" | "faq" | "videos";
 }) {
   return (
     <div className="guides-v2">
@@ -56,6 +56,7 @@ export function GuideChrome({
         <nav aria-label="Site links">
           <Link href="/guides">Guides</Link>
           <Link href="/faq">FAQ</Link>
+          <Link href="/videos">Videos</Link>
           <Link href="/tools/medicine-schedule">Medicine schedule maker</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>

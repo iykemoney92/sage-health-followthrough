@@ -571,3 +571,87 @@
 .guide-faq[id] {
   scroll-margin-top: 80px;
 }
+
+/* /videos: phone-shaped players and transcripts. */
+.video-figure {
+  margin: 24px auto 0;
+  max-width: 340px;
+}
+.video-player {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 18px;
+  background: #0d2219;
+}
+.video-figure figcaption {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--guide-muted);
+}
+.video-transcript {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.video-transcript li {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--guide-line);
+}
+.video-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--guide-muted);
+  font-size: 14px;
+  padding-top: 2px;
+}
+.video-transcript p {
+  margin: 0;
+}
+.video-transcript p + p {
+  margin-top: 6px;
+}
+.video-spoken {
+  font-size: 17px;
+}
+.video-onscreen,
+.video-shows,
+.video-transcript-note {
+  font-size: 14px;
+  color: var(--guide-muted);
+}
+.video-index {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+}
+.video-index a {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--guide-line);
+  border-radius: 16px;
+  background: var(--guide-card);
+  color: inherit;
+  text-decoration: none;
+}
+.video-index img {
+  width: 96px;
+  height: auto;
+  border-radius: 10px;
+}
+.video-index b {
+  display: block;
+  margin-bottom: 4px;
+}
+.video-index small {
+  color: var(--guide-muted);
+  line-height: 1.45;
+}

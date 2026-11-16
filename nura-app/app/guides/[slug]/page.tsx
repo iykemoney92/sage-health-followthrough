@@ -7,6 +7,7 @@ import { StoreBadges } from "@/components/store-badges";
 import { TrackedLink } from "@/components/tracked-link";
 import { GUIDES, GUIDE_CATEGORIES, GUIDE_SIGNUP_HREF, getGuide, relatedGuides } from "@/lib/guides";
 import { toolForGuide } from "@/lib/tools";
+import { videosForGuide } from "@/lib/videos";
 import { GuideChrome, GuideDisclaimer } from "../guide-chrome";
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "https://usenura.app";
@@ -45,6 +46,7 @@ export default async function GuidePage({ params }: Props) {
   const url = `${appUrl}/guides/${guide.slug}`;
   const related = relatedGuides(guide);
   const tool = toolForGuide(guide.slug);
+  const videos = videosForGuide(guide.slug);
   const categoryLabel = GUIDE_CATEGORIES.find((c) => c.id === guide.category)?.label ?? "Guides";
 
   // FAQPage built only from what the page shows: the question and its answer, the "why",
@@ -158,6 +160,18 @@ export default async function GuidePage({ params }: Props) {
               </Link>
             </aside>
           )}
+
+          {videos.map((video) => (
+            <aside className="guide-tool" aria-label={video.title} key={video.slug}>
+              <div>
+                <b>Watch: {video.title}</b>
+                <p>{video.description}</p>
+              </div>
+              <Link href={`/videos/${video.slug}`} className="guide-tool-link">
+                Watch the video <ArrowRight size={15} aria-hidden="true" />
+              </Link>
+            </aside>
+          ))}
 
           <section className="guide-section">
             <h2>Why is this harder than it sounds?</h2>
