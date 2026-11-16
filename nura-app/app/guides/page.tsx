@@ -64,7 +64,8 @@ export default function GuidesIndexPage() {
         <p className="guide-lead">
           Most of looking after yourself, and the people you care about, happens on ordinary days. These guides cover the
           practical part: sleep and routines, checking in on an older parent, care plans, looking after yourself as a
-          carer, and reminders that actually work.
+          carer, and reminders that actually work. Questions about Nura itself are in the{" "}
+          <Link href="/faq">FAQ</Link>.
         </p>
 
         {GUIDE_CATEGORIES.map((category) => {

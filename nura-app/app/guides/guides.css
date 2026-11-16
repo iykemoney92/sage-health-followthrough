@@ -548,3 +548,26 @@
 .guide-section p + p {
   margin-top: 12px;
 }
+
+/* /faq: jump links to each group of questions. */
+.faq-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px 0 8px;
+}
+.faq-toc a {
+  padding: 6px 12px;
+  border: 1px solid var(--guide-line);
+  border-radius: 999px;
+  font-size: 14px;
+  color: var(--guide-green-deep);
+  text-decoration: none;
+  background: var(--guide-card);
+}
+.faq-toc a:hover {
+  border-color: var(--guide-green-deep);
+}
+.guide-faq[id] {
+  scroll-margin-top: 80px;
+}

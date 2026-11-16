@@ -714,6 +714,20 @@
   height: auto;
 }
 
+.landing-v2 footer .directory-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 0.75rem;
+  line-height: 0;
+}
+
+.landing-v2 footer .directory-badges img {
+  max-width: 100%;
+  height: auto;
+}
+
 /* "Try Nura first" (components/try-first.tsx) */
 .landing-try {
   padding-top: 72px;

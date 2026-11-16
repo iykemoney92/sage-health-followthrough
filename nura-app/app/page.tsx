@@ -273,9 +273,40 @@ export default async function LandingPage() {
               loading="lazy"
             />
           </a>
+          {/* Directory badges (marketing/seo-1m/directory-badges.md), as SaaSHub and Product Hunt give them. */}
+          <div className="directory-badges">
+            <a
+              href="https://www.saashub.com/usenura-app?utm_source=badge&utm_campaign=badge&utm_content=usenura-app&badge_variant=color&badge_kind=approved"
+              target="_blank"
+              rel="noopener"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://cdn-b.saashub.com/img/badges/approved-color.png?v=1"
+                alt="Nura badge"
+                style={{ maxWidth: "150px" }}
+                loading="lazy"
+              />
+            </a>
+            <a
+              href="https://www.producthunt.com/products/nura-6?utm_source=badge-follow&utm_medium=badge&utm_source=badge-nura-6"
+              target="_blank"
+              rel="noopener"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1359941&theme=light"
+                alt="Nura on Product Hunt"
+                width="250"
+                height="54"
+                loading="lazy"
+              />
+            </a>
+          </div>
         </div>
         <nav aria-label="Legal links">
           <Link href="/guides">Guides</Link>
+          <Link href="/faq">FAQ</Link>
           <Link href="/tools/medicine-schedule">Medicine schedule maker</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>

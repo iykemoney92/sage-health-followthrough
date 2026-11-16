@@ -11,19 +11,25 @@ export function GuideChrome({
   children,
   placement,
   signupHref = GUIDE_SIGNUP_HREF,
+  active = "guides",
 }: {
   children: React.ReactNode;
   placement: string;
   /** The nav button's tagged link; tool pages pass their own utm_content. */
   signupHref?: string;
+  /** Which nav link is highlighted. */
+  active?: "guides" | "faq";
 }) {
   return (
     <div className="guides-v2">
       <header className="guide-nav">
         <NuraLogo href="/" tagline={false} />
         <nav aria-label="Guides">
-          <Link href="/guides" className="is-active">
+          <Link href="/guides" className={active === "guides" ? "is-active" : undefined}>
             Guides
+          </Link>
+          <Link href="/faq" className={active === "faq" ? "is-active" : undefined}>
+            FAQ
           </Link>
           <Link href="/#how">How Nura works</Link>
           <Link href="/privacy">Privacy</Link>
@@ -49,6 +55,7 @@ export function GuideChrome({
         </div>
         <nav aria-label="Site links">
           <Link href="/guides">Guides</Link>
+          <Link href="/faq">FAQ</Link>
           <Link href="/tools/medicine-schedule">Medicine schedule maker</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
