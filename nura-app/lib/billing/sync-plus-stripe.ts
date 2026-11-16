@@ -35,7 +35,11 @@ function isoFromUnix(value: number | null | undefined) {
 /** The profile fields a live Nura subscription implies, or null when none is live. */
 export function profileUpdateFromStripe(subscriptions: StripeSubscription[], ownerId: string) {
   const live = subscriptions.find(
-    (sub) => sub.metadata?.owner_id === ownerId && LIVE_STATUSES.includes(sub.status ?? ""),
+    (sub) =>
+      sub.metadata?.owner_id === ownerId
+      && LIVE_STATUSES.includes(sub.status ?? "")
+      // Its card failed Nura's check (lib/billing/card-check.ts): never Plus, even if its cancel lagged.
+      && !(sub.metadata?.card_check ?? "").startsWith("failed"),
   );
   if (!live) return null;
   // Newer Stripe API versions moved the period end onto the subscription item.

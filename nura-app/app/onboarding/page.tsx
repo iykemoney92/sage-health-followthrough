@@ -1185,6 +1185,19 @@ function OnboardingFlow() {
                         <p className="control-note">
                           {`Your trial is already on. A card just keeps your plan going after ${giftEndDate(gift.until)}, and you won’t be charged before then.`}
                         </p>
+                        {/* Their invite already gave them Plus without a card, so Today stays open to them. */}
+                        <button
+                          className="skip-intake-button"
+                          type="button"
+                          disabled={enteringToday}
+                          onClick={() => {
+                            if (enteringToday) return;
+                            track("referral_gift_continue", { source: "onboarding", card: false });
+                            enterToday();
+                          }}
+                        >
+                          {enteringToday ? <><Loader2 size={12} className="spin" /> Opening your dashboard…</> : "Go to my dashboard"}
+                        </button>
                       </>
                     }
                     native={

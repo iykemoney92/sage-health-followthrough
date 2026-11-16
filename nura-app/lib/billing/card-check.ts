@@ -73,11 +73,19 @@ export async function checkTrialCard(secretKey: string, subscriptionId: string):
     if (e.payment_intent?.id) await api("POST", `payment_intents/${e.payment_intent.id}/cancel`, {});
     if (e.code === "authentication_required") outcome = "ok:needs_presence";
     else if (e.type === "card_error") outcome = `failed:${e.decline_code ?? e.code ?? "declined"}`;
-    else return "unknown";
+    else if (e.type === "idempotency_error") {
+      // A second return for the same subscription while the first check is running: read its answer.
+      const again = await api("GET", `subscriptions/${encodeURIComponent(subscriptionId)}`);
+      const mark = (again.body as { metadata?: Record<string, string> }).metadata?.card_check;
+      return mark ? (mark.startsWith("failed") ? "failed" : "ok") : "unknown";
+    } else return "unknown";
   }
-  const meta: Record<string, string> = { "metadata[card_check]": outcome };
-  await api("POST", `subscriptions/${sub.id}`, meta);
+  // Marked first so nothing reads a failed card as Plus (sync-plus-stripe skips it) even if the cancel
+  // below doesn't go through; the cancel is confirmed and retried once.
+  await api("POST", `subscriptions/${sub.id}`, { "metadata[card_check]": outcome });
   if (!outcome.startsWith("failed")) return "ok";
-  await api("DELETE", `subscriptions/${sub.id}`);
+  let cancelled = await api("DELETE", `subscriptions/${sub.id}`);
+  if (!cancelled.ok) cancelled = await api("DELETE", `subscriptions/${sub.id}`);
+  if (!cancelled.ok) console.error("[card-check] cancel failed for", sub.id);
   return "failed";
 }
