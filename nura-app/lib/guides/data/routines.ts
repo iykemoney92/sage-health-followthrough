@@ -175,7 +175,7 @@ export const ROUTINE_GUIDES: Guide[] = [
   },
   {
     slug: "what-is-a-care-and-support-plan",
-    category: "routines",
+    category: "care-plans",
     question: "What is a care and support plan, and when should it be reviewed?",
     title: "Care and support plans: a guide for carers",
     description:

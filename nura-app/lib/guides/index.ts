@@ -1,29 +1,41 @@
 import { APPOINTMENT_GUIDES } from "./data/appointments";
+import { CARE_PLAN_GUIDES } from "./data/care-plans";
+import { CARER_GUIDES } from "./data/carers";
 import { CARING_GUIDES } from "./data/caring";
+import { ELDERLY_PARENT_GUIDES } from "./data/elderly-parents";
 import { MEDICATION_GUIDES } from "./data/medication";
+import { REMINDER_GUIDES } from "./data/reminders";
 import { ROUTINE_GUIDES } from "./data/routines";
 import { RECOVERY_GUIDES, SYMPTOM_GUIDES } from "./data/symptoms-recovery";
+import { WELLBEING_GUIDES } from "./data/wellbeing";
 import type { Guide, GuideCategory } from "./types";
 
 export type { Guide, GuideCategory } from "./types";
 
 export const GUIDES: Guide[] = [
   ...MEDICATION_GUIDES,
+  ...REMINDER_GUIDES,
   ...APPOINTMENT_GUIDES,
   ...SYMPTOM_GUIDES,
   ...RECOVERY_GUIDES,
   ...CARING_GUIDES,
+  ...CARER_GUIDES,
+  ...ELDERLY_PARENT_GUIDES,
+  ...CARE_PLAN_GUIDES,
   ...ROUTINE_GUIDES,
+  ...WELLBEING_GUIDES,
 ];
 
 /** Index page order and headings. */
 export const GUIDE_CATEGORIES: { id: GuideCategory; label: string }[] = [
-  { id: "medication", label: "Medicines" },
+  { id: "routines", label: "Routines and wellbeing" },
+  { id: "elderly", label: "Looking out for an older parent" },
+  { id: "caring", label: "Caring for someone" },
+  { id: "care-plans", label: "Care plans" },
+  { id: "medication", label: "Medicine reminders" },
   { id: "appointments", label: "Appointments and results" },
   { id: "symptoms", label: "Symptoms between appointments" },
   { id: "recovery", label: "Recovery after hospital or surgery" },
-  { id: "caring", label: "Caring for someone" },
-  { id: "routines", label: "Routines and wellbeing" },
 ];
 
 const BY_SLUG = new Map(GUIDES.map((guide) => [guide.slug, guide]));

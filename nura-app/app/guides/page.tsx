@@ -5,9 +5,9 @@ import { GuideChrome, GuideDisclaimer } from "./guide-chrome";
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "https://usenura.app";
 
-const title = "Guides: following through after the appointment";
+const title = "Guides: wellbeing, routines and caring for someone";
 const description =
-  "Practical guides on remembering medicines, preparing for appointments, tracking symptoms, recovering at home and checking on someone you care for.";
+  "Practical guides on sleep and daily routines, wellbeing check-ins, looking out for an older parent, care plans, caring for someone and medicine reminders.";
 
 export const metadata: Metadata = {
   title,
@@ -60,11 +60,11 @@ export default function GuidesIndexPage() {
           <span>Guides</span>
         </nav>
         <span className="guide-kicker">Guides</span>
-        <h1>Following through after the appointment</h1>
+        <h1>Guides for everyday wellbeing and caring</h1>
         <p className="guide-lead">
-          Most care happens between visits, and it&apos;s carried by you and the people around you. These guides cover
-          the practical part: remembering medicines, getting the most from appointments, keeping track of symptoms,
-          recovering at home, and checking on someone you care for.
+          Most of looking after yourself, and the people you care about, happens on ordinary days. These guides cover the
+          practical part: sleep and routines, checking in on an older parent, care plans, looking after yourself as a
+          carer, and reminders that actually work.
         </p>
 
         {GUIDE_CATEGORIES.map((category) => {

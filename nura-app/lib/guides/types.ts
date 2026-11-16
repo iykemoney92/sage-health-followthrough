@@ -14,7 +14,15 @@
  * - `nura` may only describe what the live product does (check the code, not the pitch).
  */
 
-export type GuideCategory = "medication" | "appointments" | "symptoms" | "recovery" | "caring" | "routines";
+export type GuideCategory =
+  | "medication"
+  | "appointments"
+  | "symptoms"
+  | "recovery"
+  | "caring"
+  | "elderly"
+  | "care-plans"
+  | "routines";
 
 export type GuideStep = {
   title: string;

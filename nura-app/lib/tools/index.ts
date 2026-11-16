@@ -25,6 +25,9 @@ export const MEDICINE_SCHEDULE_TOOL: NuraTool = {
     "medication-reminder-for-elderly-parent",
     "missed-a-dose-of-medication-what-to-do",
     "how-to-keep-a-list-of-your-medications",
+    "how-to-make-a-medicine-schedule",
+    "medication-reminders-on-iphone-and-android",
+    "pill-reminders-for-elderly-people",
   ],
 };
 
