@@ -108,6 +108,7 @@ For the wording on X-ray, CT, MRI and ultrasound reports, see Radily's report ph
 
 - [Clariti](https://useclariti.app): Home
 - [Example analysis](https://useclariti.app/example): An invented report, explained
+- [FAQ](https://useclariti.app/faq): What Clariti explains, what's free, Clariti Plus and cancelling, privacy and AI, iPhone/Android/web
 - [Clariti on Google Play](https://play.google.com/store/apps/details?id=app.useclariti.mobile)
 - [Clariti on the App Store](https://apps.apple.com/app/id6806667378)
 - [Clariti on Zapx Labs](https://zapxlabs.com/products/clariti)

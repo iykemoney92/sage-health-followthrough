@@ -47,7 +47,7 @@ export default function GuidesIndex() {
 
         <section className="guide-index-section" aria-labelledby="guides-tools">
           <h2 id="guides-tools">Free tools</h2>
-          <p>Work it out yourself, in your browser, without signing up.</p>
+          <p>Work it out yourself, in your browser, without signing up. Questions about Clariti itself are in the <Link href="/faq">FAQ</Link>.</p>
           <ul className="guide-index">
             {TOOLS.map((tool) => (
               <li key={tool.slug}>
