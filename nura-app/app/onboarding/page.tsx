@@ -290,8 +290,10 @@ function OnboardingFlow() {
       router.replace("/onboarding?paywall=1");
       return;
     }
-    track("onboarding_finished_without_card");
-    enterToday();
+    // The card comes first (Ike, 16 Nov 2026): no way to Today without a trial or Plus.
+    track("onboarding_finished_to_card");
+    setStep(8);
+    router.replace("/onboarding?paywall=1");
   };
 
   useEffect(() => {
@@ -328,7 +330,16 @@ function OnboardingFlow() {
     if (searchParams.get("checkout") === "incomplete") {
       track("checkout_fail", { reason: "incomplete" });
     }
-  }, [searchParams]);
+    // The card failed Nura's check (app/api/billing/checkout-success): the trial was cancelled.
+    if (searchParams.get("checkout") === "card_declined") {
+      track("checkout_fail", { reason: "card_declined" });
+      toast({
+        tone: "warning",
+        title: "That card didn’t go through",
+        message: "Your bank declined a small check on it, so the trial didn’t start. Try another card; nothing was charged.",
+      });
+    }
+  }, [searchParams, toast]);
 
   const releaseMicStream = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -1172,20 +1183,8 @@ function OnboardingFlow() {
                           <CreditCard size={18} /> Continue my plan after the trial
                         </TrackedCheckoutLink>
                         <p className="control-note">
-                          {`Your trial is already on. A card just keeps your plan going after ${giftEndDate(gift.until)}, and you won’t be charged before then. Skip it and you move to the free plan instead.`}
+                          {`Your trial is already on. A card just keeps your plan going after ${giftEndDate(gift.until)}, and you won’t be charged before then.`}
                         </p>
-                        <button
-                          className="skip-intake-button paywall-skip"
-                          type="button"
-                          disabled={enteringToday}
-                          onClick={() => {
-                            if (enteringToday) return;
-                            track("referral_gift_continue", { source: "onboarding", card: false });
-                            enterToday();
-                          }}
-                        >
-                          {enteringToday ? <><Loader2 size={12} className="spin" /> Opening your dashboard…</> : "Skip for now"}
-                        </button>
                       </>
                     }
                     native={
@@ -1260,20 +1259,6 @@ function OnboardingFlow() {
                         />
                       )}
                   </p>
-                  {!trialExpired ? (
-                    <button
-                      className="skip-intake-button paywall-skip"
-                      type="button"
-                      disabled={enteringToday}
-                      onClick={() => {
-                        if (enteringToday) return;
-                        track("paywall_skip", { source: "onboarding", reason: afterCheckIn ? "after_checkin" : "trial" });
-                        enterToday();
-                      }}
-                    >
-                      {enteringToday ? <><Loader2 size={12} className="spin" /> Opening your dashboard…</> : afterCheckIn ? "Not now" : "Skip for now"}
-                    </button>
-                  ) : null}
                 </div>
               )}
 

@@ -138,13 +138,15 @@ export async function middleware(request: NextRequest) {
   }
 
   // Finished onboarding with an expired/cancelled subscription → lock screen.
-  // Free users (paywall skipped, never subscribed) keep free-tier access.
+  // Never subscribed → the trial screen: a card that passes a check comes first, with no way round it
+  // (Ike, 16 Nov 2026). Plus granted on purpose (founder, App Review, invite gift) still goes through.
   if (user && needsLockCheck && !isBillingReturn && !isBillingLocked && user.user_metadata?.onboarding_complete === true) {
     const access = await getVerifiedSubscriptionAccess(supabase, user.id, user.email);
-    if (!access.hasPlus && isSubscriptionLockedOut(access)) {
+    if (!access.hasPlus) {
+      const locked = isSubscriptionLockedOut(access);
       const url = request.nextUrl.clone();
-      url.pathname = "/billing/locked";
-      url.search = "";
+      url.pathname = locked ? "/billing/locked" : "/onboarding";
+      url.search = locked ? "" : "?paywall=1";
       return NextResponse.redirect(url);
     }
   }
