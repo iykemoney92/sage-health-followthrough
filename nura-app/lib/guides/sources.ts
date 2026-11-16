@@ -90,4 +90,44 @@ export const SRC = {
     label: "NHS: When to call 999",
     url: "https://www.nhs.uk/nhs-services/urgent-and-emergency-care-services/when-to-call-999/",
   },
+  malnutrition: {
+    label: "NHS: Malnutrition",
+    url: "https://www.nhs.uk/conditions/malnutrition/",
+  },
+  lonely: {
+    label: "NHS: Feeling lonely (including loneliness in older people)",
+    url: "https://www.nhs.uk/mental-health/feelings-symptoms-behaviours/feelings-and-symptoms/feeling-lonely/",
+  },
+  falls: {
+    label: "NHS: Falls",
+    url: "https://www.nhs.uk/conditions/falls/",
+  },
+  olderActivity: {
+    label: "NHS: Physical activity guidelines for older adults",
+    url: "https://www.nhs.uk/live-well/exercise/physical-activity-guidelines-older-adults/",
+  },
+  fiveSteps: {
+    label: "NHS: 5 steps to mental wellbeing",
+    url: "https://www.nhs.uk/mental-health/self-help/guides-tools-and-activities/five-steps-to-mental-wellbeing/",
+  },
+  water: {
+    label: "NHS: Water, drinks and hydration",
+    url: "https://www.nhs.uk/live-well/eat-well/food-guidelines-and-food-labels/water-drinks-nutrition/",
+  },
+  insomnia: {
+    label: "NHS: Insomnia",
+    url: "https://www.nhs.uk/conditions/insomnia/",
+  },
+  homecare: {
+    label: "NHS: Help at home from a paid carer",
+    url: "https://www.nhs.uk/social-care-and-support/care-services-equipment-and-care-homes/homecare/",
+  },
+  careHomes: {
+    label: "NHS: Care homes",
+    url: "https://www.nhs.uk/social-care-and-support/care-services-equipment-and-care-homes/care-homes/",
+  },
+  carersHub: {
+    label: "NHS: Support and benefits for carers",
+    url: "https://www.nhs.uk/social-care-and-support/support-and-benefits-for-carers/",
+  },
 } satisfies Record<string, GuideSource>;

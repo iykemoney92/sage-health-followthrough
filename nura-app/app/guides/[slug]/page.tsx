@@ -120,7 +120,7 @@ export default async function GuidePage({ params }: Props) {
           <p className="guide-answer">{guide.answer}</p>
 
           {guide.media && (
-            <figure className="guide-media">
+            <figure className={guide.media.height > guide.media.width ? "guide-media guide-media-portrait" : "guide-media"}>
               <Image
                 src={guide.media.src}
                 width={guide.media.width}
