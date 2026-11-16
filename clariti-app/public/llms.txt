@@ -38,6 +38,11 @@ Attach a document, take a photo, or paste the text, and Clariti explains one doc
 - [Claim denied on your EOB? What it means and how to appeal](https://useclariti.app/guides/claim-denied-on-eob)
 - [What do the remark codes on an EOB mean?](https://useclariti.app/guides/eob-remark-codes)
 - [Out of network on your EOB? Balance billing explained](https://useclariti.app/guides/out-of-network-and-balance-billing)
+- [What is prior authorization (pre-authorization)?](https://useclariti.app/guides/what-is-prior-authorization)
+- [Prior authorization denied? What it means, what to do](https://useclariti.app/guides/prior-authorization-denied)
+- [Prior authorization for medication: how it works](https://useclariti.app/guides/prior-authorization-for-medication)
+- [Explanation of benefits (EOB) example, line by line](https://useclariti.app/guides/explanation-of-benefits-example)
+- [Medicare EOB vs Medicare Summary Notice, explained](https://useclariti.app/guides/medicare-summary-notice-eob)
 
 ### Medical bills and codes
 
@@ -48,6 +53,39 @@ Attach a document, take a photo, or paste the text, and Clariti explains one doc
 - [Why did I get two bills for one hospital visit?](https://useclariti.app/guides/why-two-bills-for-one-hospital-visit)
 - [ER visit levels 99281–99285 on a bill, explained](https://useclariti.app/guides/er-visit-level-codes-99281-99285)
 - [Good faith estimate: what it is and the $400 rule](https://useclariti.app/guides/good-faith-estimate)
+- [No Surprises Act explained: what it covers and doesn’t](https://useclariti.app/guides/no-surprises-act-explained)
+- [How to dispute a medical bill, step by step](https://useclariti.app/guides/how-to-dispute-a-medical-bill)
+- [Medical bill dispute letter: free template and tips](https://useclariti.app/guides/medical-bill-dispute-letter)
+- [How to get an itemized hospital bill (and read it)](https://useclariti.app/guides/how-to-get-an-itemized-hospital-bill)
+- [8 common medical billing errors, and how to spot them](https://useclariti.app/guides/common-medical-billing-errors)
+- [Medical bill in collections? What to do first](https://useclariti.app/guides/medical-bill-in-collections)
+
+### Billing codes, one by one
+
+- [CPT 99214 meaning: the level-4 office visit, explained](https://useclariti.app/guides/cpt-99214)
+- [CPT 99213 meaning: a level-3 office visit, explained](https://useclariti.app/guides/cpt-99213)
+- [CPT 99215 meaning: the highest-level office visit](https://useclariti.app/guides/cpt-99215)
+- [CPT 99212 meaning: a level-2 office visit, explained](https://useclariti.app/guides/cpt-99212)
+- [CPT 99203 meaning: a new patient office visit](https://useclariti.app/guides/cpt-99203)
+- [CPT 99204 meaning: level-4 new patient visit](https://useclariti.app/guides/cpt-99204)
+- [CPT 99205 meaning: the highest new patient visit](https://useclariti.app/guides/cpt-99205)
+- [G2211 on my bill: Medicare’s visit add-on explained](https://useclariti.app/guides/hcpcs-g2211)
+- [CPT 99396 meaning: annual physical, ages 40–64](https://useclariti.app/guides/cpt-99396)
+- [CPT 99395 meaning: annual physical, ages 18–39](https://useclariti.app/guides/cpt-99395)
+- [CPT 99397 meaning: physical at 65+, and Medicare](https://useclariti.app/guides/cpt-99397)
+- [CPT 36415 meaning: the blood draw charge on your bill](https://useclariti.app/guides/cpt-36415)
+- [CPT 85025 meaning: complete blood count with diff](https://useclariti.app/guides/cpt-85025)
+- [CPT 80053 meaning: comprehensive metabolic panel](https://useclariti.app/guides/cpt-80053)
+- [CPT 80061 meaning: lipid panel (cholesterol test)](https://useclariti.app/guides/cpt-80061)
+- [CPT 83036 meaning: the hemoglobin A1c (HbA1c) test](https://useclariti.app/guides/cpt-83036)
+- [CPT 82306 meaning: vitamin D test, and why it’s denied](https://useclariti.app/guides/cpt-82306)
+- [CPT 93000 meaning: ECG/EKG with interpretation](https://useclariti.app/guides/cpt-93000)
+- [CPT 96372 meaning: the injection charge on your bill](https://useclariti.app/guides/cpt-96372)
+- [CPT 99070 meaning: the vague supplies charge on a bill](https://useclariti.app/guides/cpt-99070)
+- [CPT 88305 meaning: the pathology bill after a biopsy](https://useclariti.app/guides/cpt-88305)
+- [CPT 71046 meaning: chest X-ray (2 views) on a bill](https://useclariti.app/guides/cpt-71046)
+- [CPT 90837 meaning: 60-minute therapy session code](https://useclariti.app/guides/cpt-90837)
+- [CPT 97110 meaning: therapeutic exercise, per 15 minutes](https://useclariti.app/guides/cpt-97110)
 
 ### Lab and blood test results
 

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { WebOnly } from "@/components/web-only";
@@ -7,9 +8,18 @@ import { toolForGuide } from "@/lib/content/tools";
 
 // Pieces every /guides/[slug] page shares, whichever list the guide comes from.
 
-export function GuideCta({ prompt }: { prompt: string }) {
+export type GuideTeaser = { src: string; width: number; height: number; alt: string };
+
+/** The mid-article teaser: one line, a real screenshot of the product doing it, and the way in. */
+export function GuideCta({ prompt, teaser }: { prompt: string; teaser?: GuideTeaser }) {
   return (
-    <section className="guide-cta" aria-label="Try Clariti">
+    <section className={teaser ? "guide-cta guide-cta-teaser" : "guide-cta"} aria-label="Try Clariti">
+      {teaser && (
+        <Link href="/example" className="guide-cta-shot" tabIndex={-1}>
+          <Image src={teaser.src} width={teaser.width} height={teaser.height} alt={teaser.alt} sizes="160px" loading="lazy" />
+        </Link>
+      )}
+      <div className="guide-cta-body">
       <p>{prompt}</p>
       <div className="guide-cta-actions">
         <Link className="guide-cta-primary" href={GUIDE_APP_HREF}>
@@ -23,6 +33,7 @@ export function GuideCta({ prompt }: { prompt: string }) {
           <a href={APP_STORE_URL}>iPhone</a>.
         </p>
       </WebOnly>
+      </div>
     </section>
   );
 }
