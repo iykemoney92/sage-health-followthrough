@@ -12,7 +12,8 @@
  *   (zapx-labs marketing/clariti-walkthrough/source/script.json);
  * - "Clariti in 30 seconds" has no sound at all (volumedetect: −91 dB), so its
  *   "transcript" is the on-screen text, scene by scene, labelled as such.
- * When seo-youtube adds a YouTube id, add it as `youtubeId` and the page emits embedUrl.
+ * youtubeId: the same video on the Zapx Labs YouTube channel (uploaded by the seo-youtube
+ * session, 16 Nov). The page keeps the mp4 as its player and adds embedUrl + a YouTube link.
  */
 
 const MEDIA = "https://rd8wcxopkzqdtty4.public.blob.vercel-storage.com/products";
@@ -52,6 +53,7 @@ export const VIDEOS: ClaritiVideo[] = [
     seconds: 91,
     isoDuration: "PT1M31S",
     uploadDate: "2026-10-15",
+    youtubeId: "T0CN7Xuxv08",
     transcriptKind: "narration",
     transcript: [
       {
@@ -103,6 +105,7 @@ export const VIDEOS: ClaritiVideo[] = [
     seconds: 29,
     isoDuration: "PT29S",
     uploadDate: "2026-10-07",
+    youtubeId: "Nd-vnzhDxJ8",
     transcriptKind: "on-screen",
     transcript: [
       {

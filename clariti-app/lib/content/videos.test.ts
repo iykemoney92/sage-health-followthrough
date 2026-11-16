@@ -24,6 +24,9 @@ describe("/videos watch pages", () => {
         expect(video.src).toMatch(/^https:\/\/.+\.mp4$/);
         expect(video.poster).toMatch(/^https:\/\//);
       });
+      it("has a YouTube id in the right shape", () => {
+        expect(video.youtubeId).toMatch(/^[A-Za-z0-9_-]{11}$/);
+      });
       it("has a transcript", () => {
         expect(video.transcript.length).toBeGreaterThan(0);
       });

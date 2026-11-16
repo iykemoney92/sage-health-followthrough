@@ -86,6 +86,13 @@ export default async function VideoPage({ params }: Props) {
           </video>
         </figure>
         <p className="guide-answer">{video.description}</p>
+        {video.youtubeId && (
+          <p>
+            <a href={`https://www.youtube.com/watch?v=${video.youtubeId}`} rel="noopener" target="_blank">
+              Watch on YouTube →
+            </a>
+          </p>
+        )}
 
         <h2>{video.transcriptKind === "narration" ? "Transcript" : "What’s on screen"}</h2>
         {video.transcriptKind === "on-screen" && (
