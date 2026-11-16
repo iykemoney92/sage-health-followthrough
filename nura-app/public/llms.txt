@@ -14,6 +14,14 @@ Most of looking after yourself happens on ordinary days: sleep, stress, energy, 
 
 - [Nura FAQ](https://usenura.app/faq): how check-ins work, checking in on someone you care for, Care plans, Apple Health and Health Connect, privacy and data, pricing (Nura Plus US$9.99 a month after a 14-day free trial) and platforms.
 
+## Videos
+
+Each video page has a full transcript.
+
+- [All videos](https://usenura.app/videos)
+- [Nura, your AI wellbeing companion](https://usenura.app/videos/nura-ai-wellbeing-companion): 41 seconds. Sleep and steps from Apple Health, linked to goals like work stress; a plan with a check-in booked; chat and call check-ins.
+- [Check in on someone you care for](https://usenura.app/videos/check-in-on-someone-you-care-for): 42 seconds. Setting up calls for a parent who lives alone; Nura only calls once they say yes, in their daytime, and tells you how it went.
+
 ## Guides
 
 Plain-English guides on everyday wellbeing and caring: sleep and routines, wellbeing check-ins, looking out for an older parent, care plans, caring for someone, and medicine reminders (reminders only, never dose advice). General information, not medical advice; each guide links its NHS sources.
