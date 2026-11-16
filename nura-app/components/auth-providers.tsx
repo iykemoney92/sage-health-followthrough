@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Browser } from "@capacitor/browser";
 import { track } from "@/lib/analytics";
+import { detectInAppBrowser, externalBrowserUrl, type InAppBrowser } from "@/lib/auth/in-app-browser";
 import { isNativeShell, signInWithProvider, type OAuthProvider } from "@/lib/auth/oauth";
 
 /**
@@ -59,6 +60,10 @@ const PROVIDERS: Array<{ id: OAuthProvider; label: string; mark: () => React.Rea
 export function AuthProviders({ next, label = "or continue with" }: { next?: string | null; label?: string }) {
   const [pending, setPending] = useState<OAuthProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set when Google is tapped inside an app's browser (TikTok, Instagram…): the
+  // "open in your real browser" panel shows for as long as this is non-null.
+  const [inApp, setInApp] = useState<InAppBrowser | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Closing the sign-in sheet without finishing (Done / Cancel in Safari, back
   // from the Chrome tab) must give the buttons back. Without this they stayed on
@@ -92,6 +97,21 @@ export function AuthProviders({ next, label = "or continue with" }: { next?: str
 
   async function start(provider: OAuthProvider) {
     setError(null);
+
+    // Google answers OAuth from an in-app browser with "403 disallowed_useragent",
+    // and the PKCE cookie can't follow the user into Chrome/Safari mid-flow, so
+    // send them to their real browser before anything starts. Apple's web flow
+    // works inside these browsers, so it carries on as normal.
+    // The native shell is a web view too, but it hands Google to Safari/Chrome
+    // itself (see signInWithProvider), so it's excluded.
+    const embedded =
+      provider === "google" && !isNativeShell() ? detectInAppBrowser(window.navigator.userAgent) : null;
+    if (embedded) {
+      track("oauth_inapp_blocked", { provider, in_app: embedded.app ?? "webview", platform: embedded.platform });
+      setInApp(embedded);
+      return;
+    }
+
     setPending(provider);
     track("oauth_start", { provider });
 
@@ -114,8 +134,51 @@ export function AuthProviders({ next, label = "or continue with" }: { next?: str
     // above) — re-enabling the buttons sooner would invite a second tap mid-handoff.
   }
 
+  function openOutside() {
+    if (!inApp) return;
+    const target = externalBrowserUrl(window.location.href, inApp.platform);
+    track("inapp_open_browser", { method: target ? "scheme" : "none", in_app: inApp.app ?? "webview", platform: inApp.platform });
+    if (target) window.location.href = target;
+  }
+
+  async function copyLink() {
+    if (!inApp) return;
+    track("inapp_open_browser", { method: "copy", in_app: inApp.app ?? "webview", platform: inApp.platform });
+    try {
+      await window.navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+    } catch {
+      // Some in-app browsers block the clipboard; the hint text still tells
+      // people how to open the page from the app's own menu.
+      setCopied(false);
+    }
+  }
+
+  const browserName = inApp?.platform === "ios" ? "Safari" : inApp?.platform === "android" ? "Chrome" : "your browser";
+
   return (
     <div className="auth-providers">
+      {inApp && (
+        <div className="auth-inapp-notice" role="alert">
+          <p>
+            <strong>Google sign-in doesn’t work inside {inApp.app ?? "this app"}’s browser.</strong> Open this page in{" "}
+            {browserName} to use Google, or carry on here with Apple or your email.
+          </p>
+          <div className="auth-inapp-actions">
+            {inApp.platform !== "other" && (
+              <button type="button" className="auth-inapp-open" onClick={openOutside}>
+                Open in {browserName}
+              </button>
+            )}
+            <button type="button" className="auth-inapp-copy" onClick={() => void copyLink()}>
+              {copied ? "Link copied" : "Copy link"}
+            </button>
+          </div>
+          <p className="auth-inapp-hint">
+            If nothing opens, tap the <span aria-hidden>•••</span> menu and choose “Open in browser”.
+          </p>
+        </div>
+      )}
       <div className="auth-provider-row">
         {PROVIDERS.map(({ id, label: name, mark: Mark }) => (
           <button

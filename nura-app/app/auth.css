@@ -541,6 +541,56 @@
   line-height: 1.45;
 }
 
+/* Shown when Google is tapped inside TikTok/Instagram/etc.'s browser. */
+.auth-v2 .auth-inapp-notice {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--auth-line);
+  border-radius: 16px;
+  background: #fff8ec;
+  color: var(--auth-ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.auth-v2 .auth-inapp-notice p {
+  margin: 0;
+}
+
+.auth-v2 .auth-inapp-actions {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.auth-v2 .auth-inapp-actions button {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--auth-ink);
+  font-family: var(--auth-sans);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-v2 .auth-inapp-open {
+  background: var(--auth-ink);
+  color: #fff;
+}
+
+.auth-v2 .auth-inapp-copy {
+  background: #fff;
+  color: var(--auth-ink);
+}
+
+.auth-v2 .auth-inapp-hint {
+  margin-top: 10px !important;
+  color: var(--auth-muted);
+  font-size: 13px;
+}
+
 .auth-v2 .auth-provider-divider {
   margin: 22px 0 4px;
   display: flex;
