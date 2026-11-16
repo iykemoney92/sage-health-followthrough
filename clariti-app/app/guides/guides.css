@@ -372,3 +372,43 @@
     max-height: 170px;
   }
 }
+
+/* /videos watch pages */
+.guide-video {
+  margin: 22px 0 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0b1f1c;
+  border: 1px solid #d9e6e1;
+}
+.guide-video video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.guide-video-list {
+  list-style: none;
+  padding: 0;
+  margin: 28px 0 0;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+.guide-video-list li {
+  display: block;
+}
+.guide-video-list a {
+  display: grid;
+  gap: 8px;
+  text-decoration: none;
+  color: inherit;
+}
+.guide-video-list img {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid #d9e6e1;
+}
+.guide-video-list small {
+  color: #5d6d68;
+}
