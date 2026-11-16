@@ -13,6 +13,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${appUrl}/`, changeFrequency: "weekly", priority: 1 },
     { url: `${appUrl}/example`, changeFrequency: "monthly", priority: 0.8 },
     { url: `${appUrl}/guides`, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${appUrl}/faq`, changeFrequency: "monthly", priority: 0.7 },
     { url: `${appUrl}/connections`, changeFrequency: "monthly", priority: 0.5 },
     ...[...GUIDES, ...TOPICS].map((guide) => ({
       url: `${appUrl}/guides/${guide.slug}`,

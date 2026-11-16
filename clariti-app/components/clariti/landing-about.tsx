@@ -119,6 +119,9 @@ export function LandingAbout() {
         </ul>
 
         <h2>Questions people ask</h2>
+        <p>
+          Price, privacy, platforms and more: <Link href="/faq">read all the Clariti FAQs</Link>.
+        </p>
         <dl className="clariti-about-faq">
           {LANDING_FAQS.map((faq) => (
             <div key={faq.question}>
@@ -131,6 +134,7 @@ export function LandingAbout() {
         <p className="clariti-about-foot">
           Clariti is made by <a href="https://zapxlabs.com/products/clariti">Zapx Labs</a>.{" "}
           <Link href="/guides">Guides</Link> · <Link href="/tools/eob-decoder">EOB decoder</Link> ·{" "}
+          <Link href="/faq">FAQ</Link> ·{" "}
           <Link href="/privacy">Privacy</Link> · <Link href="/terms">Terms</Link>
         </p>
         {/* Altern's free listing requires its badge on the homepage, and its
