@@ -14,6 +14,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${appUrl}/terms`, changeFrequency: "yearly", priority: 0.3 },
     { url: `${appUrl}/data-use`, changeFrequency: "yearly", priority: 0.3 },
     { url: `${appUrl}/delete-account`, changeFrequency: "yearly", priority: 0.2 },
+    { url: `${appUrl}/faq`, changeFrequency: "monthly", priority: 0.8 },
     { url: `${appUrl}/guides`, changeFrequency: "monthly", priority: 0.7 },
     ...GUIDES.map((guide) => ({
       url: `${appUrl}/guides/${guide.slug}`,
