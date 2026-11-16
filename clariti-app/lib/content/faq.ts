@@ -116,8 +116,8 @@ export const FAQ_GROUPS: FaqGroup[] = [
       {
         question: "Can I see what Clariti does before uploading anything?",
         answer:
-          "Yes. The example analysis shows a finished explanation of an invented report, exactly as the app displays it. The guides and the free EOB decoder also work without signing up.",
-        link: { href: "/example", label: "See an example analysis" },
+          "Yes. The example analysis shows a finished explanation of an invented report, exactly as the app displays it, and a 90-second walkthrough video shows a sample bill being explained. The guides and the free EOB decoder also work without signing up.",
+        link: { href: "/videos/clariti-walkthrough", label: "Watch the walkthrough" },
       },
       {
         question: "Do I need an account?",

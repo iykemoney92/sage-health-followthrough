@@ -26,6 +26,7 @@ export function GuideCta({ prompt, teaser }: { prompt: string; teaser?: GuideTea
           Explain my document <ArrowRight aria-hidden="true" />
         </Link>
         <Link href="/example">See an example analysis first</Link>
+        <Link href="/videos/clariti-walkthrough">Watch the 90-second walkthrough</Link>
       </div>
       <WebOnly>
         <p className="guide-cta-note">

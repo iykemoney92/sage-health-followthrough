@@ -108,6 +108,9 @@ For the wording on X-ray, CT, MRI and ultrasound reports, see Radily's report ph
 
 - [Clariti](https://useclariti.app): Home
 - [Example analysis](https://useclariti.app/example): An invented report, explained
+- [Videos](https://useclariti.app/videos): Watch pages with transcripts
+- [Clariti walkthrough (video, 1:31)](https://useclariti.app/videos/clariti-walkthrough): A sample medical bill explained charge by charge, with next steps
+- [Clariti in 30 seconds (video)](https://useclariti.app/videos/clariti-in-30-seconds): Bills, EOBs and scan reports in plain English
 - [FAQ](https://useclariti.app/faq): What Clariti explains, what's free, Clariti Plus and cancelling, privacy and AI, iPhone/Android/web
 - [Clariti on Google Play](https://play.google.com/store/apps/details?id=app.useclariti.mobile)
 - [Clariti on the App Store](https://apps.apple.com/app/id6806667378)

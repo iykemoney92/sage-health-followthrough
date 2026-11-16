@@ -99,7 +99,8 @@ export function LandingAbout() {
         </ol>
         <p>
           <Link href="/example">See a finished example analysis</Link> of an invented MRI report before you upload
-          anything of your own.
+          anything of your own, or <Link href="/videos/clariti-walkthrough">watch a 90-second walkthrough</Link> of a
+          sample bill being explained.
         </p>
 
         <h2>Guides</h2>
@@ -134,7 +135,7 @@ export function LandingAbout() {
         <p className="clariti-about-foot">
           Clariti is made by <a href="https://zapxlabs.com/products/clariti">Zapx Labs</a>.{" "}
           <Link href="/guides">Guides</Link> · <Link href="/tools/eob-decoder">EOB decoder</Link> ·{" "}
-          <Link href="/faq">FAQ</Link> ·{" "}
+          <Link href="/faq">FAQ</Link> · <Link href="/videos">Videos</Link> ·{" "}
           <Link href="/privacy">Privacy</Link> · <Link href="/terms">Terms</Link>
         </p>
         {/* Altern's free listing requires its badge on the homepage, and its

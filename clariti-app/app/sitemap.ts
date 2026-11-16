@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { GUIDES } from "@/lib/content/guides";
 import { TOPICS } from "@/lib/content/topics";
 import { TOOLS } from "@/lib/content/tools";
+import { VIDEOS } from "@/lib/content/videos";
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "https://useclariti.app";
 
@@ -14,6 +15,23 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${appUrl}/example`, changeFrequency: "monthly", priority: 0.8 },
     { url: `${appUrl}/guides`, changeFrequency: "monthly", priority: 0.7 },
     { url: `${appUrl}/faq`, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${appUrl}/videos`, changeFrequency: "monthly", priority: 0.6 },
+    ...VIDEOS.map((video) => ({
+      url: `${appUrl}/videos/${video.slug}`,
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
+      videos: [
+        {
+          title: video.title,
+          thumbnail_loc: video.poster,
+          description: video.description,
+          content_loc: video.src,
+          duration: video.seconds,
+          publication_date: video.uploadDate,
+          family_friendly: "yes" as const,
+        },
+      ],
+    })),
     { url: `${appUrl}/connections`, changeFrequency: "monthly", priority: 0.5 },
     ...[...GUIDES, ...TOPICS].map((guide) => ({
       url: `${appUrl}/guides/${guide.slug}`,
