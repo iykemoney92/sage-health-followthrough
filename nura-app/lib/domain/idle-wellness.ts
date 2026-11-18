@@ -4,6 +4,7 @@ import { primaryCheckinChannel, type CheckinChannel } from "@/lib/domain/checkin
 import { readProfileSettings, type QuietHoursSettings } from "@/lib/profile-settings";
 import { getZonedParts, wallTimeInTimeZoneToUtcIso } from "@/lib/timezone";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
+import { backoffDecision, loadBackoff } from "@/lib/domain/outreach-backoff";
 
 /** Minimum silence before Nura invents a wellness check-in (no open Care-plan check-in). */
 export const IDLE_WELLNESS_GAP_MS = 3 * 24 * 60 * 60 * 1000;
@@ -88,12 +89,28 @@ export function isIdleLongEnough(lastContactAt: Date | null, now: Date, gapMs = 
   return now.getTime() - lastContactAt.getTime() >= gapMs;
 }
 
-export function idleWellnessPrompt(planTitle: string): string {
+/**
+ * The brief for an invented check-in. Every one used to ask about the plan title, so people heard
+ * "how's sleep and work stress?" every three days (QA, 18 Nov 2026). With a step from the plan it
+ * asks about that step, and `lastOpener` tells the writer not to repeat the previous question.
+ */
+export function idleWellnessPrompt(planTitle: string, focus?: string | null, lastOpener?: string | null): string {
   const title = planTitle.trim() || "their Care plan";
-  return (
-    `Gentle wellness check-in — nothing was scheduled and their calendar is quiet. ` +
-    `Ask how they're doing with ${title} and if anything has been on their mind lately.`
-  );
+  const step = focus?.trim();
+  const about = step
+    ? `Ask one specific, friendly question about "${step}" from their ${title} plan - how it's going or what got in the way.`
+    : `Ask how they're doing with ${title} and if anything has been on their mind lately.`;
+  const avoid = lastOpener?.trim()
+    ? ` Don't repeat or closely echo your last message to them: "${lastOpener.trim().slice(0, 200)}".`
+    : "";
+  return `Gentle wellness check-in — nothing was scheduled and their calendar is quiet. ${about}${avoid}`;
+}
+
+/** Rotates through the plan's open steps, one per check-in, so consecutive check-ins ask about different things. */
+export function pickFocusStep(steps: string[], previousCheckIns: number): string | null {
+  const open = steps.map((s) => s.trim()).filter(Boolean);
+  if (open.length === 0) return null;
+  return open[previousCheckIns % open.length];
 }
 
 export function pickIdleChannel(
@@ -188,7 +205,46 @@ export async function scheduleIdleWellnessCheckIns(
 
   const profileById = new Map((profiles ?? []).map((p) => [p.id as string, p as ProfileRow]));
 
-  const candidates = plusIdleOwners.filter((id) => !recentlyContacted.has(id));
+  // Nobody hears from Nura again after the "I'll pause these" note until they reply.
+  const backoff = await loadBackoff(supabase, plusIdleOwners).catch(() => new Map());
+  const candidates = plusIdleOwners.filter(
+    (id) => !recentlyContacted.has(id) && backoffDecision(backoff.get(id)) !== "hold",
+  );
+  const candidatePlanIds = candidates.map((id) => planByOwner.get(id)?.id).filter((x): x is string => Boolean(x));
+  const [{ data: stepRows }, { data: pastIdle }, { data: lastOpeners }] = candidatePlanIds.length
+    ? await Promise.all([
+        supabase
+          .from("nura_plan_steps")
+          .select("plan_id, title, status, order_index")
+          .in("plan_id", candidatePlanIds)
+          .order("order_index", { ascending: true }),
+        supabase
+          .from("nura_check_ins")
+          .select("owner_id")
+          .in("owner_id", candidates)
+          .like("prompt", "Gentle wellness check-in%"),
+        supabase
+          .from("nura_messages")
+          .select("owner_id, content, created_at")
+          .in("owner_id", candidates)
+          .eq("role", "assistant")
+          .order("created_at", { ascending: false })
+          .limit(200),
+      ])
+    : [{ data: [] }, { data: [] }, { data: [] }];
+  const stepsByPlan = new Map<string, string[]>();
+  for (const row of (stepRows ?? []) as { plan_id: string; title: string | null; status: string | null }[]) {
+    if (!row.title || row.status === "done" || row.status === "completed" || row.status === "skipped") continue;
+    stepsByPlan.set(row.plan_id, [...(stepsByPlan.get(row.plan_id) ?? []), row.title]);
+  }
+  const idleCountByOwner = new Map<string, number>();
+  for (const row of (pastIdle ?? []) as { owner_id: string }[]) {
+    idleCountByOwner.set(row.owner_id, (idleCountByOwner.get(row.owner_id) ?? 0) + 1);
+  }
+  const lastOpenerByOwner = new Map<string, string>();
+  for (const row of (lastOpeners ?? []) as { owner_id: string; content: string }[]) {
+    if (!lastOpenerByOwner.has(row.owner_id)) lastOpenerByOwner.set(row.owner_id, row.content);
+  }
 
   for (const ownerId of candidates) {
     if (scheduled.length >= IDLE_WELLNESS_BATCH_LIMIT) break;
@@ -224,7 +280,11 @@ export async function scheduleIdleWellnessCheckIns(
       .insert({
         owner_id: ownerId,
         plan_id: plan.id,
-        prompt: idleWellnessPrompt(plan.title),
+        prompt: idleWellnessPrompt(
+          plan.title,
+          pickFocusStep(stepsByPlan.get(plan.id) ?? [], idleCountByOwner.get(ownerId) ?? 0),
+          lastOpenerByOwner.get(ownerId),
+        ),
         scheduled_for: now.toISOString(),
         channel,
         contact_phone: profile.phone,
