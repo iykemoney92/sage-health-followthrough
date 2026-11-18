@@ -74,7 +74,24 @@ export type PlusOffer = {
   /** ISO 8601 duration from the store, e.g. P1M or P1Y. */
   period: string | null;
   identifier: string;
+  /** The store's own free-trial length for this plan (ISO 8601, e.g. P7D), or null when it has none. */
+  freeTrialPeriod: string | null;
 };
+
+type StoreProduct = PurchasesPackage["product"];
+
+/**
+ * The free trial the store attached to a product, if any. App Store products
+ * carry it as a zero-priced introductory offer; Play carries it as a free phase
+ * on the default subscription option. Only what the store reports is returned:
+ * a button must never promise a trial the purchase sheet will not show.
+ */
+function freeTrialPeriodOf(product: StoreProduct): string | null {
+  const intro = product.introPrice;
+  if (intro && intro.price === 0) return intro.period ?? null;
+  const freePhase = product.defaultOption?.freePhase;
+  return freePhase?.billingPeriod?.iso8601 ?? null;
+}
 
 /**
  * Every package in the current Plus offering, priced and localised by the store.
@@ -92,6 +109,7 @@ export async function getPlusOffers(): Promise<PlusOffer[]> {
     priceString: entry.product.priceString,
     period: entry.product.subscriptionPeriod ?? null,
     identifier: entry.identifier,
+    freeTrialPeriod: freeTrialPeriodOf(entry.product),
   }));
 }
 

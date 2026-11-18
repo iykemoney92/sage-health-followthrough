@@ -27,6 +27,9 @@ type AccessState = {
   freeDocumentLimit: number;
   freeVideoLimit: number;
   webCheckoutAvailable: boolean;
+  cardFirst: boolean;
+  trialEligible: boolean;
+  trialDays: number;
 };
 
 const DEFAULT_ACCESS: AccessState = {
@@ -39,6 +42,9 @@ const DEFAULT_ACCESS: AccessState = {
   freeDocumentLimit: 3,
   freeVideoLimit: 1,
   webCheckoutAvailable: true,
+  cardFirst: true,
+  trialEligible: true,
+  trialDays: 7,
 };
 
 const FEATURES = [
@@ -93,6 +99,9 @@ function BillingPageContent() {
         freeDocumentLimit: payload.freeDocumentLimit ?? 3,
         freeVideoLimit: payload.freeVideoLimit ?? 1,
         webCheckoutAvailable: payload.webCheckoutAvailable !== false,
+        cardFirst: payload.cardFirst !== false,
+        trialEligible: payload.trialEligible !== false,
+        trialDays: payload.trialDays ?? 7,
       });
     } catch {
       // Leave the last known state on screen rather than flashing back to Free.
@@ -140,6 +149,11 @@ function BillingPageContent() {
     if (access.status === "cancelled" && paidUntil) return `Cancelled — Plus stays on until ${paidUntil}.`;
     if (access.hasPlus && paidUntil) return `Your Plus access renews on ${paidUntil}.`;
     if (access.status === "expired") return "Your trial has ended. Upgrade to keep unlimited access.";
+    if (access.cardFirst) {
+      return access.trialEligible
+        ? `Start a ${access.trialDays}-day free trial to use Clariti. You pay nothing if you cancel before it ends.`
+        : "Subscribe to Clariti Plus to keep using Clariti.";
+    }
     return `You get ${access.freeDocumentLimit} free document analyses and ${access.freeVideoLimit} free explainer video before Plus is required.`;
   }, [access, isTrialing, paidUntil, trialEnds]);
 
@@ -189,7 +203,7 @@ function BillingPageContent() {
               </span>
             </div>
             <p>{loading ? "One moment." : statusCopy}</p>
-            {!loading && !access.hasPlus ? (
+            {!loading && !access.hasPlus && !access.cardFirst ? (
               <div className="billing-usage-row">
                 <span>{remainingDocs} of {access.freeDocumentLimit} free document analyses left</span>
                 <span>{remainingVideos} of {access.freeVideoLimit} free explainer video left</span>
@@ -206,7 +220,14 @@ function BillingPageContent() {
                 userId={userId}
                 authenticated={authenticated}
                 hasPlus={access.hasPlus}
-                label={access.status === "expired" ? "Renew Clariti Plus" : "Start Clariti Plus"}
+                label={
+                  access.status === "expired"
+                    ? "Renew Clariti Plus"
+                    : access.trialEligible
+                      ? `Start ${access.trialDays}-day free trial`
+                      : "Start Clariti Plus"
+                }
+                checkoutFrom="billing"
                 webCheckoutAvailable={access.webCheckoutAvailable}
                 onPurchased={loadAccess}
               />

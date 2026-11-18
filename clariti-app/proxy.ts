@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { AI_CONSENT_PATH, hasAiConsent } from "@/lib/ai-consent";
+import { cardFirstApplies, paywallPathFor } from "@/lib/billing/card-first";
+import { getPlusState } from "@/lib/billing/subscription";
 
 // /follow-ups belongs here too: the page lists scheduled check-ins with document
 // titles on them. Its API already requires a session, so a signed-out visitor
@@ -84,6 +86,27 @@ export async function proxy(request: NextRequest) {
     url.search = "";
     if (!pathname.startsWith("//")) url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
+  }
+
+  // Card-first: a signed-in account with no trial or plan has nothing to do on
+  // these pages yet, so it goes to the trial step (or the renew screen if one
+  // lapsed). The profile row is the only thing read here; a row that is behind
+  // the store is caught on the trial step itself, which asks the stores through
+  // /api/billing/access and sends a real subscriber straight back. /settings
+  // stays reachable for the same reason it does without consent: deletion and
+  // export must never sit behind a paywall.
+  if (user && isProtected && !isConsentExempt && cardFirstApplies(request.headers.get("user-agent"))) {
+    const state = await getPlusState(supabase, user.id);
+    if (!state.hasPlus) {
+      const url = request.nextUrl.clone();
+      url.pathname = paywallPathFor(state);
+      url.search = "";
+      if (!pathname.startsWith("//")) url.searchParams.set("next", pathname);
+      const redirect = NextResponse.redirect(url);
+      // Keep any refreshed session cookies the Supabase client just set.
+      response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+      return redirect;
+    }
   }
 
   if (isAuthPage) return redirectAuthPageToHome();

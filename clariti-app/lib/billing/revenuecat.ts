@@ -52,23 +52,23 @@ export function getStripeSecretKey() {
   return process.env.STRIPE_TEST_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "";
 }
 
+/** The Plus price for the Stripe mode in play. Test mode has its own price ids. */
+export function getStripePlusPriceId() {
+  const live = process.env.STRIPE_PLUS_PRICE_ID?.trim() || "";
+  const test = process.env.STRIPE_TEST_PLUS_PRICE_ID?.trim() || "";
+  return getStripeSecretKey().includes("_test_") ? test : live;
+}
+
 /**
- * Stripe Checkout only counts as configured when a Stripe webhook can keep alive
- * what it opens. Nothing in this repo receives Stripe events —
- * app/api/revenuecat/webhook is the only endpoint — so a Stripe subscription is
- * written once, by checkout-success, as a 7-day "trialing" profile and then never
- * written again: on day 8 getSubscriptionAccess expires it and
- * isSubscriptionLockedOut sends the customer to /billing/locked while Stripe goes
- * on charging their card every month. Requiring STRIPE_WEBHOOK_SECRET keeps the
- * fallback dark until that endpoint exists, and turns it back on by itself once
- * it does.
+ * Clariti's own Stripe Checkout is the web checkout. It used to wait for a
+ * Stripe webhook, because nothing else kept a Stripe subscription's state
+ * current after the 7-day trial. lib/billing/sync-plus-stripe.ts now reads
+ * Stripe whenever a profile says "no Plus", so a key is all it needs. A test
+ * key with no test price still works: checkout builds the price inline.
  */
 export function hasStripeCheckoutConfig() {
-  return Boolean(
-    getStripeSecretKey()
-      && process.env.STRIPE_PLUS_PRICE_ID?.trim()
-      && process.env.STRIPE_WEBHOOK_SECRET?.trim(),
-  );
+  const key = getStripeSecretKey();
+  return Boolean(key && (getStripePlusPriceId() || key.includes("_test_")));
 }
 
 /**
@@ -77,8 +77,7 @@ export function hasStripeCheckoutConfig() {
  * on an error page.
  */
 export function hasWebCheckoutConfig() {
-  if (getRevenueCatPurchaseUrl()) return true;
-  return hasStripeCheckoutConfig();
+  return hasStripeCheckoutConfig() || Boolean(getRevenueCatPurchaseUrl());
 }
 
 /** Secret REST API key for server-side subscriber lookups (sync-plus). Not required for the webhook path. */

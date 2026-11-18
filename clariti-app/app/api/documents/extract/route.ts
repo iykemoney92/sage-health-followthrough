@@ -5,6 +5,7 @@ import path from "node:path";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { MAX_UPLOAD_BYTES, uploadSizeLimitError } from "@/lib/domain/clariti-uploads";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
+import { requireTrialOrPlus } from "@/lib/billing/card-first";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { reportError } from "@/lib/observability/report-error";
 
@@ -46,6 +47,9 @@ export async function POST(request: NextRequest) {
 
   const limited = await enforceRateLimit(await getSupabaseSessionClient(), "extract");
   if (limited) return limited;
+  // Card-first: no trial or plan, no model call (lib/billing/card-first.ts).
+  const trialGate = await requireTrialOrPlus(request, await getSupabaseSessionClient(), user.id);
+  if (trialGate) return trialGate;
 
   try {
     const formData = await request.formData();

@@ -42,10 +42,13 @@ export function NativeUpgrade({
   userId,
   hasPlus,
   onPurchased,
+  trialStep = false,
 }: {
   userId: string;
   hasPlus: boolean;
   onPurchased?: () => void | Promise<void>;
+  /** On the onboarding trial step: lead with the free trial when the store offers one. */
+  trialStep?: boolean;
 }) {
   const [offers, setOffers] = useState<PlusOffer[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -174,6 +177,7 @@ export function NativeUpgrade({
                         price that is correct in every storefront. */}
                     <strong>{offer.priceString}</strong>
                     {period && <span>per {period}</span>}
+                    {offer.freeTrialPeriod && <span>after a {readablePeriod(offer.freeTrialPeriod) ?? "free"} free trial</span>}
                   </span>
                 </label>
               );
@@ -181,7 +185,12 @@ export function NativeUpgrade({
           </fieldset>
 
           <button type="button" className="billing-primary-cta" onClick={() => void buy()} disabled={busy !== null || !selected}>
-            <CreditCard /> {busy === "purchase" ? "Opening the App Store…" : "Subscribe to Clariti Plus"}
+            <CreditCard />{" "}
+            {busy === "purchase"
+              ? storeSurface() === "android" ? "Opening Google Play…" : "Opening the App Store…"
+              : trialStep && offers.find((entry) => entry.identifier === selected)?.freeTrialPeriod
+                ? "Start free trial"
+                : "Subscribe to Clariti Plus"}
           </button>
         </>
       )}

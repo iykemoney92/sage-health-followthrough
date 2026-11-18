@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appOriginFromRequest } from "@/lib/auth/app-origin";
+import { checkTrialCard } from "@/lib/billing/card-check";
+import { START_TRIAL_PATH } from "@/lib/billing/card-first";
 import { getStripeSecretKey } from "@/lib/billing/revenuecat";
-import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
+import { writeStripeSubscription, type StripeSubscription } from "@/lib/billing/sync-plus-stripe";
 import { getOptionalSupabaseServiceClient } from "@/lib/integrations/supabase";
 import { getSessionUser } from "@/lib/integrations/supabase-server";
 
@@ -13,19 +15,32 @@ type StripeCheckoutSession = {
   payment_status?: string;
   customer?: string | { id?: string } | null;
   metadata?: { owner_id?: string } | null;
+  subscription?: string | { id?: string } | null;
 };
-
-function customerIdFrom(value: string | { id?: string } | null | undefined) {
-  if (!value) return null;
-  if (typeof value === "string") return value.startsWith("cus_") ? value : null;
-  return value.id?.startsWith("cus_") ? value.id : null;
-}
 
 function appUrl(path: string, request: NextRequest) {
   return new URL(path, appOriginFromRequest(request));
 }
 
-/** Verified Stripe Checkout return — only grants Plus for a complete, owner-matched session. */
+function failed(request: NextRequest, reason: string, path = "/billing") {
+  const url = appUrl(path, request);
+  url.searchParams.set("checkout", reason);
+  return NextResponse.redirect(url);
+}
+
+async function stripeGet<T>(secretKey: string, path: string) {
+  const response = await fetch(`https://api.stripe.com/v1/${path}`, {
+    headers: { Authorization: `Bearer ${secretKey}` },
+    cache: "no-store",
+  });
+  return response.ok ? ((await response.json()) as T) : null;
+}
+
+/**
+ * Verified Stripe Checkout return. Plus is granted only for a complete session
+ * that belongs to the signed-in user and whose card passed the check; the dates
+ * written are the subscription's own, read back from Stripe.
+ */
 export async function GET(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.redirect(appUrl("/login", request));
@@ -38,48 +53,37 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(appUrl("/billing", request));
   }
 
-  const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
-    headers: { Authorization: `Bearer ${secretKey}` },
-    cache: "no-store",
-  });
-  const session = response.ok ? ((await response.json()) as StripeCheckoutSession) : null;
+  const session = await stripeGet<StripeCheckoutSession>(secretKey, `checkout/sessions/${encodeURIComponent(sessionId)}`);
 
   const ownerOk = session?.metadata?.owner_id === user.id;
   const complete =
     session?.mode === "subscription"
     && session.status === "complete"
     && (session.payment_status === "paid" || session.payment_status === "no_payment_required");
+  const subscriptionId = typeof session?.subscription === "string" ? session.subscription : session?.subscription?.id;
 
-  if (!session || !ownerOk || !complete) {
-    const url = appUrl("/billing", request);
-    url.searchParams.set("checkout", "failed");
-    return NextResponse.redirect(url);
+  if (!session || !ownerOk || !complete || !subscriptionId) {
+    return failed(request, "failed");
   }
 
-  const now = new Date();
-  const trialEndsAt = new Date(now.getTime() + CARD_TRIAL_DAYS * 86_400_000).toISOString();
-  const customerId = customerIdFrom(session.customer);
+  // The card must be able to pay before the trial unlocks anything. A declined
+  // card cancels the trial inside checkTrialCard and does not use the trial up.
+  const check = await checkTrialCard(secretKey, subscriptionId);
+  if (check === "failed") {
+    return failed(request, "card_declined", START_TRIAL_PATH);
+  }
 
-  const { error } = await service.from("clariti_profiles").upsert(
-    {
-      id: user.id,
-      subscription_tier: "plus",
-      subscription_status: "trialing",
-      trial_started_at: now.toISOString(),
-      trial_ends_at: trialEndsAt,
-      subscription_current_period_ends_at: trialEndsAt,
-      revenuecat_app_user_id: user.id,
-      subscription_updated_at: now.toISOString(),
-      ...(customerId ? { stripe_customer_id: customerId } : {}),
-    },
-    { onConflict: "id" },
-  );
+  const subscription = await stripeGet<StripeSubscription>(secretKey, `subscriptions/${encodeURIComponent(subscriptionId)}`);
+  const written = subscription
+    ? await writeStripeSubscription(service, user.id, {
+        ...subscription,
+        customer: subscription.customer ?? session.customer,
+      })
+    : { hasPlus: false as const };
 
-  if (error) {
-    console.error("[billing/checkout-success] profile update failed", error.message);
-    const url = appUrl("/billing", request);
-    url.searchParams.set("checkout", "profile-update-failed");
-    return NextResponse.redirect(url);
+  if (!written.hasPlus) {
+    console.error("[billing/checkout-success] could not record subscription", subscriptionId);
+    return failed(request, "profile-update-failed");
   }
 
   const redirectResponse = NextResponse.redirect(appUrl("/billing/return", request));

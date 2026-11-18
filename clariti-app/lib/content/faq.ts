@@ -4,7 +4,7 @@
  * both built from this list, so they can't drift apart.
  *
  * Every answer has to be true of the live product. Where each fact comes from:
- * - free allowances: FREE_DOCUMENT_LIMIT / FREE_VIDEO_LIMIT (lib/billing/subscription.ts),
+ * - trial length: CARD_TRIAL_DAYS (lib/billing/trial.ts); card-first since 18 Nov 2026, so no free allowance,
  *   FREE_CHECK_IN_LIMIT (app/api/follow-ups/route.ts), FREE_COMPARISON_LIMIT and its
  *   30-day window (app/api/compare/route.ts);
  * - web trial: CARD_TRIAL_DAYS (lib/billing/trial.ts), used by app/api/billing/checkout;
@@ -18,14 +18,9 @@
  * treatment to have.
  */
 
-import { FREE_DOCUMENT_LIMIT, FREE_VIDEO_LIMIT } from "@/lib/billing/subscription";
 import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
 import { MAX_UPLOAD_BYTES } from "@/lib/domain/clariti-uploads";
 
-/** Mirrors FREE_CHECK_IN_LIMIT in app/api/follow-ups/route.ts (route files can't export it). */
-const FREE_CHECK_INS = 3;
-/** Mirrors FREE_COMPARISON_LIMIT in app/api/compare/route.ts, per 30 days. */
-const FREE_COMPARISONS = 5;
 const MAX_UPLOAD_MB = Math.round(MAX_UPLOAD_BYTES / (1024 * 1024));
 
 /** A link shown under the answer on the page (not part of the schema text). */
@@ -122,7 +117,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       {
         question: "Do I need an account?",
         answer:
-          "You need a free account to have a document explained, so your documents and analyses can be saved and kept private to you. The guides, the example analysis and the free EOB decoder don’t need an account.",
+          "You need an account to have a document explained, so your documents and analyses can be saved and kept private to you. The guides, the example analysis and the free EOB decoder don’t need an account.",
       },
     ],
   },
@@ -132,12 +127,12 @@ export const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         question: "Is Clariti free?",
-        answer: `You can start free. A free account includes ${FREE_DOCUMENT_LIMIT} document analyses, ${FREE_VIDEO_LIMIT} explainer video and ${FREE_CHECK_INS} email check-ins, plus ${FREE_COMPARISONS} document comparisons every 30 days. Clariti Plus removes those limits.`,
+        answer: `Clariti starts with a ${CARD_TRIAL_DAYS}-day free trial of Clariti Plus on the web: you add a payment method to begin, and you pay nothing if you cancel before the trial ends. After that it is a paid subscription. The guides, the example analysis and the EOB decoder stay free and need no account.`,
       },
       {
         question: "What does Clariti Plus include?",
         answer:
-          "Unlimited document analyses, unlimited explainer videos, comparing documents over time, and email check-ins without the free limit.",
+          "Unlimited document analyses, unlimited explainer videos, comparing documents over time, and email check-ins.",
       },
       {
         question: "How much does Clariti Plus cost?",

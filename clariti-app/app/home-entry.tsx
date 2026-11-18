@@ -152,10 +152,16 @@ function HomeContent({ about }: { about?: ReactNode }) {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       const response = await fetch("/api/auth/status", { cache: "no-store" }).catch(() => null);
       const payload = response?.ok ? await response.json().catch(() => null) : null;
-      if (payload?.authenticated) return { authenticated: true, aiConsent: Boolean(payload.aiConsent) };
+      if (payload?.authenticated) {
+        return {
+          authenticated: true,
+          aiConsent: Boolean(payload.aiConsent),
+          paywallPath: typeof payload.paywallPath === "string" ? (payload.paywallPath as string) : null,
+        };
+      }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    return { authenticated: false, aiConsent: false };
+    return { authenticated: false, aiConsent: false, paywallPath: null };
   };
 
   useEffect(() => {
@@ -167,13 +173,19 @@ function HomeContent({ about }: { about?: ReactNode }) {
         setAuthConfigured(Boolean(payload.configured));
         setAuthenticated(Boolean(payload.authenticated));
         setAiConsent(Boolean(payload.aiConsent));
+        // Card-first: a signed-in account with no trial or plan cannot use this
+        // screen yet, so it goes to the trial step (or the renew screen) now
+        // rather than after picking a document and being refused.
+        if (payload.authenticated && typeof payload.paywallPath === "string") {
+          router.replace(`${payload.paywallPath}?next=%2F`);
+        }
       })
       .catch(() => undefined);
 
     return () => {
       alive = false;
     };
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (authenticated && query.confirmed) {
@@ -443,6 +455,17 @@ function HomeContent({ about }: { about?: ReactNode }) {
   const handleAuthenticated = async () => {
     setAuthenticated(true);
     setAuthOpen(false);
+
+    // Card-first: straight after sign-up or sign-in, an account with no trial or
+    // plan goes to the trial step. Consent first when it is still outstanding,
+    // and the consent gate hands on to the trial step itself.
+    const entry = await waitForServerAuth();
+    if (entry.authenticated && entry.paywallPath) {
+      const destination = authNext && authNext.startsWith("/") && !authNext.startsWith("//") ? authNext : "/";
+      const trialStep = `${entry.paywallPath}?next=${encodeURIComponent(destination)}`;
+      router.push(entry.aiConsent ? trialStep : `/ai-consent?next=${encodeURIComponent(destination)}`);
+      return;
+    }
 
     if (authIntent === "submit") {
       const session = await waitForServerAuth();
