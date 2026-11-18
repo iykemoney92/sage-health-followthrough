@@ -13,6 +13,7 @@ import { composeCheckinOpener, composeMissedCallFollowup } from "@/lib/domain/me
 import { scheduleIdleWellnessCheckIns, isWithinQuietHours, nextTimeOutsideQuietHours } from "@/lib/domain/idle-wellness";
 import { scheduleHealthSignalCheckIns } from "@/lib/health/health-signals";
 import { readProfileSettings } from "@/lib/profile-settings";
+import { backoffDecision, loadBackoff, pauseNote, PAUSE_ASKED, PAUSE_HELD } from "@/lib/domain/outreach-backoff";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { rerouteChannel, type CheckinChannel } from "@/lib/domain/checkin-channel";
 import {
@@ -515,6 +516,11 @@ async function runTriggerCheckIns(request: NextRequest) {
     : new Set<string>();
 
   const recipientsByPlan = await loadRecipientsForPlans(supabase, claimedCheckIns.map((c) => c.plan_id));
+  // Someone who hasn't answered the last few check-ins gets one "I'll pause these" note, then quiet
+  // until they reply (lib/domain/outreach-backoff.ts). Never stops calls to a person being cared for.
+  const backoff = await loadBackoff(supabase, claimedCheckIns.map((c) => c.owner_id)).catch(() => new Map());
+  const pauseAskCheckIns: DueCheckIn[] = [];
+  const heldCheckInIds: string[] = [];
 
   const results: Record<string, unknown>[] = [];
   const pushCheckIns: DueCheckIn[] = [];
@@ -540,6 +546,18 @@ async function runTriggerCheckIns(request: NextRequest) {
       const group = phoneGroups.get(recipient.phone) ?? [];
       group.push(checkIn);
       phoneGroups.set(recipient.phone, group);
+      continue;
+    }
+
+    const state = backoff.get(checkIn.owner_id);
+    const decision = backoffDecision(state);
+    if (decision === "ask") {
+      pauseAskCheckIns.push(checkIn);
+      backoff.set(checkIn.owner_id, { unanswered: state?.unanswered ?? 0, asked: true });
+      continue;
+    }
+    if (decision === "hold") {
+      heldCheckInIds.push(checkIn.id);
       continue;
     }
 
@@ -572,6 +590,29 @@ async function runTriggerCheckIns(request: NextRequest) {
     const group = phoneGroups.get(key) ?? [];
     group.push(checkIn);
     phoneGroups.set(key, group);
+  }
+
+  if (heldCheckInIds.length > 0) {
+    await supabase
+      .from("nura_check_ins")
+      .update({ triggered_at: nowIso, call_status: PAUSE_HELD, call_error: "Paused: no reply to the last check-ins." })
+      .in("id", heldCheckInIds);
+    for (const id of heldCheckInIds) results.push({ checkInId: id, status: PAUSE_HELD });
+  }
+
+  if (pauseAskCheckIns.length > 0) {
+    await Promise.all(
+      pauseAskCheckIns.map(async (checkIn) => {
+        const note = pauseNote(firstNameOf((nameByOwner.get(checkIn.owner_id) ?? "").trim()));
+        await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, note);
+        const reach = await pushOrEmail(supabase, checkIn, note, "Nura");
+        await supabase
+          .from("nura_check_ins")
+          .update({ triggered_at: nowIso, call_status: PAUSE_ASKED, call_error: reach.error })
+          .eq("id", checkIn.id);
+        results.push({ checkInId: checkIn.id, status: PAUSE_ASKED, via: reach.via });
+      }),
+    );
   }
 
   if (pushCheckIns.length > 0) {
