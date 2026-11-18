@@ -5,6 +5,7 @@ import { claritiAnalysisSchema } from "@/lib/ai/clariti-analysis";
 import { getSubscriptionAccess, type PlusFeature } from "@/lib/billing/subscription";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { reportError } from "@/lib/observability/report-error";
+import { requireTrialOrPlus } from "@/lib/billing/card-first";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
 
 const requestSchema = z.object({
@@ -173,6 +174,9 @@ export async function POST(request: NextRequest) {
   let persistedMessage: { id: string; role: string; content: string; created_at: string } | null = null;
 
   const supabase = await getSupabaseSessionClient();
+  // Card-first: no trial or plan, no model call (lib/billing/card-first.ts).
+  const trialGate = await requireTrialOrPlus(request, supabase, user.id);
+  if (trialGate) return trialGate;
 
   // This route had no per-window ceiling: the hard Plus gate was the only thing
   // bounding it, and opening it to free readers takes that away. Every row

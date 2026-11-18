@@ -15,6 +15,7 @@ import {
   type ClaritiVideoPipeline,
 } from "@/lib/ai/clariti-video";
 import { enforceFreeLimit, FREE_VIDEO_LIMIT } from "@/lib/billing/subscription";
+import { requireTrialOrPlus } from "@/lib/billing/card-first";
 import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } from "@/lib/integrations/supabase-server";
 import { shotstackIsUsable } from "@/lib/integrations/shotstack";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -57,6 +58,9 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = await getSupabaseSessionClient();
+  // Card-first: no trial or plan, no model call (lib/billing/card-first.ts).
+  const trialGate = await requireTrialOrPlus(request, supabase, user.id);
+  if (trialGate) return trialGate;
   const { data: session, error: sessionError } = await supabase
     .from("clariti_sessions")
     .select("id")

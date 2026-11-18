@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appOriginFromRequest } from "@/lib/auth/app-origin";
 import { syncPlusFromRevenueCat } from "@/lib/billing/sync-plus";
-import {
-  getSubscriptionAccess,
-  isSubscriptionLockedOut,
-  markExpiredSubscriptionIfNeeded,
-} from "@/lib/billing/subscription";
+import { cardFirstApplies, paywallPathFor, resolveAccess } from "@/lib/billing/card-first";
 import { getOptionalSupabaseServiceClient } from "@/lib/integrations/supabase";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
@@ -26,24 +22,22 @@ export async function GET(request: NextRequest) {
   }
 
   const service = getOptionalSupabaseServiceClient();
-  const supabase = service ?? (await getSupabaseSessionClient());
+  const supabase = await getSupabaseSessionClient();
 
   if (service) await syncPlusFromRevenueCat(service, user.id);
-  let access = await getSubscriptionAccess(supabase, user.id);
+  let access = await resolveAccess(supabase, user.id);
 
   const checkoutPending = request.cookies.get("clariti_checkout_pending")?.value === "1";
   if (!access.hasPlus && checkoutPending && service) {
     await new Promise((resolve) => setTimeout(resolve, 1200));
-    await syncPlusFromRevenueCat(service, user.id);
-    access = await getSubscriptionAccess(supabase, user.id);
+    access = await resolveAccess(supabase, user.id);
   }
 
   if (!access.hasPlus) {
-    if (service) access = await markExpiredSubscriptionIfNeeded(service, user.id, access);
-    if (isSubscriptionLockedOut(access)) {
-      return NextResponse.redirect(appUrl("/billing/locked", request));
-    }
-    return NextResponse.redirect(appUrl("/billing", request));
+    const paywall = paywallPathFor(access);
+    // Off card-first surfaces a never-subscribed account keeps the old plans page.
+    const path = paywall === "/billing/locked" || cardFirstApplies(request.headers.get("user-agent")) ? paywall : "/billing";
+    return NextResponse.redirect(appUrl(path, request));
   }
 
   const response = NextResponse.redirect(appUrl("/workspace", request));

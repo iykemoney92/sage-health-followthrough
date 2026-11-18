@@ -7,6 +7,7 @@ import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 import { inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
+import { requireTrialOrPlus } from "@/lib/billing/card-first";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 export const maxDuration = 120;
@@ -61,6 +62,9 @@ export async function POST(request: NextRequest) {
     const supabase = await getSupabaseSessionClient();
     const limited = await enforceRateLimit(supabase, "analyze");
     if (limited) return limited;
+    // Card-first: no trial or plan, no model call (lib/billing/card-first.ts).
+    const trialGate = await requireTrialOrPlus(request, supabase, user.id);
+    if (trialGate) return trialGate;
 
     const resolvedRequest = {
       ...parsed.data,

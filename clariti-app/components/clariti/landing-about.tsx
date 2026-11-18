@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FREE_DOCUMENT_LIMIT } from "@/lib/billing/subscription";
+import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
 import { GUIDES } from "@/lib/content/guides";
 import { TOPICS } from "@/lib/content/topics";
 
@@ -52,7 +52,7 @@ export const LANDING_FAQS = [
   },
   {
     question: "Is Clariti free?",
-    answer: `Your first ${FREE_DOCUMENT_LIMIT} document analyses are free. Clariti Plus removes the limit.`,
+    answer: `Clariti starts with a ${CARD_TRIAL_DAYS}-day free trial of Clariti Plus on the web. You add a payment method to begin and pay nothing if you cancel before the trial ends. The guides, the example analysis and the EOB decoder are free with no account.`,
   },
   {
     question: "What is the difference between an EOB and a medical bill?",

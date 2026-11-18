@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { WebOnly } from "@/components/web-only";
-import { FREE_DOCUMENT_LIMIT } from "@/lib/billing/subscription";
+import { CARD_TRIAL_DAYS } from "@/lib/billing/trial";
 import { APP_STORE_URL, GUIDE_APP_HREF, GUIDE_PLAY_HREF } from "@/lib/content/guide-links";
 import { toolForGuide } from "@/lib/content/tools";
 
@@ -30,7 +30,7 @@ export function GuideCta({ prompt, teaser }: { prompt: string; teaser?: GuideTea
       </div>
       <WebOnly>
         <p className="guide-cta-note">
-          Your first {FREE_DOCUMENT_LIMIT} analyses are free. Also on <a href={GUIDE_PLAY_HREF}>Android</a> and{" "}
+          Starts with a {CARD_TRIAL_DAYS}-day free trial. Also on <a href={GUIDE_PLAY_HREF}>Android</a> and{" "}
           <a href={APP_STORE_URL}>iPhone</a>.
         </p>
       </WebOnly>

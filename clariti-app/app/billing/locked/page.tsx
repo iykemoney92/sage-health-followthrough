@@ -81,6 +81,7 @@ export default function BillingLockedPage() {
             authenticated={Boolean(userId)}
             hasPlus={false}
             label="Upgrade to Plus"
+            checkoutFrom="locked"
             className="billing-lock-cta"
             webCheckoutAvailable={webCheckoutAvailable}
             onPurchased={loadAccess}

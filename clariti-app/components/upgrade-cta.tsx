@@ -46,6 +46,8 @@ export function UpgradeCta({
   className,
   onPurchased,
   webCheckoutAvailable = true,
+  checkoutFrom,
+  trialDays = null,
 }: {
   userId: string | null;
   authenticated: boolean;
@@ -56,6 +58,10 @@ export function UpgradeCta({
   onPurchased?: () => void | Promise<void>;
   /** False when /api/billing/checkout has nowhere to send a web buyer. */
   webCheckoutAvailable?: boolean;
+  /** Which screen opened checkout, so Stripe's back link returns to it. */
+  checkoutFrom?: "start-trial" | "billing" | "locked";
+  /** Set on the onboarding trial step: the store button then names the trial when the store offers one. */
+  trialDays?: number | null;
 }) {
   // Capacitor's platform is only knowable in the browser. useSyncExternalStore
   // rather than an effect so the server renders nothing and the client renders
@@ -79,7 +85,7 @@ export function UpgradeCta({
   }
 
   if (platform === "native") {
-    return <NativeUpgrade userId={userId} hasPlus={hasPlus} onPurchased={onPurchased} />;
+    return <NativeUpgrade userId={userId} hasPlus={hasPlus} onPurchased={onPurchased} trialStep={trialDays !== null} />;
   }
 
   if (hasPlus) {
@@ -101,7 +107,7 @@ export function UpgradeCta({
             buy: a paywall view that never becomes a checkout_start. */}
         <AnalyticsBeacon event="checkout_unavailable" params={{ surface: "web" }} />
         <p className="billing-notice" role="status">
-          Clariti Plus cannot be purchased on the web right now. You can subscribe in the Clariti app on iPhone.
+          Clariti Plus cannot be purchased on the web right now. You can subscribe in the Clariti app on iPhone or Android.
         </p>
       </>
     );
@@ -109,7 +115,7 @@ export function UpgradeCta({
 
   return (
     <a
-      href="/api/billing/checkout"
+      href={checkoutFrom ? `/api/billing/checkout?from=${checkoutFrom}` : "/api/billing/checkout"}
       className={className ?? "billing-primary-cta"}
       onClick={() => track("checkout_start", { surface: "web" })}
     >

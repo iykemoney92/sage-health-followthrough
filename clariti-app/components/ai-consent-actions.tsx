@@ -32,7 +32,14 @@ export function AiConsentActions({ next }: { next: string }) {
       return;
     }
 
-    router.replace(next);
+    // Card-first: the trial step comes straight after consent for an account
+    // with no trial or plan, carrying the same destination through.
+    const status = await fetch("/api/auth/status", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null);
+    const paywallPath = typeof status?.paywallPath === "string" ? status.paywallPath : null;
+
+    router.replace(paywallPath ? `${paywallPath}?next=${encodeURIComponent(next)}` : next);
     router.refresh();
   }
 

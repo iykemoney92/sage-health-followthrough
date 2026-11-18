@@ -102,23 +102,13 @@ function trialEndFromStart(value: string | null | undefined, days = CARD_TRIAL_D
   return startedAt.toISOString();
 }
 
-export async function getSubscriptionAccess(
-  supabase: SupabaseClient,
-  ownerId: string,
-): Promise<SubscriptionAccess> {
-  const [{ data }, documentsAnalyzedCount, videosGeneratedCount] = await Promise.all([
-    supabase
-      .from("clariti_profiles")
-      .select(
-        "subscription_tier, subscription_status, trial_started_at, trial_ends_at, subscription_current_period_ends_at",
-      )
-      .eq("id", ownerId)
-      .maybeSingle(),
-    getDocumentAnalysisCount(supabase, ownerId),
-    getVideoGenerationCount(supabase, ownerId),
-  ]);
+const PROFILE_SUBSCRIPTION_COLUMNS =
+  "subscription_tier, subscription_status, trial_started_at, trial_ends_at, subscription_current_period_ends_at";
 
-  const profile = (data ?? {}) as ProfileSubscriptionRow;
+export type PlusState = Pick<SubscriptionAccess, "tier" | "status" | "hasPlus" | "trialEndsAt" | "currentPeriodEndsAt">;
+
+/** What a stored profile row says about Plus right now. Pure: no queries. */
+export function plusStateFromProfile(profile: ProfileSubscriptionRow): PlusState {
   const tier = profile.subscription_tier === "plus" ? "plus" : "free";
   let status = ["trialing", "active", "grace_period", "cancelled", "expired"].includes(profile.subscription_status ?? "")
     ? (profile.subscription_status as SubscriptionAccess["status"])
@@ -160,13 +150,37 @@ export async function getSubscriptionAccess(
     hasPlus,
     trialEndsAt: trialEndsAt ?? null,
     currentPeriodEndsAt: paidUntil,
-    documentsAnalyzedCount,
-    videosGeneratedCount,
   };
 }
 
+/**
+ * Plus state from the profile row alone, with no usage counts: one query, for
+ * callers that run on every page load (proxy.ts, /api/auth/status).
+ */
+export async function getPlusState(supabase: SupabaseClient, ownerId: string): Promise<PlusState> {
+  const { data } = await supabase
+    .from("clariti_profiles")
+    .select(PROFILE_SUBSCRIPTION_COLUMNS)
+    .eq("id", ownerId)
+    .maybeSingle();
+  return plusStateFromProfile((data ?? {}) as ProfileSubscriptionRow);
+}
+
+export async function getSubscriptionAccess(
+  supabase: SupabaseClient,
+  ownerId: string,
+): Promise<SubscriptionAccess> {
+  const [state, documentsAnalyzedCount, videosGeneratedCount] = await Promise.all([
+    getPlusState(supabase, ownerId),
+    getDocumentAnalysisCount(supabase, ownerId),
+    getVideoGenerationCount(supabase, ownerId),
+  ]);
+
+  return { ...state, documentsAnalyzedCount, videosGeneratedCount };
+}
+
 /** True when a previous trial/subscription lapsed and Plus is no longer active. */
-export function isSubscriptionLockedOut(access: SubscriptionAccess) {
+export function isSubscriptionLockedOut(access: PlusState) {
   if (access.hasPlus) return false;
   if (access.status === "expired") return true;
   if (access.status === "cancelled") return true;

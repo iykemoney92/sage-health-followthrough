@@ -14,6 +14,7 @@ import {
 } from "@/lib/domain/clariti-history";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
+import { requireTrialOrPlus } from "@/lib/billing/card-first";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 
 const requestSchema = z.object({
@@ -39,6 +40,9 @@ export async function POST(request: NextRequest) {
 
   const limited = await enforceRateLimit(await getSupabaseSessionClient(), "messages");
   if (limited) return limited;
+  // Card-first: no trial or plan, no model call (lib/billing/card-first.ts).
+  const trialGate = await requireTrialOrPlus(request, await getSupabaseSessionClient(), user.id);
+  if (trialGate) return trialGate;
 
   const body = await request.json().catch(() => null);
   const parsed = requestSchema.safeParse(body);
