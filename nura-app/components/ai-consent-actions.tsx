@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { track } from "@/lib/analytics";
@@ -13,7 +12,6 @@ import { track } from "@/lib/analytics";
  * that happens by scrolling past.
  */
 export function AiConsentActions({ next }: { next: string }) {
-  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,8 +30,11 @@ export function AiConsentActions({ next }: { next: string }) {
       return;
     }
 
-    router.replace(next);
-    router.refresh();
+    // A full load, not router.replace: the client router may still hold the
+    // pre-consent redirect for `next` (a prefetch made while the gate stood),
+    // and replaying it bounced the page between here and `next` until Safari
+    // stopped it ("replaceState() more than 100 times", 18 Nov 2026).
+    window.location.replace(next);
   }
 
   return (
