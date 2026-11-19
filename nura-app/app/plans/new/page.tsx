@@ -45,6 +45,7 @@ type IntakeAttachment = {
 
 type CheckInChannel = "whatsapp" | "in_app" | "voice";
 type PlanFor = "me" | "someone";
+const CARING_INTEREST = "Looking out for someone I care for";
 type RecipientConsent = "link" | "on_behalf";
 type ConsentShare = { url: string; text: string; whatsappUrl: string; smsUrl: string; expiresAt: string };
 
@@ -166,8 +167,11 @@ export default function NewCarePlanPage() {
   const [planFor, setPlanFor] = useState<PlanFor>("me");
   // A link such as /plans/new?for=someone (the Christmas card on Today) starts on "Someone I care for".
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("for") !== "someone") return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (new URLSearchParams(window.location.search).get("for") === "someone") setPlanFor("someone");
+    setPlanFor("someone");
+    // The first step's matching interest is ticked too, so the path reads as one thought.
+    setSelected((current) => (current.includes(CARING_INTEREST) ? current : [...current, CARING_INTEREST]));
   }, []);
   const [recipientName, setRecipientName] = useState("");
   const [recipientRelationship, setRecipientRelationship] = useState<(typeof RELATIONSHIP_OPTIONS)[number][0]>("parent");
