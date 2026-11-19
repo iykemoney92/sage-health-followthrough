@@ -120,9 +120,9 @@ export const MEDICATION_GUIDES: Guide[] = [
     slug: "missed-a-dose-of-medication-what-to-do",
     category: "medication",
     question: "Missed a dose of your medication? What to do next",
-    title: "Missed a dose of medication: what to do",
+    title: "Missed a dose? Where the official advice is",
     description:
-      "Don't double up. Check the leaflet or ask a pharmacist, note what happened, and fix the reason it was missed so it doesn't happen again.",
+      "There's no single rule for a missed dose: it depends on the medicine. Where the official answer for yours is written, who to ask, and what never to do.",
     answer:
       "Don't take a double dose to make up for it. Check the patient information leaflet that came with the medicine, or ask a pharmacist, because the right step depends on the medicine; then make a note of the missed dose so your next check is accurate.",
     why:

@@ -63,9 +63,9 @@ export const ROUTINE_GUIDES: Guide[] = [
     slug: "how-to-get-into-a-sleep-routine",
     category: "routines",
     question: "How to get into a better sleep routine",
-    title: "How to get into a better sleep routine",
+    title: "How to improve your sleep routine and schedule",
     description:
-      "Go to bed and get up at about the same time, wind down before bed, cut late caffeine and screens, and keep track so you can see what helps.",
+      "Six changes in the order that makes them stick: wake-up time first, then wind-down, caffeine, phone and bedroom, and a simple note to see what works.",
     answer:
       "Go to bed and wake up at around the same time every day, give yourself time to relax before bed, avoid caffeine late in the day and put your phone away before sleep. If poor sleep keeps going despite changes, speak to a GP.",
     why:
@@ -267,7 +267,7 @@ export const ROUTINE_GUIDES: Guide[] = [
       },
     ],
     sources: [SRC.careSupportPlans, SRC.needsAssessment, SRC.carerAssessment, SRC.meansTest, SRC.advocate, SRC.discharge],
-    related: ["looking-after-yourself-as-a-carer", "how-to-check-on-an-elderly-parent-who-lives-alone", "daily-check-in-calls-for-elderly-parents", "caring-for-a-parent-from-a-distance"],
+    related: ["who-can-get-a-care-plan", "what-should-a-care-plan-include", "when-should-a-care-plan-be-reviewed", "looking-after-yourself-as-a-carer"],
     media: {
       src: "/guides/try-plan-checking-in-on-mum.webp",
       width: 1000,
