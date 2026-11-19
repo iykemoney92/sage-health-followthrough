@@ -56,7 +56,9 @@ export default async function AiConsentPage({
           </ul>
           <p>
             Anthropic processes it only to generate your reply and may not use it to train its models or for its
-            own purposes. Nura never sells your health context or uses it for advertising. Read{" "}
+            own purposes. Our server also sends the text of these AI requests and replies (never image, document or
+            audio files, or Apple Health data) to PostHog, in the EU, so we can check the quality of Nura’s answers.
+            Nura never sells your health context or uses it for advertising. Read{" "}
             <Link href="/data-use">how your data is used</Link> and our{" "}
             <Link href="/privacy">privacy policy</Link>. You can delete your account at any time from Me → Delete
             account.

@@ -7,6 +7,7 @@ import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { resolveDecision, applyPlanDecision, applyNextCheckIn, insertConversationTurn, extractPhoneNumber, type PlanContext, type HistoryTurn, type MissedCheckIn } from "@/lib/domain/message-intake";
 import { processAttachments } from "@/lib/ai/attachments";
+import { newAiTrace, withAiTrace } from "@/lib/ai/trace";
 import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
 import { MAX_VOICE_NOTE_BYTES, VOICE_NOTES_BUCKET } from "@/lib/voice-notes";
 import { evaluateAndAdvanceJourney, ensureJourney } from "@/lib/domain/plan-journey";
@@ -261,7 +262,10 @@ export async function POST(request: NextRequest) {
   const routineTimes = await loadRoutineTimes(supabase, user.id);
   // So Nura doesn't promise a free user check-ins the trigger will skip (see checkInAccessGuidance).
   const checkInAccess = await loadCheckInAccess(user.id);
-  const decision = await resolveDecision(modelContent, plans ?? [], sanitizedAttachments, modelContexts, requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels, timeZone, preferredChannel, routineTimes, checkInAccess);
+  const traceCtx = newAiTrace({ distinctId: user.id, sessionId: requestedPlan?.id ?? null });
+  const decision = await withAiTrace(traceCtx, () =>
+    resolveDecision(modelContent, plans ?? [], sanitizedAttachments, modelContexts, requestedPlan, history, phoneOnFile, missed, attachmentBlocks, "in_app", allowedChannels, timeZone, preferredChannel, routineTimes, checkInAccess),
+  );
   await saveRoutineTimes(supabase, user.id, routineTimes, decision.routine_times);
   const threadLimit = await enforceThreadLimit(supabase, user.id, plans?.length ?? 0, decision.action === "new_plan");
   if (threadLimit) return threadLimit;
@@ -308,10 +312,14 @@ export async function POST(request: NextRequest) {
     const planForJourney = plans?.find((plan) => plan.id === planId);
     if (createdPlan) {
       // Draft the roadmap as soon as a Journey is born — don't wait for the plan page.
-      after(() => ensureJourney(supabase, user.id, createdPlan));
+      after(() => withAiTrace({ ...traceCtx, sessionId: createdPlan.id }, () => ensureJourney(supabase, user.id, createdPlan)));
     } else if (planForJourney) {
       // Runs after the response is sent - journey bookkeeping should never delay the visible chat reply.
-      after(() => evaluateAndAdvanceJourney(supabase, user.id, planForJourney as never, modelContent, decision.reply));
+      after(() =>
+        withAiTrace({ ...traceCtx, sessionId: planId }, () =>
+          evaluateAndAdvanceJourney(supabase, user.id, planForJourney as never, modelContent, decision.reply),
+        ),
+      );
     }
 
     const { error: updateError } = await supabase

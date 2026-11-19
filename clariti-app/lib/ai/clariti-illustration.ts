@@ -1,4 +1,5 @@
 import { generateText, type GeneratedFile } from "ai";
+import type { WrapModel } from "@/lib/ai/clariti-analysis";
 import { claritiVideoAnalysisSchema, type ClaritiVideoAnalysis } from "@/lib/ai/clariti-video";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 
@@ -8,13 +9,15 @@ export type ClaritiIllustrationAnalysis = ClaritiVideoAnalysis;
 type GenerateClaritiIllustrationInput = {
   analysis: ClaritiIllustrationAnalysis;
   sceneIndex: number;
+  /** PostHog AI tracing from the route (lib/ai/trace.ts). */
+  wrapModel?: WrapModel;
 };
 
-export async function generateClaritiIllustration({ analysis, sceneIndex }: GenerateClaritiIllustrationInput) {
+export async function generateClaritiIllustration({ analysis, sceneIndex, wrapModel = (m) => m }: GenerateClaritiIllustrationInput) {
   const prompt = buildIllustrationPrompt(analysis, sceneIndex);
   const model = process.env.CLARITI_ILLUSTRATION_MODEL ?? "google/gemini-3.1-flash-image-preview";
   const result = await generateText({
-    model,
+    model: wrapModel(model),
     prompt,
     maxRetries: 1,
   });

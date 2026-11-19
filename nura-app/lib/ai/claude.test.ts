@@ -8,6 +8,17 @@ let gatewayResult: () => Promise<unknown>;
 
 vi.mock("@vercel/oidc", () => ({ getVercelOidcToken: vi.fn(async () => "oidc-token") }));
 
+const traced: Array<{ span: string; route: string; model: string; status: number; traceId: string; distinctId: string | null }> = [];
+vi.mock("./trace", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./trace")>();
+  return {
+    ...actual,
+    traceAiGeneration: vi.fn((g: import("./trace").AiGeneration) => {
+      traced.push({ span: g.span, route: g.route, model: g.model, status: g.status, traceId: g.ctx.traceId, distinctId: g.ctx.distinctId });
+    }),
+  };
+});
+
 vi.mock("@anthropic-ai/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@anthropic-ai/sdk")>();
   class FakeAnthropic {
@@ -130,5 +141,19 @@ describe("createClaudeMessage", () => {
     expect(failure).toBeInstanceOf(AiUnavailableError);
     expect(failure.kind).toBe("overloaded");
     expect(String(errorLog.mock.calls[0][0])).toMatch(/^\[AI DOWN\] Claude unavailable for chat/);
+  });
+
+  it("traces each attempt for PostHog under one trace id, failures included", async () => {
+    const { withAiTrace } = await import("./trace");
+    traced.length = 0;
+    directResult = async () => {
+      throw apiError(529, "overloaded");
+    };
+    gatewayResult = async () => ok;
+    await withAiTrace({ distinctId: "owner-1", sessionId: "plan-1" }, () => createClaudeMessage("message-intake/chat", params));
+    expect(traced).toHaveLength(2);
+    expect(traced[0]).toMatchObject({ span: "message-intake/chat", route: "anthropic", model: "claude-sonnet-5", status: 529, distinctId: "owner-1" });
+    expect(traced[1]).toMatchObject({ route: "gateway", model: "anthropic/claude-sonnet-5", status: 200, distinctId: "owner-1" });
+    expect(traced[0].traceId).toBe(traced[1].traceId);
   });
 });

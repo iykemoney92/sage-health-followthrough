@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { claritiAnalysisSchema, type ClaritiAnalysis } from "@/lib/ai/clariti-analysis";
+import { claritiAnalysisSchema, type ClaritiAnalysis, type WrapModel } from "@/lib/ai/clariti-analysis";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 
 export const claritiVideoAnalysisSchema = claritiAnalysisSchema.pick({
@@ -886,7 +886,7 @@ function trimNarration(value: string) {
   return `${cleaned.slice(0, 217).trim()}...`;
 }
 
-export async function designExplainerStoryboard(analysis: ClaritiVideoAnalysis) {
+export async function designExplainerStoryboard(analysis: ClaritiVideoAnalysis, wrapModel: WrapModel = (model) => model) {
   if (analysis.videoScenes?.length === 5) return analysis.videoScenes;
 
   const hasGatewayAuth = Boolean(process.env.VERCEL_OIDC_TOKEN || process.env.AI_GATEWAY_API_KEY);
@@ -917,9 +917,11 @@ export async function designExplainerStoryboard(analysis: ClaritiVideoAnalysis) 
     const { z } = await import("zod");
 
     const result = await generateObject({
-      model: hasGatewayAuth
-        ? process.env.AI_GATEWAY_MODEL ?? "anthropic/claude-sonnet-4.6"
-        : anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
+      model: wrapModel(
+        hasGatewayAuth
+          ? process.env.AI_GATEWAY_MODEL ?? "anthropic/claude-sonnet-4.6"
+          : anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
+      ),
       schema: z.object({ videoScenes: z.array(claritiSceneSchema).length(5) }),
       // Thinking shares this budget. Claude Opus 5 runs adaptive thinking by
       // default, so a cap tuned for a non-thinking model leaves the visible

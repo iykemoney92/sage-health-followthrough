@@ -56,7 +56,9 @@ export default async function AiConsentPage({
           </ul>
           <p>
             They process it only to produce your explanation, and may not use it to train their models or for their
-            own purposes. Clariti never sells your documents or uses them for advertising. Read our{" "}
+            own purposes. Clariti’s server also keeps a text copy of each AI request and answer in{" "}
+            <strong>PostHog</strong> (EU) so we can check the quality of its explanations; files and images are never
+            included. Clariti never sells your documents or uses them for advertising. Read our{" "}
             <Link href="/privacy">privacy policy</Link>, or delete everything at any time from Settings.
           </p>
           <AiConsentActions next={destination} />

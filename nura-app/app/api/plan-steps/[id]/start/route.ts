@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePlusAccess } from "@/lib/billing/subscription";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { respondToStepStart } from "@/lib/domain/plan-journey";
+import { withAiTrace } from "@/lib/ai/trace";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -45,11 +46,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     .reverse()
     .map((m) => ({ role: m.role as "user" | "assistant", content: m.content as string }));
 
-  const reply = await respondToStepStart(
-    plan as never,
-    { title: milestone.title as string },
-    { title: step.title as string, contextPrompt: step.context_prompt as string },
-    history,
+  const reply = await withAiTrace({ distinctId: user.id, sessionId: step.plan_id as string }, () =>
+    respondToStepStart(
+      plan as never,
+      { title: milestone.title as string },
+      { title: step.title as string, contextPrompt: step.context_prompt as string },
+      history,
+    ),
   );
 
   const userTurn = `Let's work on: ${step.title as string}`;

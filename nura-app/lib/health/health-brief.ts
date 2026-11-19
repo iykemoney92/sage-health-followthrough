@@ -24,6 +24,9 @@ export const HEALTH_MIN_BASELINE_DAYS = 14;
 const BASELINE_DAYS = 28;
 
 /** Instructions that travel with a brief into any model prompt. */
+/** Opens every health brief; lib/ai/trace.ts finds the brief by it to keep it out of analytics. */
+export const HEALTH_BRIEF_HEADER = "Health data the user chose to share from";
+
 export const HEALTH_BRIEF_GUIDANCE = [
   "How to use the health data above: bring it up at most once, as a gentle question rather than a finding",
   '(e.g. "I noticed your sleep\'s been shorter lately — how have the nights been?").',
@@ -198,7 +201,7 @@ export function buildHealthBrief(input: HealthBriefInput): string | null {
   });
 
   return [
-    `Health data the user chose to share from ${platforms.map((p) => HEALTH_PLATFORM_LABELS[p]).join(" and ")} (last synced ${syncedLabel}):`,
+    `${HEALTH_BRIEF_HEADER} ${platforms.map((p) => HEALTH_PLATFORM_LABELS[p]).join(" and ")} (last synced ${syncedLabel}):`,
     ...(lines.length > 0 ? lines : ["Nothing notable has changed recently."]).map((line) => `- ${line}`),
   ].join("\n");
 }

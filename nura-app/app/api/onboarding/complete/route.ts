@@ -12,6 +12,7 @@ import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { isValidTimeZone } from "@/lib/timezone";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
+import { newAiTrace, withAiTrace } from "@/lib/ai/trace";
 // Trial starts on the post-onboarding paywall (card 14-day or soft 7-day), not here.
 
 export const maxDuration = 45;
@@ -223,8 +224,9 @@ export async function POST(request: NextRequest) {
     const excerpt = file.text?.trim();
     return excerpt ? `${file.name}: ${excerpt.slice(0, 500)}` : file.name;
   });
+  const traceCtx = newAiTrace({ distinctId: user.id });
   const plan = await withTimeout(
-    draftPlanFromIntake(intake, attachmentNotes),
+    withAiTrace(traceCtx, () => draftPlanFromIntake(intake, attachmentNotes)),
     inferJourneyDraft(intake, attachmentNotes),
   );
 
@@ -287,7 +289,7 @@ export async function POST(request: NextRequest) {
       authMetadata: (user.user_metadata ?? null) as Record<string, unknown> | null,
     }));
   const firstCheckIn = await withTimeout(
-    draftFirstCheckInFromIntake({
+    withAiTrace({ ...traceCtx, sessionId: createdPlan.id }, () => draftFirstCheckInFromIntake({
       plan: {
         title: plan.title,
         category: isPlanCategory(plan.category) ? plan.category : "general_health",
@@ -299,7 +301,7 @@ export async function POST(request: NextRequest) {
       allowedChannels,
       preferredChannel: preferredCheckInForDraft,
       timeZone: userTimeZone,
-    }),
+    })),
     // Soft fallback only — not a product rule of "tomorrow 19:30".
     {
       when: (() => {
@@ -381,13 +383,13 @@ export async function POST(request: NextRequest) {
   ]);
 
   after(() =>
-    ensureJourney(supabase, user.id, {
+    withAiTrace({ ...traceCtx, sessionId: createdPlan.id }, () => ensureJourney(supabase, user.id, {
       id: createdPlan.id,
       title: plan.title,
       why_this_exists: plan.why_this_exists,
       current_focus: plan.current_focus,
       next_step: plan.next_step,
-    }),
+    })),
   );
 
   await supabase.auth.updateUser({

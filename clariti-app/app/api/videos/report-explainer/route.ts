@@ -20,6 +20,7 @@ import { getSessionUser, getSupabaseSessionClient, hasSupabaseBrowserConfig } fr
 import { shotstackIsUsable } from "@/lib/integrations/shotstack";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
+import { tracedModel, withAiTrace } from "@/lib/ai/trace";
 
 export const maxDuration = 60;
 
@@ -141,7 +142,9 @@ export async function POST(request: NextRequest) {
   // A single Flux clip is one call against one prompt, so it does not need the
   // five-scene storyboard — and should not pay an LLM call to design one.
   const storyboard = plannedPipeline === "flux-chained" || plannedPipeline === "ai-video-scenes-shotstack"
-    ? await designExplainerStoryboard(analysis)
+    ? await withAiTrace({ distinctId: user.id, sessionId }, () =>
+        designExplainerStoryboard(analysis, (model) => tracedModel(model, "video_storyboard")),
+      )
     : analysis.videoScenes;
   const analysisWithStoryboard = {
     ...analysis,

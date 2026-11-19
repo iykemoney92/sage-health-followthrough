@@ -20,6 +20,7 @@ import {
 } from "@/lib/domain/message-intake";
 import { evaluateAndAdvanceJourney, ensureJourney, type PlanForJourney } from "@/lib/domain/plan-journey";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
+import { newAiTrace, withAiTrace } from "@/lib/ai/trace";
 
 export const runtime = "nodejs";
 /** Claude + WhatsApp send can exceed Meta's webhook patience; we ack first then finish here. */
@@ -509,7 +510,8 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
   });
 
   const routineTimes = await loadRoutineTimes(supabase, ownerId);
-  const decision = await resolveDecision(
+  const traceCtx = newAiTrace({ distinctId: ownerId });
+  const decision = await withAiTrace(traceCtx, () => resolveDecision(
     content,
     (plans ?? []) as PlanSummary[],
     messageAttachments,
@@ -524,7 +526,7 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
     timeZone,
     preferredChannel,
     routineTimes,
-  );
+  ));
   await saveRoutineTimes(supabase, ownerId, routineTimes, decision.routine_times);
 
   const { planId, createdPlan, error: planError } = await applyPlanDecision(supabase, ownerId, decision, (plans ?? []) as PlanSummary[]);
@@ -562,9 +564,13 @@ async function handleInboundMessage(parsed: z.infer<typeof inboundSchema>) {
 
     const planForJourney = (plans ?? []).find((plan) => plan.id === planId);
     if (createdPlan) {
-      after(() => ensureJourney(supabase, ownerId, createdPlan));
+      after(() => withAiTrace({ ...traceCtx, sessionId: createdPlan.id }, () => ensureJourney(supabase, ownerId, createdPlan)));
     } else if (planForJourney) {
-      after(() => evaluateAndAdvanceJourney(supabase, ownerId, planForJourney as PlanForJourney, content, decision.reply));
+      after(() =>
+        withAiTrace({ ...traceCtx, sessionId: planId }, () =>
+          evaluateAndAdvanceJourney(supabase, ownerId, planForJourney as PlanForJourney, content, decision.reply),
+        ),
+      );
     }
 
     await supabase

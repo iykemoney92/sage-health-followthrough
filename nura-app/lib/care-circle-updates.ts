@@ -2,6 +2,7 @@ import { claudeClient } from "@/lib/ai/claude";
 import { recipientFirstNameForPlan } from "@/lib/care-recipient-admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NURA_CORE_IDENTITY } from "@/lib/domain/nura-persona";
+import { withAiTrace } from "@/lib/ai/trace";
 
 /**
  * The update Nura writes FOR the circle.
@@ -28,6 +29,8 @@ export type CircleUpdate = {
 };
 
 export type CircleFacts = {
+  /** The plan owner (for AI tracing only; never shown to the circle). */
+  ownerId?: string;
   ownerFirstName: string;
   planTitle: string;
   why: string;
@@ -129,6 +132,7 @@ export async function collectCircleFacts(supabase: SupabaseClient, planId: strin
   }
 
   return {
+    ownerId: plan.owner_id as string,
     // On a plan about someone else, the circle wants to hear how THEY are getting on.
     ownerFirstName:
       (await recipientFirstNameForPlan(planId)) || (ownerDisplayName ?? "").trim().split(/\s+/)[0] || "They",
@@ -247,7 +251,7 @@ export async function writeCircleUpdate(
 ): Promise<CircleUpdate | null> {
   const facts = await collectCircleFacts(readClient, planId);
   if (!facts) return null;
-  const body = await composeCircleUpdate(facts);
+  const body = await withAiTrace({ distinctId: facts.ownerId ?? null, sessionId: planId }, () => composeCircleUpdate(facts));
   const { data, error } = await writeClient
     .from("nura_plan_circle_updates")
     .insert({ plan_id: planId, body, period_start: facts.periodStart, period_end: facts.periodEnd, requested_by: requestedBy })

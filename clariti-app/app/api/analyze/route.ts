@@ -9,6 +9,7 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { requireTrialOrPlus } from "@/lib/billing/card-first";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { tracedModel, withAiTrace } from "@/lib/ai/trace";
 
 export const maxDuration = 120;
 
@@ -127,7 +128,9 @@ export async function POST(request: NextRequest) {
       // A persistOnly body carries an analysis this route did not produce, so it is
       // only as trustworthy as the caller says it is.
       ? { analysis: parsed.data.analysis, degraded: parsed.data.degraded === true }
-      : await analyzeClaritiDocument(resolvedRequest).then((result) => {
+      : await withAiTrace({ distinctId: user.id }, () =>
+          analyzeClaritiDocument(resolvedRequest, (model) => tracedModel(model, "document_analysis")),
+        ).then((result) => {
           // Reported from the route rather than from the analysis module: that
           // module is imported by client components for its schema, and the
           // reporter reaches for next/server.

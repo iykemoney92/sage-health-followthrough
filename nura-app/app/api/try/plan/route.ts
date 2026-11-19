@@ -9,6 +9,7 @@ import { composeCheckinOpener } from "@/lib/domain/message-intake";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { TRY_FIRST_MAX_CHARS, TRY_FIRST_MIN_CHARS } from "@/lib/try-first";
+import { newAiTrace, withAiTrace } from "@/lib/ai/trace";
 
 // "Try Nura first" on the home page: no account. Turns what a visitor types into the Care plan and
 // first check-in Nura would make, so they see what it does before signing up. Nothing they type is
@@ -80,8 +81,10 @@ export async function POST(request: NextRequest) {
     console.error("[try-first] rate limit unavailable:", error instanceof Error ? error.message : "unknown");
   }
 
-  const plan = await withTimeout(draftPlanFromIntake(text), inferJourneyDraft(text, []), 20000);
-  const checkIn = await draftFirstCheckInFromIntake({
+  // Signed out: no person, so the three calls share one anonymous trace.
+  const traceCtx = newAiTrace({});
+  const plan = await withTimeout(withAiTrace(traceCtx, () => draftPlanFromIntake(text)), inferJourneyDraft(text, []), 20000);
+  const checkIn = await withAiTrace(traceCtx, () => draftFirstCheckInFromIntake({
     plan: {
       title: plan.title,
       category: isPlanCategory(plan.category) ? plan.category : "general_health",
@@ -92,9 +95,9 @@ export async function POST(request: NextRequest) {
     intake: text,
     allowedChannels: ["in_app", "whatsapp", "voice"],
     preferredChannel: "in_app",
-  });
+  }));
   const message = await withTimeout(
-    composeCheckinOpener("there", plan.title, checkIn.prompt, plan.category),
+    withAiTrace(traceCtx, () => composeCheckinOpener("there", plan.title, checkIn.prompt, plan.category)),
     `Checking in on ${plan.title}: ${checkIn.prompt}`,
     15000,
   );

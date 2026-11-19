@@ -134,8 +134,8 @@ function AnalyticsConsentControl() {
         </button>
         <p className="settings-footnote" style={{ textAlign: "left", marginTop: 8 }} role="status">
           {on
-            ? "On. PostHog sees which screens you open and records them with what you type, your documents and everything Clariti writes about them hidden."
-            : "Off. Only the cookies that keep you signed in are loaded."}
+            ? "On. PostHog sees which screens you open and records them with what you type, your documents and everything Clariti writes about them hidden. Clariti's AI requests and answers also go to PostHog so we can check their quality."
+            : "Off. Only the cookies that keep you signed in are loaded, and Clariti's AI answers are not copied to PostHog."}
         </p>
       </div>
     );
@@ -158,8 +158,8 @@ function AnalyticsConsentControl() {
       </button>
       <p className="settings-footnote" style={{ textAlign: "left", marginTop: 8 }} role="status">
         {granted
-          ? "All on. Google Analytics and PostHog see which screens you open (PostHog records them with what you type, your documents and everything Clariti writes about them hidden), and the Quora Pixel sees visits to our public pages, store taps and sign-ups — never your documents or anything written in them."
-          : "All off. Only the cookies that keep you signed in are loaded."}
+          ? "All on. Google Analytics and PostHog see which screens you open (PostHog records them with what you type, your documents and everything Clariti writes about them hidden), and the Quora Pixel sees visits to our public pages, store taps and sign-ups — never your documents. Separately, Clariti's AI requests and answers go to PostHog so we can check their quality."
+          : "All off. Only the cookies that keep you signed in are loaded, and Clariti's AI answers are not copied to PostHog."}
       </p>
     </div>
   );

@@ -6,6 +6,7 @@ import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { draftNextCheckInAfterCompletion } from "@/lib/domain/journey-create";
 import { resolveUserTimeZone } from "@/lib/domain/user-timezone";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { newAiTrace, withAiTrace } from "@/lib/ai/trace";
 
 const requestSchema = z.object({
   planId: z.string().uuid(),
@@ -116,7 +117,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const nextStep = await draftNextStep(plan.title, plan.current_focus, mood, note);
+  const traceCtx = newAiTrace({ distinctId: user.id, sessionId: planId });
+  const nextStep = await withAiTrace(traceCtx, () => draftNextStep(plan.title, plan.current_focus, mood, note));
 
   // If a recurring series already has further open rows, leave them — don't invent a conflicting one-off.
   const { data: remainingOpen } = await supabase
@@ -142,7 +144,7 @@ export async function POST(request: NextRequest) {
     const allowedChannels = channels.length > 0 ? channels : (["in_app"] as Array<"whatsapp" | "in_app" | "voice">);
     const preferredChannel = primaryCheckinChannel(allowedChannels, preferredRaw);
 
-    const nextCheckIn = await draftNextCheckInAfterCompletion({
+    const nextCheckIn = await withAiTrace(traceCtx, async () => draftNextCheckInAfterCompletion({
       plan: {
         title: plan.title as string,
         current_focus: (plan.current_focus as string) || "",
@@ -155,7 +157,7 @@ export async function POST(request: NextRequest) {
       timeZone: await resolveUserTimeZone(supabase, user.id, {
         authMetadata: (user.user_metadata ?? null) as Record<string, unknown> | null,
       }),
-    });
+    }));
 
     const { error: nextCheckInError } = await supabase.from("nura_check_ins").insert({
       owner_id: user.id,

@@ -28,6 +28,7 @@ import {
   CALL_OUTCOME_TIMEOUT_MINUTES,
   type ResolvableCheckIn,
 } from "@/lib/domain/call-outcome";
+import { withAiTrace } from "@/lib/ai/trace";
 
 function toE164(digits: string) {
   return digits.startsWith("+") ? digits : `+${digits}`;
@@ -627,7 +628,7 @@ async function runTriggerCheckIns(request: NextRequest) {
         const displayName = (nameByOwner.get(checkIn.owner_id) ?? "").trim();
         const firstName = firstNameOf(displayName);
         const planTitle = checkIn.nura_plans?.title ?? "your Care plan";
-        const opener = await composeCheckinOpener(firstName, planTitle, checkIn.prompt, checkIn.nura_plans?.category);
+        const opener = await withAiTrace({ distinctId: checkIn.owner_id, sessionId: checkIn.plan_id }, () => composeCheckinOpener(firstName, planTitle, checkIn.prompt, checkIn.nura_plans?.category));
         await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, opener);
 
         const reach = await pushOrEmail(supabase, checkIn, opener, "Nura");
@@ -648,12 +649,12 @@ async function runTriggerCheckIns(request: NextRequest) {
         const displayName = (nameByOwner.get(checkIn.owner_id) ?? "").trim();
         const firstName = firstNameOf(displayName);
         const planTitle = checkIn.nura_plans?.title ?? "your Care plan";
-        const opener = await composeCheckinOpener(
+        const opener = await withAiTrace({ distinctId: checkIn.owner_id, sessionId: checkIn.plan_id }, () => composeCheckinOpener(
           firstName,
           planTitle,
           checkIn.prompt,
           checkIn.nura_plans?.category,
-        );
+        ));
 
         try {
           const outcome = await sendWhatsappText(phone, opener);
@@ -759,12 +760,12 @@ async function runTriggerCheckIns(request: NextRequest) {
 
     // Too late for a cold call (dispatcher lag past 6h) — still reach the user by text/push.
     if (minutesOverdue > MAX_VOICE_LATENESS_MINUTES) {
-      const opener = await composeCheckinOpener(
+      const opener = await withAiTrace({ distinctId: primary.owner_id, sessionId: primary.plan_id }, () => composeCheckinOpener(
         firstName,
         planTitle,
         primary.prompt,
         primary.nura_plans?.category,
-      );
+      ));
       const phoneDigits = phoneKey;
       let status: string = "failed";
       let callError: string | null = `Voice check-in was ${Math.round(minutesOverdue)}m overdue; delivered by text instead.`;
@@ -876,7 +877,7 @@ async function runTriggerCheckIns(request: NextRequest) {
         results.push({ checkInId: primary.id, planTitle, toNumber, status: "failed", error: message });
         continue;
       }
-      const opener = await composeMissedCallFollowup(firstName, planTitle, primary.prompt);
+      const opener = await withAiTrace({ distinctId: primary.owner_id, sessionId: primary.plan_id }, () => composeMissedCallFollowup(firstName, planTitle, primary.prompt));
       let status: string = "failed";
       let callError = message;
 

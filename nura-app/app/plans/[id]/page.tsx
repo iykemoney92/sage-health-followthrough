@@ -27,6 +27,7 @@ import { getUserAvatarUrl } from "@/lib/avatar";
 import { categoryLabel, channelLabel, formatCheckInWhen } from "@/lib/domain/journey-naming";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { ensureJourney } from "@/lib/domain/plan-journey";
+import { withAiTrace } from "@/lib/ai/trace";
 
 function formatDay(dateString: string) {
   return new Date(dateString).toLocaleDateString("en-GB", {
@@ -94,13 +95,13 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
       // ensureJourney drafts milestones when there are none - an owner-only side effect.
       isWatcher
         ? readJourney(supabase, id)
-        : ensureJourney(supabase, ownerId, {
+        : withAiTrace({ distinctId: ownerId, sessionId: plan.id as string }, () => ensureJourney(supabase, ownerId, {
             id: plan.id as string,
             title: plan.title as string,
             why_this_exists: plan.why_this_exists as string,
             current_focus: plan.current_focus as string,
             next_step: plan.next_step as string,
-          }),
+          })),
       isWatcher ? Promise.resolve([]) : listCircleMembers(supabase, id),
       getLatestCircleUpdate(supabase, id),
       listCircleAlerts(supabase, id),

@@ -16,6 +16,7 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { requireTrialOrPlus } from "@/lib/billing/card-first";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { tracedModel, withAiTrace } from "@/lib/ai/trace";
 
 const requestSchema = z.object({
   sessionId: z.string().uuid(),
@@ -92,14 +93,14 @@ export async function POST(request: NextRequest) {
     // still answered "that is a Clariti Plus feature".
   }
 
-  const assistantContent = await generateGroundedFollowUp(
+  const assistantContent = await withAiTrace({ distinctId: user.id, sessionId }, () => generateGroundedFollowUp(
     content,
     analysis,
     threadDocuments,
     recoveredDraft,
     compareCandidates,
     savedArtifact?.documentId ?? null,
-  );
+  ));
   const userMessageCreatedAt = new Date();
   const assistantMessageCreatedAt = new Date(userMessageCreatedAt.getTime() + 1);
 
@@ -529,9 +530,12 @@ async function generateGroundedFollowUp(
 
   try {
     const result = await generateText({
-      model: hasGatewayAuth
-        ? process.env.AI_GATEWAY_MODEL ?? "anthropic/claude-sonnet-4.6"
-        : anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
+      model: tracedModel(
+        hasGatewayAuth
+          ? process.env.AI_GATEWAY_MODEL ?? "anthropic/claude-sonnet-4.6"
+          : anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
+        "chat_reply",
+      ),
       temperature: 0.2,
       // Reply length is held by the prompt ("under 130 words"), not by this
       // ceiling — so raising it does not make answers longer. It is raised

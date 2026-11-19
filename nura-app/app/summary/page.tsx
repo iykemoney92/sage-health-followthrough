@@ -5,6 +5,7 @@ import { NuraShell } from "@/components/nura-shell";
 import { ExportSummaryButton } from "@/components/export-summary-button";
 import { getUserAvatarUrl } from "@/lib/avatar";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { withAiTrace } from "@/lib/ai/trace";
 
 type GeneratedSummary = { headline: string; patterns: string[]; questions: string[] };
 
@@ -88,7 +89,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
     };
   } else {
     const entries = (observations ?? []).map((o) => `${o.label}: ${o.value}`);
-    summary = await generateSummary(plan.title as string, entries);
+    summary = await withAiTrace({ distinctId: user?.id ?? null, sessionId: plan.id as string }, () => generateSummary(plan.title as string, entries));
     if (entries.length > 0) {
       await supabase.from("nura_appointment_summaries").insert({
         owner_id: user!.id,
