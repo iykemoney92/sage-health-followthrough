@@ -24,9 +24,14 @@ Each video page has a full transcript.
 
 ## Guides
 
-Plain-English guides on everyday wellbeing and caring: sleep and routines, wellbeing check-ins, looking out for an older parent, care plans, caring for someone, and medicine reminders (reminders only, never dose advice). General information, not medical advice; each guide links its NHS sources.
+Plain-English guides on everyday wellbeing and caring: an AI companion that checks in on you, sleep and routines, wellbeing check-ins, looking out for an older parent, care plans, caring for someone, and medicine reminders (reminders only, never dose advice). General information, not medical advice; each guide links its NHS sources.
 
 - [All guides](https://usenura.app/guides)
+- [An AI companion that checks in on you (instead of waiting for you)](https://usenura.app/guides/ai-companion-that-checks-in-on-you)
+- [An AI accountability partner app that texts you on WhatsApp](https://usenura.app/guides/ai-accountability-partner-app)
+- [An AI that calls you to check in: how it works](https://usenura.app/guides/ai-that-calls-you-to-check-in)
+- [An AI companion for older adults who live alone](https://usenura.app/guides/ai-companion-for-older-adults-living-alone)
+- [Replika alternatives for wellbeing, not romance](https://usenura.app/guides/replika-alternatives-for-wellbeing)
 - [How to build a new health habit that actually sticks](https://usenura.app/guides/how-to-build-a-new-health-habit)
 - [How to get into a better sleep routine](https://usenura.app/guides/how-to-get-into-a-sleep-routine)
 - [How to manage work stress before it affects your health](https://usenura.app/guides/how-to-manage-stress-from-work)
