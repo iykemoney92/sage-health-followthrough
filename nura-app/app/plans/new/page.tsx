@@ -164,6 +164,11 @@ export default function NewCarePlanPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [planFor, setPlanFor] = useState<PlanFor>("me");
+  // A link such as /plans/new?for=someone (the Christmas card on Today) starts on "Someone I care for".
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (new URLSearchParams(window.location.search).get("for") === "someone") setPlanFor("someone");
+  }, []);
   const [recipientName, setRecipientName] = useState("");
   const [recipientRelationship, setRecipientRelationship] = useState<(typeof RELATIONSHIP_OPTIONS)[number][0]>("parent");
   const [recipientPhone, setRecipientPhone] = useState("");

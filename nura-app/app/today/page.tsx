@@ -29,6 +29,7 @@ import { hasUsedFreeCheckIn } from "@/lib/billing/free-checkin";
 import { TrialAfterCheckIn } from "@/components/trial-after-checkin";
 import { PushAskCard } from "@/components/push-ask-card";
 import { HealthAskCard } from "@/components/health-ask-card";
+import { ChristmasVisitCard } from "@/components/christmas-visit-card";
 import { listSharedWithMe } from "@/lib/care-circle";
 import { createWhatsappHref } from "@/lib/whatsapp-link";
 import { hasSeenWalkthrough } from "@/lib/walkthrough";
@@ -116,7 +117,7 @@ export default async function TodayPage({
     user
       ? supabase
           .from("nura_plans")
-          .select("id, title, category, current_focus, next_step, updated_at")
+          .select("id, title, category, current_focus, next_step, updated_at, care_recipient_id")
           .eq("owner_id", user.id)
           .order("updated_at", { ascending: false })
           .limit(4)
@@ -263,6 +264,7 @@ export default async function TodayPage({
         <TrialAfterCheckIn show={showTrialAfterCheckIn} />
         <PushAskCard show={(plans?.length ?? 0) > 0 && !showTrialAfterCheckIn} />
         <HealthAskCard show={(plans?.length ?? 0) > 0 && !showTrialAfterCheckIn} />
+        <ChristmasVisitCard show={Boolean(user) && !showTrialAfterCheckIn && !(plans ?? []).some((p) => p.care_recipient_id)} />
 
         <div className="today-layout">
           <section className="today-main-column">
