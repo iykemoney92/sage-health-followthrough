@@ -15,7 +15,7 @@ import { HEALTH_BRIEF_HEADER } from "@/lib/health/health-brief";
  * health brief is cut from the prompt and the reply written from it is withheld), phone
  * numbers and email addresses (masked), and anything for a person who turned Product
  * analytics off (their choice is mirrored to `analytics_opt_out` in their auth metadata by
- * components/posthog-identity.tsx). ElevenLabs voice calls are not traced here.
+ * components/posthog-identity.tsx). ElevenLabs voice calls are traced separately, from the post-call webhook (lib/ai/voice-trace.ts).
  *
  * Production only (VERCEL_ENV=production), like the browser PostHog; AI_TRACE=off stops it
  * and AI_TRACE=on turns it on elsewhere for a test. Never throws and never holds up a reply:
@@ -187,7 +187,7 @@ const optOutCache = new Map<string, { optedOut: boolean; at: number }>();
 const OPT_OUT_TTL_MS = 5 * 60_000;
 
 /** True when the person turned Product analytics off, or when that can't be checked (fails closed). */
-async function hasOptedOut(distinctId: string): Promise<boolean> {
+export async function hasOptedOut(distinctId: string): Promise<boolean> {
   if (!UUID.test(distinctId)) return false;
   const cached = optOutCache.get(distinctId);
   if (cached && Date.now() - cached.at < OPT_OUT_TTL_MS) return cached.optedOut;
