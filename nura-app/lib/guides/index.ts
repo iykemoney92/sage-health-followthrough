@@ -1,3 +1,4 @@
+import { ALEXA_TOGETHER_GUIDES } from "./data/alexa-together";
 import { APPOINTMENT_GUIDES } from "./data/appointments";
 import { CARE_PLAN_GUIDES } from "./data/care-plans";
 import { CARER_GUIDES } from "./data/carers";
@@ -23,6 +24,7 @@ export const GUIDES: Guide[] = [
   ...CARING_GUIDES,
   ...CARER_GUIDES,
   ...ELDERLY_PARENT_GUIDES,
+  ...ALEXA_TOGETHER_GUIDES,
   ...CARE_PLAN_GUIDES,
   ...ROUTINE_GUIDES,
   ...WELLBEING_GUIDES,
