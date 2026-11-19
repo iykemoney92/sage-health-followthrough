@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { parseConversationOutcome, type RawConversationBody } from "@/lib/integrations/elevenlabs";
 import { resolveCallForCheckIn, type ResolvableCheckIn } from "@/lib/domain/call-outcome";
 import { logger } from "@/lib/logger";
+import { traceNuraCall } from "@/lib/ai/voice-trace";
 
 export const runtime = "nodejs";
 /** ElevenLabs post-call webhooks fire the moment a conversation ends - ack fast, resolve in the background. */
@@ -98,6 +99,8 @@ export async function POST(request: NextRequest) {
 
     // Ack immediately, same pattern as the WhatsApp webhook - a slow DB write must never look
     // like a timeout to ElevenLabs and trigger a retry storm.
+    // Every finished call (answered, voicemail or failed) also goes to PostHog LLM analytics for quality checks.
+    after(() => traceNuraCall(body!.data as Parameters<typeof traceNuraCall>[0]));
     after(() =>
       handlePostCallWebhook(body!).catch((error) => {
         logger.error("voice_webhook.background_failed", {
