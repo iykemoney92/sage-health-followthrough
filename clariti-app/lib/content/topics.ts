@@ -27,6 +27,7 @@ import type { GuideExampleRow } from "@/lib/content/guides";
 import { SHOT_BILL_NEXT_STEPS, SHOT_BILL_SUMMARY, type GuideShot } from "@/lib/content/guide-shots";
 import { CODE_TOPICS } from "@/lib/content/topics-codes";
 import { BILLING_TOPICS } from "@/lib/content/topics-billing";
+import { YEAR_END_TOPICS } from "@/lib/content/topics-year-end";
 
 export type TopicCategory = "insurance" | "bills" | "codes" | "labs" | "hospital";
 
@@ -1526,8 +1527,8 @@ const BASE_TOPICS: TopicGuide[] = [
   },
 ];
 
-/** Wave 3 (16 Nov 2026): billing and prior-authorization questions, then one page per common code. */
-export const TOPICS: TopicGuide[] = [...BASE_TOPICS, ...BILLING_TOPICS, ...CODE_TOPICS];
+/** Wave 3 (16 Nov 2026): billing and prior-authorization questions, then one page per common code. Year-end pages added 19 Nov 2026. */
+export const TOPICS: TopicGuide[] = [...BASE_TOPICS, ...BILLING_TOPICS, ...YEAR_END_TOPICS, ...CODE_TOPICS];
 
 /**
  * The screenshot in the mid-page teaser card: a real bill analysis for the money
