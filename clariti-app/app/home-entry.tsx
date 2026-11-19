@@ -26,6 +26,7 @@ import { ClaritiShell } from "@/components/clariti-shell";
 import { prepareDocumentForUpload, readDocumentApiResponse } from "@/components/clariti/document-upload";
 import type { ClaritiAnalysisKind } from "@/lib/ai/clariti-analysis";
 import { track } from "@/lib/analytics";
+import { YEAR_END_ITEMS, yearEndOn } from "@/lib/year-end";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
 import { inferClaritiKind } from "@/lib/domain/clariti-fallback-analysis";
 import { formatHumanError } from "@/lib/domain/human-errors";
@@ -116,6 +117,12 @@ function HomeContent({ about }: { about?: ReactNode }) {
   const [extractionMethod, setExtractionMethod] = useState<string | null>(null);
   const [truncation, setTruncation] = useState<{ read: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // US year end: a checklist card from 1 to 31 December 2026 by the visitor's own date.
+  const [yearEnd, setYearEnd] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the visitor's own date, read once in the browser
+    setYearEnd(yearEndOn(new Date(), window.location.search));
+  }, []);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -655,6 +662,22 @@ function HomeContent({ about }: { about?: ReactNode }) {
           <AppDownloadLinks />
         </div>
       </section>
+
+      {yearEnd && (
+        <section className="clariti-year-end" aria-label="Year-end checklist">
+          <p className="clariti-year-end-kicker">BEFORE DECEMBER 31</p>
+          <h2>Your year-end health money checklist</h2>
+          <div className="clariti-year-end-list">
+            {YEAR_END_ITEMS.map((item) => (
+              <Link key={item.href} href={item.href} className="clariti-year-end-item" onClick={() => track("year_end_item_click", { href: item.href })}>
+                <b>{item.title}</b>
+                <small>{item.text}</small>
+              </Link>
+            ))}
+          </div>
+          <p className="clariti-year-end-note">Plans differ: check your plan documents. Have a bill or EOB now? Attach it above and Clariti explains it.</p>
+        </section>
+      )}
 
       {about}
 
