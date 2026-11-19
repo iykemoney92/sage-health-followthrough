@@ -79,7 +79,8 @@ export type AiGeneration = {
   error?: string | null;
 };
 
-const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+/** Bounded so a long run of letters can't make the match quadratic (a 70k-character document took seconds). */
+const EMAIL = /[A-Z0-9._%+-]{1,64}@[A-Z0-9-]{1,63}(?:\.[A-Z0-9-]{1,63}){0,6}\.[A-Z]{2,24}/gi;
 const PHONE = /\+\d[\d ()-]{6,18}\d/g;
 const HEALTH_BRIEF = new RegExp(`${escapeRegExp(HEALTH_BRIEF_HEADER)}[^\\n]*(?:\\n- [^\\n]*)*`, "g");
 const HAS_HEALTH_BRIEF = new RegExp(escapeRegExp(HEALTH_BRIEF_HEADER));
@@ -90,8 +91,12 @@ function escapeRegExp(s: string) {
 }
 
 function scrub(text: string): string {
-  const masked = text.replace(HEALTH_BRIEF, HEALTH_MARKER).replace(EMAIL, "[email]").replace(PHONE, "[phone]");
-  return masked.length > MAX_TEXT ? `${masked.slice(0, MAX_TEXT)}… [${masked.length - MAX_TEXT} more characters]` : masked;
+  const withoutHealth = text.replace(HEALTH_BRIEF, HEALTH_MARKER);
+  const cut =
+    withoutHealth.length > MAX_TEXT
+      ? `${withoutHealth.slice(0, MAX_TEXT)}… [${withoutHealth.length - MAX_TEXT} more characters]`
+      : withoutHealth;
+  return cut.replace(EMAIL, "[email]").replace(PHONE, "[phone]");
 }
 
 /** Anthropic content (a string or blocks) as plain text, with files reduced to markers. */

@@ -84,12 +84,13 @@ export type AiGeneration = {
   error?: string | null;
 };
 
-const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+/** Bounded so a long run of letters can't make the match quadratic (a 70k-character document took seconds). */
+const EMAIL = /[A-Z0-9._%+-]{1,64}@[A-Z0-9-]{1,63}(?:\.[A-Z0-9-]{1,63}){0,6}\.[A-Z]{2,24}/gi;
 const PHONE = /\+\d[\d ()-]{6,18}\d/g;
 
 function scrub(text: string): string {
-  const masked = text.replace(EMAIL, "[email]").replace(PHONE, "[phone]");
-  return masked.length > MAX_TEXT ? `${masked.slice(0, MAX_TEXT)}… [${masked.length - MAX_TEXT} more characters]` : masked;
+  const cut = text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT)}… [${text.length - MAX_TEXT} more characters]` : text;
+  return cut.replace(EMAIL, "[email]").replace(PHONE, "[phone]");
 }
 
 const fileMarker = (mediaType: string | undefined) => (mediaType?.startsWith("image/") ? "[image]" : "[file]");
