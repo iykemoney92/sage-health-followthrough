@@ -2,6 +2,7 @@ import { APPOINTMENT_GUIDES } from "./data/appointments";
 import { CARE_PLAN_GUIDES } from "./data/care-plans";
 import { CARER_GUIDES } from "./data/carers";
 import { CARING_GUIDES } from "./data/caring";
+import { CHRISTMAS_GUIDES } from "./data/christmas";
 import { ELDERLY_PARENT_GUIDES } from "./data/elderly-parents";
 import { MEDICATION_GUIDES } from "./data/medication";
 import { REMINDER_GUIDES } from "./data/reminders";
@@ -24,6 +25,7 @@ export const GUIDES: Guide[] = [
   ...CARE_PLAN_GUIDES,
   ...ROUTINE_GUIDES,
   ...WELLBEING_GUIDES,
+  ...CHRISTMAS_GUIDES,
 ];
 
 /** Index page order and headings. */
