@@ -43,6 +43,8 @@ Attach a document, take a photo, or paste the text, and Clariti explains one doc
 - [Prior authorization for medication: how it works](https://useclariti.app/guides/prior-authorization-for-medication)
 - [Explanation of benefits (EOB) example, line by line](https://useclariti.app/guides/explanation-of-benefits-example)
 - [Medicare EOB vs Medicare Summary Notice, explained](https://useclariti.app/guides/medicare-summary-notice-eob)
+- [What happens to my deductible on January 1?](https://useclariti.app/guides/what-happens-to-my-deductible-on-january-1)
+- [FSA deadline 2026: what to do with leftover money](https://useclariti.app/guides/fsa-deadline-2026)
 
 ### Medical bills and codes
 
@@ -59,6 +61,8 @@ Attach a document, take a photo, or paste the text, and Clariti explains one doc
 - [How to get an itemized hospital bill (and read it)](https://useclariti.app/guides/how-to-get-an-itemized-hospital-bill)
 - [8 common medical billing errors, and how to spot them](https://useclariti.app/guides/common-medical-billing-errors)
 - [Medical bill in collections? What to do first](https://useclariti.app/guides/medical-bill-in-collections)
+- [How to check a medical bill before you pay (checklist)](https://useclariti.app/guides/check-a-medical-bill-before-you-pay)
+- [Surprise bill after a holiday ER or urgent care visit](https://useclariti.app/guides/surprise-bill-holiday-er-urgent-care-visit)
 
 ### Billing codes, one by one
 

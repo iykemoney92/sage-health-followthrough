@@ -86,6 +86,10 @@ export const SRC = {
     label: "NHS: When to use NHS 111 online or call 111",
     url: "https://www.nhs.uk/nhs-services/urgent-and-emergency-care-services/when-to-use-111/",
   },
+  urgentMentalHealth: {
+    label: "NHS: Where to get urgent help for mental health (including Samaritans on 116 123)",
+    url: "https://www.nhs.uk/nhs-services/mental-health-services/where-to-get-urgent-help-for-mental-health/",
+  },
   nhs999: {
     label: "NHS: When to call 999",
     url: "https://www.nhs.uk/nhs-services/urgent-and-emergency-care-services/when-to-call-999/",
