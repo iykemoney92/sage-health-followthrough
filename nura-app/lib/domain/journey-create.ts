@@ -91,7 +91,7 @@ export async function draftNextCheckInAfterCompletion(input: {
   if (!apiKey) return fallback;
 
   try {
-    const client = claudeClient("journey-create");
+    const client = claudeClient("journey-create/next-check-in");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 220,
@@ -142,7 +142,7 @@ export async function draftFirstCheckInFromIntake(input: {
   if (!apiKey) return fallback;
 
   try {
-    const client = claudeClient("journey-create");
+    const client = claudeClient("journey-create/first-check-in");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 220,

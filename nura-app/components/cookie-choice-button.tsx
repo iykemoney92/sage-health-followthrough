@@ -45,7 +45,7 @@ export function CookieChoiceButton() {
         <h2>Product analytics</h2>
         <p>
           {ios.on
-            ? "Nura records how the app is used (PostHog, EU), with your health details hidden, to see what to improve."
+            ? "Nura records how the app is used (PostHog, EU), with your health details hidden, and sends Nura's AI requests and replies there to check their quality. Turning this off stops both."
             : "Product analytics is off on this device."}{" "}
           <button
             type="button"

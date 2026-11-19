@@ -48,15 +48,16 @@ export function CookieConsent() {
         <p>
           Clariti uses essential cookies to keep you signed in. If you accept, it also uses PostHog to understand how the
           app is used, including screen recordings that hide what you type, your documents and everything Clariti writes
-          about them. You can change this answer any time in Settings, under Privacy & support.
+          about them, and to keep copies of Clariti’s AI answers so we can check their quality. You can change this
+          answer any time in Settings, under Privacy & support.
         </p>
       ) : (
         <p>
           Clariti uses essential cookies to keep you signed in. If you accept, it also uses Google Analytics and PostHog to
           understand how the product is used (PostHog records screens with what you type, your documents and everything
-          Clariti writes about them hidden), and the Quora Pixel on our public pages to see which of our ads brought you
-          here — never on your documents or anything written in them. You can change this answer any time in Settings,
-          under Privacy & support.
+          Clariti writes about them hidden) and to keep copies of Clariti’s AI answers so we can check their quality,
+          and the Quora Pixel on our public pages to see which of our ads brought you here — never on your documents. You
+          can change this answer any time in Settings, under Privacy & support.
         </p>
       )}
       <div className="cookie-notice-actions">

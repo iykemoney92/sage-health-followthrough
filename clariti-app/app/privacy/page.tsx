@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: "What Clariti collects when you upload a health document, who else processes it, and how to export or delete it.",
 };
 
-const LAST_UPDATED = "October 24, 2026";
+const LAST_UPDATED = "November 19, 2026";
 
 type Section = {
   title: string;
@@ -32,12 +32,14 @@ const sections: Section[] = [
       "Check-ins you schedule: the email address and time you pick, and which document the check-in is about. Accounts created earlier may still hold a phone number from when check-ins could be called instead of emailed.",
       "Your Clariti Plus status: plan, trial dates, and the subscription identifiers needed to keep it accurate. Clariti never receives your card number.",
       "Optional product analytics: which screens and features get used — and only while you leave analytics switched on.",
+      "Copies of Clariti's AI requests and answers, kept in PostHog so we can check the quality of Clariti's explanations (see Cookies).",
     ],
   },
   {
     title: "What Clariti does with it",
     body: [
       "Your document is read for one purpose: to produce your explanation. The extracted text goes to the model that writes the analysis and the result comes straight back to you and your account.",
+      "A copy of each request Clariti's server makes to the AI model, and the answer it gets back, also goes to PostHog (EU) so we can check and improve the quality of Clariti's explanations. That copy is text only: the words read from your document, your questions, and what Clariti wrote. The uploaded file, page images and generated pictures are never sent, email addresses are masked, and it stops for your account if you switch analytics off (see Cookies).",
       "Your documents, and the analyses built from them, are not used to train AI models — not by us, and not by the providers below, whose terms prohibit it. They are not sold, not shared with advertisers, and not used to build a profile of you.",
     ],
   },
@@ -56,7 +58,7 @@ const sections: Section[] = [
       "Vercel — hosting and the ordinary request logs that come with it.",
       "Google Analytics — aggregated product usage: an event name for each action you take, the page paths you open, and the device and browser type Google reads off the request. Never document contents, and only while analytics is switched on.",
       "Quora — ad measurement through the Quora Pixel, on our public web pages only (see Cookies). Never document contents, and only if you accept.",
-      "PostHog (EU servers) — product analytics and screen recordings of how the website and the apps are used (see Cookies). What you type, your documents and everything Clariti writes about them are hidden from it. On the website and in the Android app it runs only if you accept; in the iPhone app it is on unless you turn it off in Settings.",
+      "PostHog (EU servers) — product analytics and screen recordings of how the website and the apps are used (see Cookies). In those recordings, what you type, your documents and everything Clariti writes about them are hidden. On the website and in the Android app it runs only if you accept; in the iPhone app it is on unless you turn it off in Settings. Separately, Clariti's server sends PostHog the text of its AI requests and answers, so we can check their quality (see What Clariti does with it).",
     ],
   },
   {
@@ -72,6 +74,7 @@ const sections: Section[] = [
     body: [
       "Clariti keeps your data for as long as your account exists. Deleting your account removes it immediately: documents, extracted text, analyses, chat, saved artifacts, videos, illustrations, scheduled check-ins, and your profile. That deletion is permanent and cannot be reversed.",
       "Encrypted infrastructure backups held by our hosting providers may still contain a copy for a short period until they expire on their normal rotation.",
+      "Analytics data and the copies of AI requests and answers in PostHog are not removed automatically when you delete your account; ask us and we will delete them.",
     ],
   },
   {
@@ -87,7 +90,7 @@ const sections: Section[] = [
       "Clariti sets essential cookies to keep you signed in and your session secure. Those cannot be turned off without breaking sign-in.",
       "With your consent it also sets Google Analytics cookies to understand how the product is used. What leaves your browser is the name of what happened — a sign-in, an analysis finishing, a video being generated — the page path it happened on, and the device and browser type. Never the contents of a document, its file name, or anything Clariti wrote about it, and Google Analytics is never used for advertising.",
       "The same Accept also turns on the Quora Pixel, which tells Quora when you visit a public page of this site (the home page, the example, sign-up and these policy pages), tap an App Store or Google Play link, or create an account on the web, so Quora can match those visits to people who saw our ads and we can tell which ads are worth running. It sets Quora's own cookies and sends Quora the page address, your browser and device details and your IP address. It never runs on the pages that show your documents or analyses, never inside the Clariti apps, and never receives a document, its file name or anything Clariti wrote about it. Nothing is sent to Quora unless you press Accept, wherever you live.",
-      "The same Accept also turns on PostHog, hosted in the EU, which records which pages you open, what you tap and screen recordings of your visit, so we can see where Clariti is confusing. Everything you type is hidden, and on the pages that hold your documents and analyses (and in the box where you attach a document) the recordings show no text, images or previews at all and taps carry no on-screen words. Sign-in links and codes are removed from page addresses before they leave your device. When you are signed in, PostHog knows your Clariti account number, never your email. In the Android app the notice asks about PostHog alone. The iPhone app shows no cookie notice and never loads Google Analytics or the Quora Pixel; PostHog runs there as first-party product analytics (never combined with other companies' data, never used for advertising and never sold), and you can turn it off in Settings.",
+      "The same Accept also turns on PostHog, hosted in the EU, which records which pages you open, what you tap and screen recordings of your visit, so we can see where Clariti is confusing. Everything you type is hidden, and on the pages that hold your documents and analyses (and in the box where you attach a document) the recordings show no text, images or previews at all and taps carry no on-screen words. Sign-in links and codes are removed from page addresses before they leave your device. When you are signed in, PostHog knows your Clariti account number, never your email. Separately from cookies, Clariti's server sends PostHog the text of its AI requests and answers, linked to your Clariti account number, so we can check the quality of Clariti's explanations; if you choose Essential only or turn analytics off in Settings while signed in, that stops for your account too. In the Android app the notice asks about PostHog alone. The iPhone app shows no cookie notice and never loads Google Analytics or the Quora Pixel; PostHog runs there as first-party product analytics (never combined with other companies' data, never used for advertising and never sold), and you can turn it off in Settings.",
       "Choose Essential only or Accept when the cookie notice appears, and change that choice whenever you like in Settings, under Privacy & support.",
     ],
   },

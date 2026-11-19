@@ -183,7 +183,7 @@ async function classifyWithClaude(
   }
 
   try {
-    const client = claudeClient("message-intake");
+    const client = claudeClient("message-intake/chat");
     const tz = normalizeTimeZone(timeZone);
     const nowInfo = describeNowForTimeZone(tz);
     const inferredCategory = inferJourneyDraft(content).category;
@@ -742,7 +742,7 @@ export async function composeCheckinOpener(
   if (!apiKey) return fallback;
 
   try {
-    const client = claudeClient("message-intake");
+    const client = claudeClient("message-intake/checkin-opener");
     const agentContext = buildAgentContext({ primaryCategory: category, surface: "text" });
     const message = await client.messages.create({
       ...anthropicGenerationFields({ ...agentContext.textParams, maxTokens: 200 }),
@@ -774,7 +774,7 @@ export async function composeMissedCallFollowup(firstName: string, planTitle: st
   if (!apiKey) return fallback;
 
   try {
-    const client = claudeClient("message-intake");
+    const client = claudeClient("message-intake/missed-call-followup");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 200,
@@ -811,7 +811,7 @@ export async function composeJourneyCompletionMessage(
   if (!apiKey) return fallback;
 
   try {
-    const client = claudeClient("message-intake");
+    const client = claudeClient("message-intake/journey-completion");
     const agentContext = buildAgentContext({ primaryCategory: category, surface: "text" });
     const message = await client.messages.create({
       ...anthropicGenerationFields({ ...agentContext.textParams, maxTokens: 200 }),

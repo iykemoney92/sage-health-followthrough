@@ -5,6 +5,7 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { requireTrialOrPlus } from "@/lib/billing/card-first";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { tracedModel, withAiTrace } from "@/lib/ai/trace";
 
 const bodySchema = z.object({
   analysis: claritiIllustrationAnalysisSchema,
@@ -49,7 +50,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const generated = await generateClaritiIllustration({ analysis, sceneIndex });
+    const generated = await withAiTrace({ distinctId: user.id, sessionId: sessionId ?? null }, () =>
+      generateClaritiIllustration({ analysis, sceneIndex, wrapModel: (model) => tracedModel(model, "scene_illustration") }),
+    );
     const extension = extensionFor(generated.image.mediaType);
     const path = `${user.id}/${sessionId ?? "adhoc"}/illustration-${sceneIndex + 1}-${Date.now()}.${extension}`;
     const { error: uploadError } = await supabase.storage

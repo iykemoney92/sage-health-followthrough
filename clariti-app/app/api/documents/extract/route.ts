@@ -7,6 +7,7 @@ import { MAX_UPLOAD_BYTES, uploadSizeLimitError } from "@/lib/domain/clariti-upl
 import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { requireTrialOrPlus } from "@/lib/billing/card-first";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { newAiTrace, tracedModel, withAiTrace } from "@/lib/ai/trace";
 import { reportError } from "@/lib/observability/report-error";
 
 export const runtime = "nodejs";
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
   // Card-first: no trial or plan, no model call (lib/billing/card-first.ts).
   const trialGate = await requireTrialOrPlus(request, await getSupabaseSessionClient(), user.id);
   if (trialGate) return trialGate;
+  const traceCtx = newAiTrace({ distinctId: user.id });
 
   try {
     const formData = await request.formData();
@@ -85,16 +87,16 @@ export async function POST(request: NextRequest) {
 
     if (type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
       try {
-        const text = await extractWithAiFile(buffer, type, file.name);
+        const text = await withAiTrace(traceCtx, () => extractWithAiFile(buffer, type, file.name));
         return extracted(text, "pdf");
       } catch {
-        const result = await extractPdfText(buffer);
+        const result = await withAiTrace(traceCtx, () => extractPdfText(buffer));
         return extracted(result.text, result.method, result.pages);
       }
     }
 
     if (type.startsWith("image/")) {
-      const text = await extractWithAiFile(buffer, type, file.name);
+      const text = await withAiTrace(traceCtx, () => extractWithAiFile(buffer, type, file.name));
       return extracted(text, "image_vision");
     }
 
@@ -165,7 +167,7 @@ async function extractWithAiFile(buffer: Buffer, mimeType: string, filename: str
   });
 
   const result = await generateText({
-    model: anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
+    model: tracedModel(anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"), "document_extract"),
     temperature: 0,
     // Thinking shares this budget; see lib/ai/clariti-analysis.ts.
     maxOutputTokens: 8000,
@@ -254,9 +256,12 @@ async function extractWithVisionImages(
   }
 
   const result = await generateText({
-    model: hasGatewayAuth
-      ? process.env.AI_GATEWAY_VISION_MODEL ?? process.env.AI_GATEWAY_MODEL ?? "anthropic/claude-sonnet-4.6"
-      : anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
+    model: tracedModel(
+      hasGatewayAuth
+        ? process.env.AI_GATEWAY_VISION_MODEL ?? process.env.AI_GATEWAY_MODEL ?? "anthropic/claude-sonnet-4.6"
+        : anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
+      "document_extract_vision",
+    ),
     temperature: 0,
     // Thinking shares this budget; see lib/ai/clariti-analysis.ts.
     maxOutputTokens: 12000,

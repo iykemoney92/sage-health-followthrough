@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getVercelOidcToken } from "@vercel/oidc";
+import { currentAiTrace, traceAiGeneration, type AiTraceContext } from "@/lib/ai/trace";
 
 /**
  * Every Claude call goes through here so an outage on Nura's own Anthropic account (out of
@@ -78,11 +79,29 @@ async function gatewayCredential(): Promise<string | null> {
 
 type CreateParams = Anthropic.MessageCreateParamsNonStreaming;
 
-async function viaGateway(params: CreateParams): Promise<Anthropic.Message> {
+async function viaGateway(params: CreateParams, traced: ReturnType<typeof tracer>): Promise<Anthropic.Message> {
   const credential = await gatewayCredential();
   if (!credential) throw new AiUnavailableError("not_configured", "gateway", "No AI Gateway credential");
   const gateway = new Anthropic({ apiKey: credential, baseURL: GATEWAY_BASE_URL });
-  return gateway.messages.create({ ...params, model: gatewayModelId(params.model) });
+  const model = gatewayModelId(params.model);
+  return traced(() => gateway.messages.create({ ...params, model }), "gateway", model);
+}
+
+/** Runs one model call and sends it to PostHog LLM analytics (lib/ai/trace.ts), reply or failure. */
+function tracer(source: string, params: CreateParams, ctx: AiTraceContext) {
+  return async (call: () => Promise<Anthropic.Message>, route: "anthropic" | "gateway", model: string) => {
+    const started = Date.now();
+    const base = { ctx, span: source, model, route, system: params.system, messages: params.messages };
+    try {
+      const message = await call();
+      traceAiGeneration({ ...base, response: message, status: 200, latencyMs: Date.now() - started });
+      return message;
+    } catch (err) {
+      const status = err instanceof Anthropic.APIError ? (err.status ?? 0) : 0;
+      traceAiGeneration({ ...base, response: null, status, latencyMs: Date.now() - started, error: describe(err) });
+      throw err;
+    }
+  };
 }
 
 /**
@@ -98,12 +117,13 @@ export const CLAUDE_MIN_MAX_TOKENS = 2000;
 export async function createClaudeMessage(source: string, requested: CreateParams): Promise<Anthropic.Message> {
   const params: CreateParams = { ...requested, max_tokens: Math.max(requested.max_tokens ?? 0, CLAUDE_MIN_MAX_TOKENS) };
   const apiKey = process.env.ANTHROPIC_API_KEY;
+  const traced = tracer(source, params, currentAiTrace());
   let directFailure = "ANTHROPIC_API_KEY not set";
   let directKind: AiFailureKind = "not_configured";
 
   if (apiKey) {
     try {
-      return await new Anthropic({ apiKey }).messages.create(params);
+      return await traced(() => new Anthropic({ apiKey }).messages.create(params), "anthropic", params.model);
     } catch (err) {
       const kind = classifyAiError(err);
       if (!isProviderOutage(kind)) throw err;
@@ -113,7 +133,7 @@ export async function createClaudeMessage(source: string, requested: CreateParam
   }
 
   try {
-    const message = await viaGateway(params);
+    const message = await viaGateway(params, traced);
     console.error(
       `${AI_DOWN_LOG_TAG} Anthropic direct failed (${directKind}) for ${source}; served via AI Gateway instead. ${directFailure}`,
     );

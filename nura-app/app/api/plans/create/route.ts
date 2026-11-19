@@ -25,6 +25,7 @@ import {
 import { inferJourneyDraft, isPlanCategory } from "@/lib/domain/journey-naming";
 import { ensureJourney } from "@/lib/domain/plan-journey";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
+import { newAiTrace, withAiTrace } from "@/lib/ai/trace";
 
 export const maxDuration = 45;
 
@@ -166,8 +167,9 @@ export async function POST(request: NextRequest) {
     ? `This Care plan is about ${careRecipient.firstName} (my ${careRecipient.relationship === "other" ? "loved one" : careRecipient.relationship}), not me. Nura will check in with ${careRecipient.firstName} by phone.\n${intake}`
     : intake;
 
+  const traceCtx = newAiTrace({ distinctId: user.id });
   const plan = await withTimeout(
-    draftPlanFromIntake(draftIntake, attachmentNotes),
+    withAiTrace(traceCtx, () => draftPlanFromIntake(draftIntake, attachmentNotes)),
     inferJourneyDraft(draftIntake, attachmentNotes),
   );
 
@@ -221,7 +223,7 @@ export async function POST(request: NextRequest) {
     authMetadata: (user.user_metadata ?? null) as Record<string, unknown> | null,
   });
   const firstCheckIn = await withTimeout(
-    draftFirstCheckInFromIntake({
+    withAiTrace({ ...traceCtx, sessionId: createdPlan.id }, () => draftFirstCheckInFromIntake({
       plan: {
         title: plan.title,
         category: isPlanCategory(plan.category) ? plan.category : "general_health",
@@ -233,7 +235,7 @@ export async function POST(request: NextRequest) {
       allowedChannels,
       preferredChannel: preferredCheckInForDraft,
       timeZone: userTimeZone,
-    }),
+    })),
     {
       when: (() => {
         const d = new Date();
@@ -372,13 +374,13 @@ export async function POST(request: NextRequest) {
   ]);
 
   after(() =>
-    ensureJourney(supabase, user.id, {
+    withAiTrace({ ...traceCtx, sessionId: createdPlan.id }, () => ensureJourney(supabase, user.id, {
       id: createdPlan.id,
       title: plan.title,
       why_this_exists: plan.why_this_exists,
       current_focus: plan.current_focus,
       next_step: plan.next_step,
-    }),
+    })),
   );
 
   return NextResponse.json({

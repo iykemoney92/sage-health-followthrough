@@ -57,8 +57,8 @@ export function CookieConsent() {
             analytics (Google Analytics and PostHog) to understand how the app is
             used, including screen recordings that hide what you type and your
             health details, and to tell Google which of our ads led to a new
-            account. No health information is shared, and nothing is used to
-            target you with ads.{" "}
+            account. Google never receives your health information, and nothing
+            is used to target you with ads.{" "}
           </>
         ) : web ? (
           <>
@@ -66,8 +66,8 @@ export function CookieConsent() {
             also uses Google Analytics and PostHog to see how the product is used
             (PostHog records screens with what you type and your health details
             hidden), and the Quora and Meta pixels on our public pages to see
-            which of our ads brought you here. None of them receives your health
-            information.{" "}
+            which of our ads brought you here. Google Analytics and the pixels
+            never receive your health information.{" "}
           </>
         ) : (
           <>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePlusAccess } from "@/lib/billing/subscription";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { completeStepAndCascade, regeneratePendingJourney } from "@/lib/domain/plan-journey";
+import { newAiTrace, withAiTrace } from "@/lib/ai/trace";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -28,7 +29,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   const nowDone = step.status !== "done";
 
   if (nowDone) {
-    await completeStepAndCascade(supabase, user.id, step.id as string, step.milestone_id as string);
+    const traceCtx = newAiTrace({ distinctId: user.id, sessionId: step.plan_id as string });
+    await withAiTrace(traceCtx, () => completeStepAndCascade(supabase, user.id, step.id as string, step.milestone_id as string));
 
     const { data: plan } = await supabase
       .from("nura_plans")
@@ -36,7 +38,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       .eq("id", step.plan_id)
       .maybeSingle();
     if (plan) {
-      await regeneratePendingJourney(supabase, user.id, plan as never);
+      await withAiTrace(traceCtx, () => regeneratePendingJourney(supabase, user.id, plan as never));
     }
   } else {
     await supabase.from("nura_plan_steps").update({ status: "active", completed_at: null }).eq("id", step.id);

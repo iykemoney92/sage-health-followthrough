@@ -1,5 +1,5 @@
 import { anthropic } from "@ai-sdk/anthropic";
-import { generateObject } from "ai";
+import { generateObject, type LanguageModel } from "ai";
 import { z } from "zod";
 import { buildFallbackAnalysis } from "@/lib/domain/clariti-fallback-analysis";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
@@ -43,6 +43,12 @@ export const claritiAnalysisSchema = z.object({
 
 export type ClaritiAnalysis = z.infer<typeof claritiAnalysisSchema>;
 
+/**
+ * Lets a server route wrap the model (PostHog AI tracing, lib/ai/trace.ts) without this
+ * module importing server-only code: client components import it for its schemas.
+ */
+export type WrapModel = (model: LanguageModel) => LanguageModel;
+
 type AnalyzeInput = {
   kind: ClaritiAnalysisKind;
   question: string;
@@ -67,7 +73,7 @@ export type ClaritiAnalysisResult = {
   failure?: { name: string; message: string };
 };
 
-export async function analyzeClaritiDocument(input: AnalyzeInput): Promise<ClaritiAnalysisResult> {
+export async function analyzeClaritiDocument(input: AnalyzeInput, wrapModel: WrapModel = (model) => model): Promise<ClaritiAnalysisResult> {
   const hasGatewayAuth = Boolean(process.env.VERCEL_OIDC_TOKEN || process.env.AI_GATEWAY_API_KEY);
   const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY);
   if (!hasGatewayAuth && !hasAnthropicKey) return { analysis: buildFallbackAnalysis(input), degraded: true };
@@ -76,9 +82,11 @@ export async function analyzeClaritiDocument(input: AnalyzeInput): Promise<Clari
 
   try {
     const result = await generateObject({
-      model: hasGatewayAuth
-        ? process.env.AI_GATEWAY_MODEL ?? "anthropic/claude-sonnet-4.6"
-        : anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
+      model: wrapModel(
+        hasGatewayAuth
+          ? process.env.AI_GATEWAY_MODEL ?? "anthropic/claude-sonnet-4.6"
+          : anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929"),
+      ),
       schema: claritiAnalysisSchema,
       // Thinking shares this budget. Claude Opus 5 runs adaptive thinking by
       // default, so a cap tuned for a non-thinking model leaves the visible

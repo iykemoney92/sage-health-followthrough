@@ -16,6 +16,7 @@ import {
   recipientCallSummaryText,
   type CareRecipient,
 } from "@/lib/care-recipient";
+import { withAiTrace } from "@/lib/ai/trace";
 
 function appBaseUrl() {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://usenura.app").replace(
@@ -136,7 +137,9 @@ async function escalateCheckIn(supabase: SupabaseClient, checkIn: ResolvableChec
   const { allowed, firstName, phone: fallbackPhone, email } = await loadOwnerContext(supabase, checkIn.owner_id);
   const phone = checkIn.contact_phone || fallbackPhone;
   const planTitle = checkIn.nura_plans?.title ?? "your Care plan";
-  const message = await composeMissedCallFollowup(firstName, planTitle, checkIn.prompt);
+  const message = await withAiTrace({ distinctId: checkIn.owner_id, sessionId: checkIn.plan_id }, () =>
+    composeMissedCallFollowup(firstName, planTitle, checkIn.prompt),
+  );
   const workspaceUrl = `${appBaseUrl()}/workspace?planId=${checkIn.plan_id}`;
 
   let whatsappOk = false;

@@ -80,7 +80,7 @@ async function draftJourney(plan: PlanForJourney): Promise<DraftMilestone[]> {
   if (!apiKey) return FALLBACK_JOURNEY;
 
   try {
-    const client = claudeClient("plan-journey");
+    const client = claudeClient("plan-journey/draft");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 1200,
@@ -185,7 +185,7 @@ export async function respondToStepStart(
   if (!apiKey) return FALLBACK_STEP_REPLY;
 
   try {
-    const client = claudeClient("plan-journey");
+    const client = claudeClient("plan-journey/step-start");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 400,
@@ -297,7 +297,7 @@ async function draftAdjustedJourney(
   if (!apiKey) return null;
 
   try {
-    const client = claudeClient("plan-journey");
+    const client = claudeClient("plan-journey/adjust");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 1200,
@@ -488,7 +488,7 @@ export async function evaluateAndAdvanceJourney(
   if (!activeStep) return;
 
   try {
-    const client = claudeClient("plan-journey");
+    const client = claudeClient("plan-journey/evaluate");
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 150,

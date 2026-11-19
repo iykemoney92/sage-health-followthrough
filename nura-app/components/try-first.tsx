@@ -180,8 +180,9 @@ export function TryFirst() {
         </button>
       </div>
       <p className="try-first-fineprint">
-        No account needed. To draft this, what you write is sent to Anthropic’s Claude model; nothing is saved
-        unless you sign up. Please don’t include names or contact details.
+        No account needed. To draft this, what you write is sent to Anthropic’s Claude model, and a copy of the
+        request and reply goes to PostHog (EU) so we can check the quality of Nura’s answers; nothing is saved to an
+        account unless you sign up. Please don’t include names or contact details.
       </p>
     </form>
   );
