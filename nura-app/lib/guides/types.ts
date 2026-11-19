@@ -15,6 +15,7 @@
  */
 
 export type GuideCategory =
+  | "companion"
   | "medication"
   | "appointments"
   | "symptoms"

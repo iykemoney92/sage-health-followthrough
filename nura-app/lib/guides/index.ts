@@ -3,6 +3,7 @@ import { CARE_PLAN_GUIDES } from "./data/care-plans";
 import { CARER_GUIDES } from "./data/carers";
 import { CARING_GUIDES } from "./data/caring";
 import { CHRISTMAS_GUIDES } from "./data/christmas";
+import { COMPANION_GUIDES } from "./data/companion";
 import { ELDERLY_PARENT_GUIDES } from "./data/elderly-parents";
 import { MEDICATION_GUIDES } from "./data/medication";
 import { REMINDER_GUIDES } from "./data/reminders";
@@ -26,10 +27,12 @@ export const GUIDES: Guide[] = [
   ...ROUTINE_GUIDES,
   ...WELLBEING_GUIDES,
   ...CHRISTMAS_GUIDES,
+  ...COMPANION_GUIDES,
 ];
 
 /** Index page order and headings. */
 export const GUIDE_CATEGORIES: { id: GuideCategory; label: string }[] = [
+  { id: "companion", label: "An AI companion that checks in on you" },
   { id: "routines", label: "Routines and wellbeing" },
   { id: "elderly", label: "Looking out for an older parent" },
   { id: "caring", label: "Caring for someone" },
