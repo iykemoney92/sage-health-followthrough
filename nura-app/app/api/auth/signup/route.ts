@@ -107,7 +107,7 @@ export async function POST(request: Request) {
     const response = NextResponse.json(body);
     response.cookies.set(
       PENDING_CONFIRM_COOKIE,
-      encodePendingConfirmCookie(email, pendingConfirm.token),
+      encodePendingConfirmCookie(email, pendingConfirm.token, created.user?.id ?? null),
       pendingConfirmCookieOptions(),
     );
     return response;

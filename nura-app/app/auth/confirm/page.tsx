@@ -42,7 +42,7 @@ function friendlyConfirmError(description: string | null) {
     return "This confirmation link can’t be finished in this browser. Request a fresh email, then open it here.";
   }
   if (lower.includes("expired") || lower.includes("invalid")) {
-    return "This confirmation link is invalid or has expired. Request a new one from the check-email screen, or try signing in.";
+    return "This confirmation link has expired or been replaced by a newer one. Enter your email below and we’ll send a fresh link.";
   }
   if (description) return description.replace(/\+/g, " ");
   return "We couldn’t confirm your email with this link. Try signing in, or create your account again.";
@@ -54,6 +54,41 @@ export default function AuthConfirmPage() {
   const [message, setMessage] = useState("Confirming your email…");
   const [continueHref, setContinueHref] = useState("/onboarding");
   const [redirectIn, setRedirectIn] = useState<number | null>(null);
+  // A dead link (expired after the email-link lifetime, or replaced by a newer
+  // one) used to leave people on "Resend from the check-email screen", which is
+  // empty on any device other than the one they signed up on. Ask for the
+  // address right here instead and send a fresh link.
+  const [resendEmail, setResendEmail] = useState("");
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
+
+  async function sendNewLink(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = resendEmail.trim();
+    if (!email) return;
+    setResendState("sending");
+    setResendMessage(null);
+    try {
+      const res = await fetch("/api/auth/resend-confirmation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const body = (await res.json().catch(() => null)) as { ok?: boolean; message?: string; error?: string } | null;
+      if (!res.ok || !body?.ok) {
+        setResendState("error");
+        setResendMessage(body?.error || "We couldn’t send a new link right now. Try again in a minute.");
+        return;
+      }
+      setResendState("sent");
+      setResendMessage(
+        body.message || "If that address still needs confirming, a new link is on its way. Open the newest email.",
+      );
+    } catch {
+      setResendState("error");
+      setResendMessage("We couldn’t send a new link right now. Try again in a minute.");
+    }
+  }
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
@@ -247,11 +282,40 @@ export default function AuthConfirmPage() {
 
           {status === "error" && (
             <>
-              <Link href="/login" className="primary-cta auth-submit" style={{ textAlign: "center" }}>
-                Back to sign in
-              </Link>
+              <form
+                onSubmit={(event) => void sendNewLink(event)}
+                noValidate
+                style={{ display: "grid", gap: 12, marginTop: 12 }}
+              >
+                <label>
+                  Your email
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    inputMode="email"
+                    placeholder="you@example.com"
+                    value={resendEmail}
+                    onChange={(event) => setResendEmail(event.target.value)}
+                    required
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="primary-cta auth-submit"
+                  disabled={resendState === "sending" || !resendEmail.trim()}
+                >
+                  {resendState === "sending" ? "Sending…" : "Send me a new link"}
+                </button>
+              </form>
+              {resendMessage && (
+                <AuthAlert
+                  tone={resendState === "sent" ? "success" : "error"}
+                  title={resendState === "sent" ? "New link sent" : "Couldn’t send a link"}
+                  message={resendMessage}
+                />
+              )}
               <p className="auth-switch" style={{ borderTop: 0, paddingTop: 0 }}>
-                <Link href="/auth/check-email">Resend confirmation email</Link>
+                Already confirmed? <Link href="/login">Sign in</Link>
               </p>
             </>
           )}
