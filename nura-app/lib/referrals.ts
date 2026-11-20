@@ -14,7 +14,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** Cookie that remembers which invite link a visitor opened before they had an account. */
 export const REFERRAL_COOKIE = "nura_ref";
-export const REFERRAL_COOKIE_DAYS = 30;
+/** Long enough to sign up after opening a link, short enough not to tag an unrelated account made on that browser weeks later. */
+export const REFERRAL_COOKIE_DAYS = 7;
 export const FRIEND_PLUS_DAYS = 30;
 /** Only brand-new accounts can take the gift - an existing free user can't loop back through a link. */
 export const NEW_ACCOUNT_WINDOW_DAYS = 14;
@@ -86,6 +87,15 @@ export function friendEligibility(input: {
 
   if (input.referrerRewardsLast30Days >= REFERRER_MONTHLY_LIMIT) return { ok: false, reason: "referrer_limit" };
   return { ok: true };
+}
+
+/**
+ * Whether opening a link should leave the invite cookie. Not when the link's owner opens it
+ * while signed in: the cookie would outlive their session, and a new account made later on the
+ * same browser (a test account, a family member) would arrive as their friend, under their name.
+ */
+export function shouldRememberInvite(ownerId: string, visitorId: string | null | undefined) {
+  return visitorId !== ownerId;
 }
 
 function firstNameOf(value: unknown) {
