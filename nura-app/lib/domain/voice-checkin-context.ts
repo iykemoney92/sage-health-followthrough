@@ -7,13 +7,14 @@ import { healthContextForPlan } from "@/lib/health/health-store";
 import { describeNowForTimeZone } from "@/lib/timezone";
 import {
   OWNER_CALL_BRIEF,
+  ownerOpeningLine,
   recipientCallBrief,
   recipientOpeningLine,
   recipientThreadContext,
   type CareRecipient,
 } from "@/lib/care-recipient";
 
-export const NO_CIRCLE_PASS_ON = "No Care circle on this Journey. Never offer to pass anything on to anyone.";
+export const NO_CIRCLE_PASS_ON = "No Care circle on this Care plan. Never offer to pass anything on to anyone.";
 
 function joinNames(names: string[]) {
   if (names.length <= 1) return names[0] ?? "";
@@ -34,7 +35,7 @@ export function circlePassOnBrief(memberFirstNames: string[] | null) {
       ? `${memberFirstNames.slice(0, 3).join(", ")} and the others in your Care circle`
       : joinNames(memberFirstNames);
   return [
-    `The user has shared this Journey with their Care circle${memberFirstNames ? ` (${joinNames(memberFirstNames)})` : ""}. The circle can see the plan and check-ins, never this conversation.`,
+    `The user has shared this Care plan with their Care circle${memberFirstNames ? ` (${joinNames(memberFirstNames)})` : ""}. The circle can see the plan and check-ins, never this conversation.`,
     `Near the end of the call, after you've confirmed what you heard, ask once and lightly: "Before I go, is there anything you'd like me to pass on to ${who} this week?"`,
     "If they say no or hesitate, say that's completely fine and move on. Never ask twice and never suggest what they could say.",
     `If they give you a message, read it back in their own words and ask "Shall I send that to ${who}?". Only after a clear yes, call the pass_on_to_circle tool with exactly that message, in their words.`,
@@ -147,7 +148,7 @@ export async function buildVoiceCheckinContext(
     systemPrompt,
     elevenLabsAgentId: agentContext.elevenLabsAgentId,
     voiceParams: agentContext.voiceParams,
-    firstMessage: undefined as string | undefined,
+    firstMessage: ownerOpeningLine(userName) as string | undefined,
   };
 }
 
@@ -216,6 +217,6 @@ async function buildRecipientCallContext(
     systemPrompt: [NURA_CORE_IDENTITY, NURA_SAFETY_BOUNDARIES].join(" "),
     elevenLabsAgentId: agentContext.elevenLabsAgentId,
     voiceParams: agentContext.voiceParams,
-    firstMessage: recipientOpeningLine(recipient.first_name, ownerFirstName, title, isFirstCall) as string | undefined,
+    firstMessage: recipientOpeningLine(recipient.first_name, isFirstCall) as string | undefined,
   };
 }
