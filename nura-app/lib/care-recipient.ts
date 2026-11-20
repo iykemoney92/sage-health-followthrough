@@ -148,22 +148,38 @@ export function firstRecipientCallTime(now: Date, timeZone: string): Date {
  */
 export function recipientCallBrief(recipientFirstName: string, ownerFirstName: string, isFirstCall: boolean) {
   return [
-    `This call is to ${recipientFirstName}, not the account holder. ${ownerFirstName} set up this Journey to look after ${recipientFirstName} and asked you to check in with them.`,
+    `This call is to ${recipientFirstName}, not the account holder. ${ownerFirstName} set up this Care plan to look after ${recipientFirstName} and asked you to check in with them.`,
+    `Your opening line only asked whether you're speaking to ${recipientFirstName}. Until they confirm, say nothing about the Care plan, their health or ${ownerFirstName}'s reasons.`,
     isFirstCall
-      ? `This is your first call to ${recipientFirstName}. Say who you are and that ${ownerFirstName} set this up, in one short sentence, before anything else.`
+      ? `This is your first call to ${recipientFirstName}. Once they confirm it's them, say who you are and that ${ownerFirstName} set this up, in one short sentence, before anything else.`
       : `You have spoken with ${recipientFirstName} before.`,
-    `Talk to ${recipientFirstName} directly, by name. Never repeat anything ${ownerFirstName} told you privately; only use the Journey details in thread_context.`,
+    `Talk to ${recipientFirstName} directly, by name. Never repeat anything ${ownerFirstName} told you privately; only use the Care plan details in thread_context.`,
     `Early in the call, and again if they seem unsure, let them know they can say "stop" at any time and you won't call again.`,
-    `If ${recipientFirstName} says they don't want these calls, asks you to stop, or doesn't know what this is and doesn't want it: say that's completely fine, call the stop_calls tool, tell them you won't call again and that you'll let ${ownerFirstName} know, then end the call kindly.`,
+    `If ${recipientFirstName} themselves says they don't want these calls, asks you to stop, or doesn't know what this is and doesn't want it: say that's completely fine, call the stop_calls tool, tell them you won't call again and that you'll let ${ownerFirstName} know, then end the call kindly. Never call stop_calls because someone else answered or asked.`,
     `Anything you pass on goes to ${ownerFirstName}.`,
   ].join(" ");
 }
 
-/** The opening line for a call to someone else, overriding the agent's default first message. */
-export function recipientOpeningLine(recipientFirstName: string, ownerFirstName: string, planTitle: string, isFirstCall: boolean) {
+/**
+ * The opening line for a call to someone else, overriding the agent's default first message.
+ * It only confirms who picked up: no plan title, health detail or the owner's reasons, because
+ * anyone in the house (or an answering machine) may hear it.
+ */
+export function recipientOpeningLine(recipientFirstName: string, isFirstCall: boolean) {
   return isFirstCall
-    ? `Hi ${recipientFirstName}, it's Nura, the assistant ${ownerFirstName} set up to check in with you about ${planTitle}. Is now an OK time for a quick chat?`
-    : `Hi ${recipientFirstName}, it's Nura again, checking in about ${planTitle} like ${ownerFirstName} asked. Is now an OK time?`;
+    ? `Hi, it's Nura calling for ${recipientFirstName} - is that you?`
+    : `Hi, it's Nura again, calling for ${recipientFirstName} - is that you?`;
+}
+
+/**
+ * The opening line for an ordinary check-in call to the account holder. Same rule: confirm who
+ * picked up before saying anything about the Care plan.
+ */
+export function ownerOpeningLine(firstName: string | null | undefined) {
+  const name = (firstName ?? "").trim();
+  return name && name.toLowerCase() !== "there"
+    ? `Hi, it's Nura calling for ${name} - is that you?`
+    : "Hi, it's Nura calling with your check-in - who am I speaking with?";
 }
 
 /** Default for the call_brief variable on ordinary calls to the account holder. */

@@ -8,6 +8,7 @@ import {
   maskPhone,
   newConsentToken,
   normalizeRecipientPhone,
+  ownerOpeningLine,
   recipientCallBrief,
   recipientOpeningLine,
   recipientCallSummaryText,
@@ -94,18 +95,23 @@ describe("what the agent is told on a call to someone else", () => {
   it("names who set it up, gives the stop rule and the stop tool", () => {
     const brief = recipientCallBrief("Margaret", "Sarah", true);
     expect(brief).toContain("This call is to Margaret, not the account holder.");
-    expect(brief).toContain("Sarah set up this Journey");
+    expect(brief).toContain("Sarah set up this Care plan");
+    expect(brief).toContain("Never call stop_calls because someone else answered");
     expect(brief).toContain("first call");
     expect(brief).toContain('"stop"');
     expect(brief).toContain("stop_calls");
     expect(brief).toContain("Never repeat anything Sarah told you privately");
   });
 
-  it("opens the first call by saying who set it up", () => {
-    expect(recipientOpeningLine("Margaret", "Sarah", "your heart follow-up", true)).toBe(
-      "Hi Margaret, it's Nura, the assistant Sarah set up to check in with you about your heart follow-up. Is now an OK time for a quick chat?",
-    );
-    expect(recipientOpeningLine("Margaret", "Sarah", "your heart follow-up", false)).toContain("it's Nura again");
+  it("opens by confirming who picked up, without the plan title", () => {
+    expect(recipientOpeningLine("Margaret", true)).toBe("Hi, it's Nura calling for Margaret - is that you?");
+    expect(recipientOpeningLine("Margaret", false)).toBe("Hi, it's Nura again, calling for Margaret - is that you?");
+  });
+
+  it("opens owner calls the same way, generic when there is no name", () => {
+    expect(ownerOpeningLine("Margaret")).toBe("Hi, it's Nura calling for Margaret - is that you?");
+    expect(ownerOpeningLine("there")).not.toContain("there");
+    expect(ownerOpeningLine(undefined)).toContain("who am I speaking with");
   });
 
   it("only carries the plan itself into the call", () => {
@@ -187,7 +193,8 @@ describe("buildVoiceCheckinContext for a call to someone else", () => {
     expect(vars.checkin_goal).toBe("Ask how the walks are going");
     expect(JSON.stringify(vars)).not.toContain("PRIVATE");
     expect(vars.circle_pass_on).toContain("pass on to Sarah");
-    expect(context!.firstMessage).toContain("Hi Margaret, it's Nura, the assistant Sarah set up");
+    expect(context!.firstMessage).toBe("Hi, it's Nura calling for Margaret - is that you?");
+    expect(context!.firstMessage).not.toContain("heart");
   });
 });
 
