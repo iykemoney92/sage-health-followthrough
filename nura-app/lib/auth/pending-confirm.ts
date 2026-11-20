@@ -28,17 +28,29 @@ export function createPendingConfirmToken() {
   return { token, hash: hashConfirmToken(token) };
 }
 
-export function encodePendingConfirmCookie(email: string, token: string) {
-  return Buffer.from(JSON.stringify({ email, token }), "utf8").toString("base64url");
+/**
+ * `userId` lets the poll read the account directly (getUserById) instead of
+ * minting a sign-in link just to find out whether it's confirmed yet. Minting
+ * on every poll replaced the account's single magic-link token every 4 seconds,
+ * which killed the link in any "Resend" email while this screen was open.
+ * Cookies written before userId existed simply lack it.
+ */
+export function encodePendingConfirmCookie(email: string, token: string, userId?: string | null) {
+  const payload: { email: string; token: string; userId?: string } = { email, token };
+  if (userId) payload.userId = userId;
+  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
 }
 
-export function decodePendingConfirmCookie(raw: string | undefined): { email: string; token: string } | null {
+export function decodePendingConfirmCookie(
+  raw: string | undefined,
+): { email: string; token: string; userId: string | null } | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
     if (typeof parsed?.email !== "string" || typeof parsed?.token !== "string") return null;
     if (!parsed.email || !parsed.token) return null;
-    return { email: parsed.email, token: parsed.token };
+    const userId = typeof parsed.userId === "string" && parsed.userId ? parsed.userId : null;
+    return { email: parsed.email, token: parsed.token, userId };
   } catch {
     return null;
   }

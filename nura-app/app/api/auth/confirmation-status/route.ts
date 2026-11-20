@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import type { User } from "@supabase/supabase-js";
+import { normalizeEmail } from "@/lib/auth/helpers";
 import { checkKeyedRateLimit, clientIpFromRequest } from "@/lib/auth/rate-limit";
 import {
   CONFIRM_POLL_EXP_KEY,
@@ -35,14 +37,27 @@ export async function POST(request: Request) {
 
   const admin = getSupabaseAdminClient();
 
-  // One call answers both questions: whether the address is confirmed yet, and
-  // (if so) a token_hash we can redeem for a real session. "magiclink" needs no
-  // password, so the user's chosen password is never touched.
-  const link = await admin.auth.admin.generateLink({ type: "magiclink", email: pending.email });
-  const user = link.data?.user;
-  const tokenHash = link.data?.properties?.hashed_token;
-  if (link.error || !user || !tokenHash) {
-    return NextResponse.json(PENDING);
+  // Read the account without minting anything. Each generateLink call replaces
+  // the account's one magic-link token, so minting on every 4-second poll killed
+  // the link in any "Resend" email while this screen was open. Only once the
+  // account is confirmed (by whichever link they opened) do we mint one, below,
+  // to redeem a session here.
+  let user: User | null = null;
+  if (pending.userId) {
+    const found = await admin.auth.admin.getUserById(pending.userId);
+    const candidate = found.data?.user ?? null;
+    if (found.error || !candidate || normalizeEmail(candidate.email ?? "") !== normalizeEmail(pending.email)) {
+      return NextResponse.json(PENDING);
+    }
+    user = candidate;
+  } else {
+    // Cookies set before userId was added (gone within an hour of deploy): the
+    // old lookup, which does mint, is the only way to find the account by email.
+    const legacy = await admin.auth.admin.generateLink({ type: "magiclink", email: pending.email });
+    user = legacy.data?.user ?? null;
+    if (legacy.error || !user) {
+      return NextResponse.json(PENDING);
+    }
   }
 
   const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
@@ -53,6 +68,13 @@ export async function POST(request: Request) {
     return NextResponse.json(PENDING);
   }
   if (!user.email_confirmed_at) {
+    return NextResponse.json(PENDING);
+  }
+
+  // Confirmed: mint a single-use token now, purely to open a session in this browser.
+  const link = await admin.auth.admin.generateLink({ type: "magiclink", email: pending.email });
+  const tokenHash = link.data?.properties?.hashed_token;
+  if (link.error || !tokenHash) {
     return NextResponse.json(PENDING);
   }
 

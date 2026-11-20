@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Browser } from "@capacitor/browser";
 import { track } from "@/lib/analytics";
 import { detectInAppBrowser, externalBrowserUrl, type InAppBrowser } from "@/lib/auth/in-app-browser";
 import { isNativeShell, signInWithProvider, type OAuthProvider } from "@/lib/auth/oauth";
+import { providerOrder } from "@/lib/auth/provider-order";
 
 /**
  * Google's mark. Their brand terms require the four-colour "G" rather than a
@@ -42,10 +43,15 @@ function AppleMark() {
   );
 }
 
-const PROVIDERS: Array<{ id: OAuthProvider; label: string; mark: () => React.ReactElement }> = [
-  { id: "apple", label: "Apple", mark: AppleMark },
-  { id: "google", label: "Google", mark: GoogleMark },
-];
+type ProviderButton = { id: OAuthProvider; label: string; mark: () => React.ReactElement };
+
+const APPLE: ProviderButton = { id: "apple", label: "Apple", mark: AppleMark };
+const GOOGLE: ProviderButton = { id: "google", label: "Google", mark: GoogleMark };
+
+const BY_ID: Record<OAuthProvider, ProviderButton> = { apple: APPLE, google: GOOGLE };
+
+// The user agent never changes during a visit, so there is nothing to subscribe to.
+const noopSubscribe = () => () => {};
 
 /**
  * Google and Apple sign-in, above the email form on /login and /signup.
@@ -64,6 +70,15 @@ export function AuthProviders({ next, label = "or continue with" }: { next?: str
   // "open in your real browser" panel shows for as long as this is non-null.
   const [inApp, setInApp] = useState<InAppBrowser | null>(null);
   const [copied, setCopied] = useState(false);
+  // Server render (no user agent) keeps the long-standing Apple-first order;
+  // the browser re-orders once it can see the device.
+  const userAgent = useSyncExternalStore(
+    noopSubscribe,
+    () => window.navigator.userAgent,
+    () => null,
+  );
+  const providers: ProviderButton[] =
+    userAgent === null ? [APPLE, GOOGLE] : providerOrder(userAgent).map((id) => BY_ID[id]);
 
   // Closing the sign-in sheet without finishing (Done / Cancel in Safari, back
   // from the Chrome tab) must give the buttons back. Without this they stayed on
@@ -180,7 +195,7 @@ export function AuthProviders({ next, label = "or continue with" }: { next?: str
         </div>
       )}
       <div className="auth-provider-row">
-        {PROVIDERS.map(({ id, label: name, mark: Mark }) => (
+        {providers.map(({ id, label: name, mark: Mark }) => (
           <button
             key={id}
             type="button"
