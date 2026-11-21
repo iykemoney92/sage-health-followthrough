@@ -92,7 +92,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Only the full transcription webhook carries the fields resolveCallForCheckIn needs;
-    // ignore post_call_audio / call_initiation_failure and anything unrecognized.
+    // A call that never started (e.g. an incoming WhatsApp call ElevenLabs rejected). Log
+    // ElevenLabs' own reason: its conversation record only says "agent not available".
+    if (body?.type === "call_initiation_failure") {
+      const data = (body.data ?? {}) as Record<string, unknown>;
+      logger.warn("voice_webhook.call_initiation_failure", {
+        conversationId: data.conversation_id ?? null,
+        agentId: data.agent_id ?? null,
+        failureReason: data.failure_reason ?? null,
+        metadata: JSON.stringify(data.metadata ?? null).slice(0, 1500),
+      });
+      return NextResponse.json({ ok: true, logged: true });
+    }
+
+    // ignore post_call_audio and anything unrecognized.
     if (!body || body.type !== "post_call_transcription") {
       return NextResponse.json({ ok: true, ignored: true });
     }
