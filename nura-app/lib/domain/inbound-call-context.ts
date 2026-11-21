@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { resolveAgentOwnerId } from "@/lib/agent/resolve-owner";
-import { buildVoiceCheckinContext, NO_CIRCLE_PASS_ON } from "@/lib/domain/voice-checkin-context";
+import { isNuraSystemPhone } from "@/lib/agent/resolve-owner";
+import { NO_CIRCLE_PASS_ON } from "@/lib/domain/voice-checkin-context";
+import { guessTimeZoneFromPhoneDigits } from "@/lib/timezone";
 
 /**
  * Context for a call someone places INTO Nura (WhatsApp calling on Nura's number).
@@ -99,49 +100,83 @@ function digitsOnly(value: string | null | undefined) {
   return value ? value.replace(/[^\d]/g, "") : "";
 }
 
-/** The plan with the nearest open check-in, else the most recently touched active plan. */
-async function pickPlanForInboundCall(supabase: SupabaseClient, ownerId: string): Promise<string | null> {
-  const { data: plans } = await supabase
-    .from("nura_plans")
-    .select("id, updated_at")
-    .eq("owner_id", ownerId)
-    .eq("status", "active")
-    .order("updated_at", { ascending: false })
-    .limit(20);
-  const planIds = (plans ?? []).map((p) => p.id as string);
-  if (planIds.length === 0) return null;
+type InboundPlanRow = {
+  id: string;
+  title: string | null;
+  category: string | null;
+  why_this_exists: string | null;
+  current_focus: string | null;
+  next_step: string | null;
+};
 
-  const { data: next } = await supabase
-    .from("nura_check_ins")
-    .select("plan_id")
-    .eq("owner_id", ownerId)
-    .in("plan_id", planIds)
-    .is("completed_at", null)
-    .order("scheduled_for", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  return (next?.plan_id as string | undefined) ?? planIds[0];
+/**
+ * Who is calling: the account whose own phone or active WhatsApp link matches. Person someone
+ * cares for (care_recipient) is deliberately not matched: their calls are about the owner's plan
+ * and are only ever placed by Nura, so calling in gets them the generic welcome.
+ */
+async function findOwnerByPhone(supabase: SupabaseClient, phone: string) {
+  const [links, profiles] = await Promise.all([
+    supabase
+      .from("nura_channel_links")
+      .select("owner_id")
+      .eq("provider", "whatsapp")
+      .eq("channel_identifier", phone)
+      .eq("status", "active")
+      .limit(1),
+    supabase.from("nura_profiles").select("id, display_name").eq("phone", phone).limit(2),
+  ]);
+  const rows = (profiles.data ?? []) as { id: string; display_name: string | null }[];
+  // A verified WhatsApp link wins. Otherwise the phone must belong to exactly one profile: some
+  // numbers sit on several accounts, and a wrong guess would read one account's plans to another.
+  const linkedOwner = links.data?.[0]?.owner_id as string | undefined;
+  if (linkedOwner) {
+    const linkedProfile = rows.find((row) => row.id === linkedOwner);
+    return { ownerId: linkedOwner, displayName: linkedProfile?.display_name ?? null, haveName: Boolean(linkedProfile) };
+  }
+  if (rows.length === 1) return { ownerId: rows[0].id, displayName: rows[0].display_name, haveName: true };
+  return null;
 }
 
+/**
+ * ElevenLabs waits on this before the call can connect, and gives up quickly (a 1.9s reply was
+ * too slow on 21 Nov). So: two parallel round trips, no per-plan deep context.
+ */
 export async function buildInboundCallContext(
   supabase: SupabaseClient,
   callerId: string | null | undefined,
 ): Promise<InboundCallContext> {
   const phone = digitsOnly(callerId);
-  if (!phone) return unknownCallerContext();
+  if (!phone || isNuraSystemPhone(phone)) return unknownCallerContext();
 
-  const resolved = await resolveAgentOwnerId(supabase, { callerPhoneDigits: phone });
-  // Only the account holder's own number gets their account. A person someone cares for
-  // (care_recipient) calling in gets the generic welcome: their calls are about the owner's plan
-  // and are only ever placed by Nura with the owner's set-up.
-  if (!resolved.ownerId || (resolved.via !== "profile_phone" && resolved.via !== "whatsapp_link")) {
-    return unknownCallerContext();
-  }
-  const ownerId = resolved.ownerId;
+  const owner = await findOwnerByPhone(supabase, phone);
+  if (!owner) return unknownCallerContext();
+  const { ownerId } = owner;
 
-  const { data: profile } = await supabase.from("nura_profiles").select("display_name").eq("id", ownerId).maybeSingle();
-  const firstName = spokenFirstName(profile?.display_name as string | null);
+  const [profileRes, plansRes, nextRes] = await Promise.all([
+    owner.haveName
+      ? Promise.resolve({ data: { display_name: owner.displayName } })
+      : supabase.from("nura_profiles").select("display_name").eq("id", ownerId).maybeSingle(),
+    supabase
+      .from("nura_plans")
+      .select("id, title, category, why_this_exists, current_focus, next_step")
+      .eq("owner_id", ownerId)
+      .eq("status", "active")
+      .order("updated_at", { ascending: false })
+      .limit(10),
+    supabase
+      .from("nura_check_ins")
+      .select("plan_id, prompt")
+      .eq("owner_id", ownerId)
+      .is("completed_at", null)
+      .order("scheduled_for", { ascending: true })
+      .limit(1),
+  ]);
+
+  const firstName = spokenFirstName((profileRes.data?.display_name as string | null | undefined) ?? null);
+  const plans = (plansRes.data ?? []) as InboundPlanRow[];
+  const next = nextRes.data?.[0] as { plan_id: string; prompt: string | null } | undefined;
+  const plan = plans.find((p) => p.id === next?.plan_id) ?? plans[0];
+  const timeZone = guessTimeZoneFromPhoneDigits(phone) ?? "Europe/London";
 
   const base = {
     user_name: firstName,
@@ -151,12 +186,10 @@ export async function buildInboundCallContext(
     circle_pass_on: NO_CIRCLE_PASS_ON,
     call_brief: inboundOwnerCallBrief(firstName),
     on_behalf_of: "",
+    user_timezone: timeZone,
   };
 
-  const planId = await pickPlanForInboundCall(supabase, ownerId);
-  const planContext = planId ? await buildVoiceCheckinContext(supabase, ownerId, planId, firstName) : null;
-
-  if (!planContext) {
+  if (!plan) {
     return {
       matched: "owner",
       firstMessage: inboundOwnerOpeningLine(firstName),
@@ -169,22 +202,29 @@ export async function buildInboundCallContext(
     };
   }
 
-  const vars = planContext.dynamicVariables;
+  const others = plans.filter((p) => p.id !== plan.id).map((p) => p.title).filter(Boolean);
+  const threadContext = [
+    `Care plan: ${plan.title ?? "their plan"}`,
+    plan.why_this_exists ? `Why this exists: ${plan.why_this_exists}` : "",
+    plan.current_focus ? `Current focus: ${plan.current_focus}` : "",
+    plan.next_step ? `Next step: ${plan.next_step}` : "",
+    others.length > 0 ? `Their other active Care plans: ${others.join(", ")}` : "",
+    `Their timezone is probably ${timeZone} (from their number); confirm before scheduling a clock time.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   return {
     matched: "owner",
     firstMessage: inboundOwnerOpeningLine(firstName),
     dynamicVariables: {
       ...base,
-      plan_id: vars.plan_id,
-      thread_title: vars.thread_title || "how they've been",
-      thread_context: vars.thread_context || "None.",
-      checkin_goal: vars.checkin_goal || "None - they called Nura; ask how they are.",
-      persona_guidance: vars.persona_guidance || base.persona_guidance,
-      knowledge_brief: vars.knowledge_brief || base.knowledge_brief,
-      circle_pass_on: vars.circle_pass_on || NO_CIRCLE_PASS_ON,
-      user_timezone: vars.user_timezone,
-      user_local_now: vars.user_local_now,
-      journey_category: vars.journey_category,
+      plan_id: plan.id,
+      thread_title: plan.title || "how they've been",
+      thread_context: threadContext,
+      checkin_goal:
+        (next?.plan_id === plan.id ? next.prompt : null) || plan.next_step || "None - they called Nura; ask how they are.",
+      journey_category: plan.category ?? "general_health",
     },
   };
 }

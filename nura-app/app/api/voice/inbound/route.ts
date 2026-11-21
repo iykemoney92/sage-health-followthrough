@@ -6,7 +6,8 @@ import { logger } from "@/lib/logger";
 export const runtime = "nodejs";
 /** ElevenLabs waits on this before the call can start - keep it quick. */
 export const maxDuration = 10;
-const BUILD_TIMEOUT_MS = 4000;
+/** ElevenLabs gives up fast: a 1.9s reply dropped the call on 21 Nov. */
+const BUILD_TIMEOUT_MS = 1500;
 
 /**
  * ElevenLabs conversation-initiation webhook for calls INTO Nura (WhatsApp calling).
@@ -33,13 +34,14 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as { caller_id?: unknown; called_number?: unknown } | null;
   const callerId = typeof body?.caller_id === "string" ? body.caller_id : null;
 
+  const startedAt = Date.now();
   try {
     const supabase = getSupabaseServerClient();
     const context = await Promise.race([
       buildInboundCallContext(supabase, callerId),
       new Promise<InboundCallContext>((resolve) => setTimeout(() => resolve(unknownCallerContext()), BUILD_TIMEOUT_MS)),
     ]);
-    logger.info("voice_inbound.context", { matched: context.matched });
+    logger.info("voice_inbound.context", { matched: context.matched, ms: Date.now() - startedAt });
     return toResponse(context);
   } catch (error) {
     logger.error("voice_inbound.context_failed", {
