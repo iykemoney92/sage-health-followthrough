@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
-import { buildInboundCallContext, unknownCallerContext, type InboundCallContext } from "@/lib/domain/inbound-call-context";
+import {
+  AGENT_DEFINED_VARIABLES,
+  buildInboundCallContext,
+  unknownCallerContext,
+  type InboundCallContext,
+} from "@/lib/domain/inbound-call-context";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -15,13 +20,36 @@ const BUILD_TIMEOUT_MS = 1500;
  * caller_id is the caller's WhatsApp number (digits) and called_number is Nura's phone number ID.
  *
  * It always answers 200 with every variable filled: an error or a timeout here would drop the
- * call, which is the bug this exists to fix. Lookups that fail fall back to the generic welcome.
+ * call. Lookups that fail fall back to the generic welcome.
+ *
+ * Reply shape (?v= on the webhook URL set in ElevenLabs):
+ * - default "min": only the variables the agent defines, no first_message override, sent
+ *   uncompressed. Three WhatsApp test calls on 21 Nov were rejected ("agent not available")
+ *   even with a 0.15s reply, so this strips everything outbound calls don't also prove.
+ * - "full": every variable plus the personalised first_message override.
  */
-function toResponse(context: InboundCallContext) {
-  return NextResponse.json({
-    type: "conversation_initiation_client_data",
-    dynamic_variables: context.dynamicVariables,
-    conversation_config_override: { agent: { first_message: context.firstMessage } },
+function toResponse(context: InboundCallContext, mode: "min" | "full") {
+  const payload =
+    mode === "full"
+      ? {
+          type: "conversation_initiation_client_data",
+          dynamic_variables: context.dynamicVariables,
+          conversation_config_override: { agent: { first_message: context.firstMessage } },
+        }
+      : {
+          type: "conversation_initiation_client_data",
+          dynamic_variables: Object.fromEntries(
+            AGENT_DEFINED_VARIABLES.map((name) => [name, context.dynamicVariables[name] || "None."]),
+          ),
+        };
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      // Keep Vercel from brotli-compressing it; the body is tiny.
+      "Content-Encoding": "identity",
+      "Cache-Control": "no-store, no-transform",
+    },
   });
 }
 
@@ -35,18 +63,26 @@ export async function POST(request: NextRequest) {
   const callerId = typeof body?.caller_id === "string" ? body.caller_id : null;
 
   const startedAt = Date.now();
+  const mode = request.nextUrl.searchParams.get("v") === "full" ? "full" : "min";
+  const requestInfo = {
+    mode,
+    userAgent: request.headers.get("user-agent"),
+    acceptEncoding: request.headers.get("accept-encoding"),
+    bodyKeys: body ? Object.keys(body) : null,
+  };
   try {
     const supabase = getSupabaseServerClient();
     const context = await Promise.race([
       buildInboundCallContext(supabase, callerId),
       new Promise<InboundCallContext>((resolve) => setTimeout(() => resolve(unknownCallerContext()), BUILD_TIMEOUT_MS)),
     ]);
-    logger.info("voice_inbound.context", { matched: context.matched, ms: Date.now() - startedAt });
-    return toResponse(context);
+    logger.info("voice_inbound.context", { matched: context.matched, ms: Date.now() - startedAt, ...requestInfo });
+    return toResponse(context, mode);
   } catch (error) {
     logger.error("voice_inbound.context_failed", {
       error: error instanceof Error ? error.message : String(error),
+      ...requestInfo,
     });
-    return toResponse(unknownCallerContext());
+    return toResponse(unknownCallerContext(), mode);
   }
 }

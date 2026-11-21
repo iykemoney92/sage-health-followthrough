@@ -29,6 +29,19 @@ export type InboundCallVariables = {
   [key: string]: string;
 };
 
+/** The variables the agent itself defines. The minimal webhook reply sends only these. */
+export const AGENT_DEFINED_VARIABLES = [
+  "user_name",
+  "thread_title",
+  "thread_context",
+  "checkin_goal",
+  "persona_guidance",
+  "knowledge_brief",
+  "circle_pass_on",
+  "call_brief",
+  "on_behalf_of",
+] as const;
+
 export type InboundCallContext = {
   dynamicVariables: InboundCallVariables;
   firstMessage: string;
@@ -48,7 +61,7 @@ export function inboundOwnerCallBrief(firstName: string) {
   return [
     `${firstName} has called Nura themselves on WhatsApp - this is the account holder, matched by their WhatsApp number.`,
     "This is NOT a scheduled check-in and it overrides the Call purpose section below: you did not call them, so never say you said you'd check in or that you're calling about something.",
-    `Your opening line already greeted ${firstName} by name. If they say they aren't ${firstName}, follow the someone-else-answers rules below.`,
+    `Their number matches ${firstName}'s account: once they answer, treat them as ${firstName} and you can use their name, unless they say they aren't - then follow the someone-else-answers rules below.`,
     "Ask how they are and what's on their mind, and follow their lead. The Care plan below is the one most likely on their mind, so bring it up only if it fits.",
     "If they want a follow-up, use schedule_checkin as usual.",
   ].join(" ");
