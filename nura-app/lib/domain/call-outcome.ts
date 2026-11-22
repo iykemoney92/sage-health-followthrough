@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { placeOutboundCall, type ConversationOutcome } from "@/lib/integrations/elevenlabs";
+import { placeOutboundCall, VoiceCallStartError, type ConversationOutcome } from "@/lib/integrations/elevenlabs";
 import { sendWhatsappText } from "@/lib/integrations/whatsapp";
 import { sendPushToOwner } from "@/lib/integrations/push";
 import {
@@ -8,7 +8,8 @@ import {
   nuraEmailLogoAttachment,
   sendAuthEmail,
 } from "@/lib/integrations/resend";
-import { composeMissedCallFollowup } from "@/lib/domain/message-intake";
+import { composeMissedCallFollowup, type MissedCallReason } from "@/lib/domain/message-intake";
+import { alertVoiceCallFailed, checkVoiceGate, voiceSkippedNote, voiceUnavailableNote } from "@/lib/domain/voice-availability";
 import { buildVoiceCheckinContext, NO_CIRCLE_PASS_ON } from "@/lib/domain/voice-checkin-context";
 import {
   hasCalledRecipientBefore,
@@ -42,7 +43,14 @@ export const MAX_VOICE_ATTEMPTS = 2;
 export type CallOutcomeDecision =
   | { kind: "connected" }
   | { kind: "pending" }
-  | { kind: "not_connected"; reason: string };
+  /** cause: what the follow-up text may say about it - only "platform_failure" is Nura's own fault. */
+  | { kind: "not_connected"; reason: string; cause: MissedCallReason };
+
+/** call_error wording for a call ElevenLabs refused (credits, agent not available...). */
+export function platformFailureNote(code: number | null, reason: string, accountWide: boolean) {
+  const detail = `ElevenLabs${code !== null ? ` ${code}` : ""}: ${reason}`;
+  return accountWide ? voiceUnavailableNote(detail) : `Call failed to start (${detail})`;
+}
 
 /**
  * Pure decision: given what ElevenLabs reports for a conversation (or nothing, if the lookup
@@ -56,20 +64,29 @@ export type CallOutcomeDecision =
  */
 export function decideCallOutcome(outcome: ConversationOutcome | null, isStuck: boolean): CallOutcomeDecision {
   if (!outcome) {
-    return isStuck ? { kind: "not_connected", reason: "Could not confirm the call's outcome." } : { kind: "pending" };
+    return isStuck
+      ? { kind: "not_connected", reason: "Could not confirm the call's outcome.", cause: "no_answer" }
+      : { kind: "pending" };
+  }
+
+  // ElevenLabs refused to start the call (code 3000 "agent not available" when the credits ran
+  // out on 20 Nov 2026). The phone never rang - that's on Nura, not the person.
+  if (outcome.platformError) {
+    const { code, reason, accountWide } = outcome.platformError;
+    return { kind: "not_connected", reason: platformFailureNote(code, reason, accountWide), cause: "platform_failure" };
   }
 
   if (outcome.status === "initiated" || outcome.status === "in-progress") {
-    return isStuck ? { kind: "not_connected", reason: "The call never connected." } : { kind: "pending" };
+    return isStuck ? { kind: "not_connected", reason: "The call never connected.", cause: "no_answer" } : { kind: "pending" };
   }
   if (outcome.status === "processing") {
     return isStuck
-      ? { kind: "not_connected", reason: "Call ended but the outcome never finished processing." }
+      ? { kind: "not_connected", reason: "Call ended but the outcome never finished processing.", cause: "no_answer" }
       : { kind: "pending" };
   }
 
   if (outcome.reachedVoicemail) {
-    return { kind: "not_connected", reason: "The call went to voicemail." };
+    return { kind: "not_connected", reason: "The call went to voicemail.", cause: "voicemail" };
   }
 
   const wentThrough =
@@ -79,6 +96,7 @@ export function decideCallOutcome(outcome: ConversationOutcome | null, isStuck: 
   return {
     kind: "not_connected",
     reason: outcome.status === "failed" ? "The call failed to connect." : "The call wasn't answered.",
+    cause: "no_answer",
   };
 }
 
@@ -128,18 +146,24 @@ async function loadOwnerContext(supabase: SupabaseClient, ownerId: string) {
  * reachable (WhatsApp, email, push) rather than stopping at the first success - a missed
  * check-in is worth over-notifying about rather than silently depending on a single channel.
  */
-async function escalateCheckIn(supabase: SupabaseClient, checkIn: ResolvableCheckIn, note: string) {
+async function escalateCheckIn(
+  supabase: SupabaseClient,
+  checkIn: ResolvableCheckIn,
+  note: string,
+  cause: MissedCallReason = "no_answer",
+) {
   const recipient = await loadRecipientForPlan(supabase, checkIn.plan_id);
   if (recipient) {
-    await escalateRecipientCheckIn(supabase, checkIn, recipient, note);
+    await escalateRecipientCheckIn(supabase, checkIn, recipient, note, cause);
     return;
   }
   const { allowed, firstName, phone: fallbackPhone, email } = await loadOwnerContext(supabase, checkIn.owner_id);
   const phone = checkIn.contact_phone || fallbackPhone;
   const planTitle = checkIn.nura_plans?.title ?? "your Care plan";
   const message = await withAiTrace({ distinctId: checkIn.owner_id, sessionId: checkIn.plan_id }, () =>
-    composeMissedCallFollowup(firstName, planTitle, checkIn.prompt),
+    composeMissedCallFollowup(firstName, planTitle, checkIn.prompt, cause),
   );
+  const ourSide = cause === "platform_failure";
   const workspaceUrl = `${appBaseUrl()}/workspace?planId=${checkIn.plan_id}`;
 
   let whatsappOk = false;
@@ -159,9 +183,9 @@ async function escalateCheckIn(supabase: SupabaseClient, checkIn: ResolvableChec
   if (email) {
     const sent = await sendAuthEmail({
       to: email,
-      subject: `Nura tried to call about ${planTitle}`,
-      html: missedCheckInEmailHtml({ workspaceUrl, planTitle, firstName, message }),
-      text: missedCheckInEmailText({ workspaceUrl, planTitle, firstName, message }),
+      subject: ourSide ? `Nura: checking in about ${planTitle}` : `Nura tried to call about ${planTitle}`,
+      html: missedCheckInEmailHtml({ workspaceUrl, planTitle, firstName, message, ourSide }),
+      text: missedCheckInEmailText({ workspaceUrl, planTitle, firstName, message, ourSide }),
       idempotencyKey: `checkin-missed:${checkIn.id}`,
       attachments: nuraEmailLogoAttachment(),
     });
@@ -171,7 +195,7 @@ async function escalateCheckIn(supabase: SupabaseClient, checkIn: ResolvableChec
 
   await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, message);
   const pushResult = await sendPushToOwner(checkIn.owner_id, {
-    title: "Nura tried to call",
+    title: ourSide ? "Nura" : "Nura tried to call",
     body: message,
     url: workspaceUrl,
   }).catch(() => null);
@@ -204,12 +228,16 @@ async function escalateRecipientCheckIn(
   checkIn: ResolvableCheckIn,
   recipient: CareRecipient,
   note: string,
+  cause: MissedCallReason = "no_answer",
 ) {
   const { firstName, email } = await loadOwnerContext(supabase, checkIn.owner_id);
   const planTitle = checkIn.nura_plans?.title ?? "your Care plan";
-  const message =
-    `Nura tried to call ${recipient.first_name} about ${planTitle} twice but couldn't get through. ` +
-    `It might be worth checking in with them yourself.`;
+  const ourSide = cause === "platform_failure";
+  const message = ourSide
+    ? `Nura's call to ${recipient.first_name} about ${planTitle} didn't go through - a problem on Nura's side, not theirs. ` +
+      `It will try again at the next check-in; it might be worth checking in with them yourself today.`
+    : `Nura tried to call ${recipient.first_name} about ${planTitle} twice but couldn't get through. ` +
+      `It might be worth checking in with them yourself.`;
   const planUrl = `${appBaseUrl()}/plans/${checkIn.plan_id}`;
 
   let emailOk = false;
@@ -217,9 +245,9 @@ async function escalateRecipientCheckIn(
   if (email) {
     const sent = await sendAuthEmail({
       to: email,
-      subject: `Nura couldn't reach ${recipient.first_name}`,
-      html: missedCheckInEmailHtml({ workspaceUrl: planUrl, planTitle, firstName, message }),
-      text: missedCheckInEmailText({ workspaceUrl: planUrl, planTitle, firstName, message }),
+      subject: ourSide ? `Nura's call to ${recipient.first_name} didn't go through` : `Nura couldn't reach ${recipient.first_name}`,
+      html: missedCheckInEmailHtml({ workspaceUrl: planUrl, planTitle, firstName, message, ourSide }),
+      text: missedCheckInEmailText({ workspaceUrl: planUrl, planTitle, firstName, message, ourSide }),
       idempotencyKey: `checkin-missed:${checkIn.id}`,
       attachments: nuraEmailLogoAttachment(),
     });
@@ -229,7 +257,7 @@ async function escalateRecipientCheckIn(
 
   await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, message);
   const pushResult = await sendPushToOwner(checkIn.owner_id, {
-    title: `Nura couldn't reach ${recipient.first_name}`,
+    title: ourSide ? `Nura's call to ${recipient.first_name} didn't go through` : `Nura couldn't reach ${recipient.first_name}`,
     body: message,
     url: planUrl,
   }).catch(() => null);
@@ -291,6 +319,13 @@ async function redialCheckIn(supabase: SupabaseClient, checkIn: ResolvableCheckI
     return;
   }
 
+  // Don't redial into a known outage (credits gone / ElevenLabs refusing calls): text instead.
+  const gate = await checkVoiceGate(supabase);
+  if (!gate.allowed) {
+    await escalateCheckIn(supabase, checkIn, voiceSkippedNote(`redial: ${gate.reason}`), "platform_failure");
+    return;
+  }
+
   const { firstName } = await loadOwnerContext(supabase, checkIn.owner_id);
 
   try {
@@ -340,7 +375,15 @@ async function redialCheckIn(supabase: SupabaseClient, checkIn: ResolvableCheckI
       .eq("id", checkIn.id);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Redial failed.";
-    await escalateCheckIn(supabase, checkIn, `Redial failed (${message}).`);
+    const accountWide = error instanceof VoiceCallStartError && error.accountWide;
+    await alertVoiceCallFailed({ stage: "start", reason: message, accountWide, checkInId: checkIn.id });
+    // The redial never rang, so the follow-up must not say the person missed it.
+    await escalateCheckIn(
+      supabase,
+      checkIn,
+      accountWide ? voiceUnavailableNote(`redial failed to start: ${message}`) : `Redial failed to start (${message}).`,
+      "platform_failure",
+    );
   }
 }
 
@@ -371,6 +414,21 @@ export async function resolveCallForCheckIn(
     return "completed";
   }
 
+  // Nura's call never started: a redial would hit the same wall, and the person is waiting.
+  // Record the real reason, tell Ike, and send the check-in as a text now.
+  if (decision.cause === "platform_failure") {
+    const platformError = outcome?.platformError ?? null;
+    await alertVoiceCallFailed({
+      stage: "outcome",
+      reason: decision.reason,
+      accountWide: platformError?.accountWide ?? false,
+      checkInId: checkIn.id,
+      code: platformError?.code ?? null,
+    });
+    await escalateCheckIn(supabase, checkIn, decision.reason, "platform_failure");
+    return "escalated";
+  }
+
   const attempts = checkIn.call_attempts ?? 1;
   if (attempts < MAX_VOICE_ATTEMPTS) {
     await supabase
@@ -384,7 +442,7 @@ export async function resolveCallForCheckIn(
     return "redial_pending";
   }
 
-  await escalateCheckIn(supabase, checkIn, decision.reason);
+  await escalateCheckIn(supabase, checkIn, decision.reason, decision.cause);
   return "escalated";
 }
 

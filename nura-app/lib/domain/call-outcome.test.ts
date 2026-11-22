@@ -11,17 +11,17 @@ describe("decideCallOutcome", () => {
 
   it("does not count voicemail/declined pickup as connected even though status is done", () => {
     const voicemail = { status: "done", callSuccessful: "success", durationSecs: 3, hasTranscript: false };
-    expect(decideCallOutcome(voicemail, false)).toEqual({ kind: "not_connected", reason: "The call wasn't answered." });
+    expect(decideCallOutcome(voicemail, false)).toEqual({ kind: "not_connected", reason: "The call wasn't answered.", cause: "no_answer" });
   });
 
   it("does not count a short call with no transcript as connected", () => {
     const declined = { status: "done", callSuccessful: null, durationSecs: 2, hasTranscript: false };
-    expect(decideCallOutcome(declined, false)).toEqual({ kind: "not_connected", reason: "The call wasn't answered." });
+    expect(decideCallOutcome(declined, false)).toEqual({ kind: "not_connected", reason: "The call wasn't answered.", cause: "no_answer" });
   });
 
   it("treats an explicit failure as not connected regardless of duration", () => {
     const failed = { status: "done", callSuccessful: "failure", durationSecs: 30, hasTranscript: true };
-    expect(decideCallOutcome(failed, false)).toEqual({ kind: "not_connected", reason: "The call wasn't answered." });
+    expect(decideCallOutcome(failed, false)).toEqual({ kind: "not_connected", reason: "The call wasn't answered.", cause: "no_answer" });
   });
 
   it("is pending while still ringing/in-progress and not yet stuck", () => {
@@ -37,6 +37,7 @@ describe("decideCallOutcome", () => {
     expect(decideCallOutcome({ status: "in-progress", callSuccessful: null, durationSecs: 0, hasTranscript: false }, true)).toEqual({
       kind: "not_connected",
       reason: "The call never connected.",
+      cause: "no_answer",
     });
   });
 
@@ -45,6 +46,7 @@ describe("decideCallOutcome", () => {
     expect(decideCallOutcome(null, true)).toEqual({
       kind: "not_connected",
       reason: "Could not confirm the call's outcome.",
+      cause: "no_answer",
     });
   });
 
@@ -54,12 +56,13 @@ describe("decideCallOutcome", () => {
     expect(decideCallOutcome(processing, true)).toEqual({
       kind: "not_connected",
       reason: "Call ended but the outcome never finished processing.",
+      cause: "no_answer",
     });
   });
 
   it("reports an explicit provider failure status distinctly from a plain no-answer", () => {
     const providerFailed = { status: "failed", callSuccessful: null, durationSecs: 0, hasTranscript: false };
-    expect(decideCallOutcome(providerFailed, false)).toEqual({ kind: "not_connected", reason: "The call failed to connect." });
+    expect(decideCallOutcome(providerFailed, false)).toEqual({ kind: "not_connected", reason: "The call failed to connect.", cause: "no_answer" });
   });
 
   it("caps voice attempts at first-attempt + one redial", () => {
@@ -83,7 +86,7 @@ describe("voicemail and dead-air calls", () => {
       ],
     });
     expect(outcome?.hasTranscript).toBe(false);
-    expect(decideCallOutcome(outcome, false)).toEqual({ kind: "not_connected", reason: "The call wasn't answered." });
+    expect(decideCallOutcome(outcome, false)).toEqual({ kind: "not_connected", reason: "The call wasn't answered.", cause: "no_answer" });
   });
 
   it("does not count a call where voicemail detection fired as connected, even with a greeting transcribed", () => {
@@ -98,7 +101,7 @@ describe("voicemail and dead-air calls", () => {
       ],
     });
     expect(outcome?.reachedVoicemail).toBe(true);
-    expect(decideCallOutcome(outcome, false)).toEqual({ kind: "not_connected", reason: "The call went to voicemail." });
+    expect(decideCallOutcome(outcome, false)).toEqual({ kind: "not_connected", reason: "The call went to voicemail.", cause: "voicemail" });
   });
 
   it("still counts a real conversation as connected", () => {
