@@ -17,6 +17,15 @@ import { aiConsentRequiredResponse, hasAiConsent } from "@/lib/ai-consent";
 import { requireTrialOrPlus } from "@/lib/billing/card-first";
 import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/supabase-server";
 import { tracedModel, withAiTrace } from "@/lib/ai/trace";
+import {
+  DOSE_RULE,
+  chatReplySafetyNote,
+  dateOrderFor,
+  dateRule,
+  readerFromHeaders,
+  urgentCareRule,
+  type ClaritiReader,
+} from "@/lib/ai/clariti-safety";
 
 const requestSchema = z.object({
   sessionId: z.string().uuid(),
@@ -100,6 +109,8 @@ export async function POST(request: NextRequest) {
     recoveredDraft,
     compareCandidates,
     savedArtifact?.documentId ?? null,
+    // The reader's country picks the date order and the emergency number in the prompt.
+    readerFromHeaders(request.headers),
   ));
   const userMessageCreatedAt = new Date();
   const assistantMessageCreatedAt = new Date(userMessageCreatedAt.getTime() + 1);
@@ -377,8 +388,13 @@ function allocateThreadBudget(documents: ThreadDocumentText[], analysed: ThreadD
   return allowances;
 }
 
+/**
+ * "11 Mar 2026": the month is a word, so the date reads the same in London and Ohio.
+ * It used to be en-US ("Mar 11, 2026") inside a prompt that now tells the model to
+ * read day/month by default, and the two should not argue.
+ */
 function formatAddedOn(createdAt: string) {
-  return new Date(createdAt).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 function describeThreadDocument(document: ThreadDocumentText) {
@@ -493,6 +509,7 @@ async function generateGroundedFollowUp(
   followUpDraft?: FollowUpDraft,
   compareCandidates: ClaritiComparisonCandidate[] = [],
   analysedDocumentId: string | null = null,
+  reader: ClaritiReader | null = null,
 ) {
   const hasGatewayAuth = Boolean(process.env.VERCEL_OIDC_TOKEN || process.env.AI_GATEWAY_API_KEY);
   const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY);
@@ -521,6 +538,12 @@ async function generateGroundedFollowUp(
       "ONLY CLAIM WHAT YOU WERE GIVEN: some documents above are marked shortened and some are named without any text. Never imply you read all of a shortened document or any of a named-only one, and never read something missing from a shortened document as absent from that document. " +
       "COMPARING INSIDE THE THREAD: when the user asks to compare, compare these thread documents against each other first — that is what they are asking about. The rule above about saying no earlier saved document was found does not apply to this session; it is for sessions holding a single document."
     : "";
+
+  // Date order is read from the paperwork itself, so the analysed document leads when
+  // there is one; a thread with none named is read as a whole.
+  const allDocumentText = combinedDocumentText(documents) ?? "";
+  const dateOrder = dateOrderFor(analysed?.text || allDocumentText, reader);
+  const compareContext = buildCompareContext(compareCandidates, hasCompareIntent(question));
 
   const analysisContext = isThread
     ? analysed
@@ -563,17 +586,30 @@ async function generateGroundedFollowUp(
         "(3) a plain-language glossary of 3-6 terms that appear in the saved analysis, (4) a short numbered timeline of what to do next in order, " +
         "(5) a note flagging any contradiction between the current and an earlier saved document (e.g. two different amounts owed) so the user can ask about it. " +
         "Include one short Source phrase when useful. " +
-        "Write plain text only: no markdown, emoji, bold markers, or headings. Numbered lists are allowed only when the user asked for a list, timeline, or questions." +
+        "Write plain text only: no markdown, emoji, bold markers, or headings. Numbered lists are allowed only when the user asked for a list, timeline, or questions. " +
+        urgentCareRule(reader) + " " +
+        dateRule(dateOrder, reader) + " " +
+        DOSE_RULE +
         threadInstructions,
       prompt:
         `User message: ${question}\n\n` +
         `Follow-up draft state: ${draftContext}\n\n` +
         `${documentContext}\n\n` +
         `${analysisContext}:\n${JSON.stringify(analysis).slice(0, 9000)}\n\n` +
-        `Earlier saved documents. A document is listed here because Clariti can name what connects it to this one, or because it is flagged as an unverified guess:\n${buildCompareContext(compareCandidates, hasCompareIntent(question))}\n\n` +
+        `Earlier saved documents. A document is listed here because Clariti can name what connects it to this one, or because it is flagged as an unverified guess:\n${compareContext}\n\n` +
         "Write the next Clariti reply. Be specific to this user message. Do not add scheduling details the user did not provide.",
     });
-    return cleanAssistantReply(result.text) || buildGroundedFollowUp(question, analysis, documents, followUpDraft, compareCandidates);
+    const reply = cleanAssistantReply(result.text);
+    if (!reply) return buildGroundedFollowUp(question, analysis, documents, followUpDraft, compareCandidates);
+    // Scheduling replies carry the reader's own timing back to them, not a document date.
+    if (isSchedulingMessage(question)) return reply;
+    const note = chatReplySafetyNote(
+      reply,
+      [allDocumentText, question, compareContext, ...documents.map(describeThreadDocument)],
+      allDocumentText,
+      dateOrder,
+    );
+    return note ? `${reply}\n\n${note}` : reply;
   } catch {
     return buildGroundedFollowUp(question, analysis, documents, followUpDraft, compareCandidates);
   }
@@ -628,7 +664,7 @@ function buildGroundedFollowUp(
     return buildFallbackComparison(analysis, connected[0].entry);
   }
 
-  if (/schedule|follow-up|follow up|check[- ]?in|email me|reminder|set.*time/.test(lower)) {
+  if (isSchedulingMessage(question)) {
     const action = analysis.nextActions[0] ?? "review this document with the relevant clinician or provider";
     if (hasTime) return `Got it. I can schedule an email check-in for that time about: ${action}. Clariti will ask if anything changed or if you need further analysis.`;
     return `Yes. I can set an email check-in for ${action}. What day and time should Clariti email you? Source: ${matchingPoint.sourceAnchor}.`;
@@ -720,6 +756,10 @@ function buildFallbackComparison(analysis: z.infer<typeof claritiAnalysisSchema>
 
   lines.push("Ask your clinician or billing office to confirm what this change means before acting on it.");
   return lines.join(" ");
+}
+
+function isSchedulingMessage(question: string) {
+  return /schedule|follow-up|follow up|check[- ]?in|email me|reminder|set.*time/.test(question.toLowerCase());
 }
 
 function formatPoint(point: { label: string; detail: string }) {
