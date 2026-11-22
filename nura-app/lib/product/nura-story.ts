@@ -66,7 +66,7 @@ export const NURA_PRODUCT = {
 
   /** Shown on the public site so reviewers and visitors can see the cost without signing up */
   pricingLine:
-    "Free to start. Nura Plus is US$9.99 a month after a 14-day free trial (the price may vary by region), and you can cancel any time.",
+    "Try Nura free for 14 days. You add a card to start the trial and aren’t charged until it ends; then Nura Plus is US$9.99 a month (the price may vary by region), and you can cancel any time.",
 
   /** Crisis signposting for every public page footer. Nura is not an emergency service. */
   crisisLine:

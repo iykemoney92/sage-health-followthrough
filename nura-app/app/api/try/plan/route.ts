@@ -6,6 +6,7 @@ import { draftPlanFromIntake } from "@/lib/domain/draft-plan-from-intake";
 import { draftFirstCheckInFromIntake } from "@/lib/domain/journey-create";
 import { inferJourneyDraft, isPlanCategory } from "@/lib/domain/journey-naming";
 import { composeCheckinOpener } from "@/lib/domain/message-intake";
+import { gateTryFirstText } from "@/lib/domain/try-first-gate";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { TRY_FIRST_MAX_CHARS, TRY_FIRST_MIN_CHARS } from "@/lib/try-first";
@@ -62,6 +63,15 @@ export async function POST(request: NextRequest) {
     );
   }
   const text = parsed.data.text;
+
+  // Probes, gibberish and non-care requests get a friendly nudge, not a plan (22 Nov 2026: a
+  // "connectivity test" became a Care plan). Before the rate limit, so it costs the visitor
+  // nothing, and no model is called. Only the reason is logged, never the text.
+  const gate = gateTryFirstText(text);
+  if (!gate.ok) {
+    console.info("[try-first] off-topic:", gate.reason);
+    return NextResponse.json({ ok: false, error: "off_topic", reason: gate.reason, message: gate.message }, { status: 422 });
+  }
 
   if (checkKeyedRateLimit("try-first:instance", PER_INSTANCE_PER_HOUR, 60 * 60).limited) {
     return limited("Lots of people are trying Nura right now. Please try again in a little while, or sign up free.");

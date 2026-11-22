@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, MessageCircle, Phone, Smartphone } from "lucide-react";
 import { track } from "@/lib/analytics";
@@ -42,13 +42,26 @@ export function TryFirst() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TryFirstResult | null>(null);
+  // Set when someone taps the button before writing anything (22 Nov 2026: an Android user tapped
+  // around the greyed-out button three times with no idea what it wanted).
+  const [nudged, setNudged] = useState(false);
+  // The error is a gentle "tell me who to check in on" rather than a failure.
+  const [offTopic, setOffTopic] = useState(false);
+  const textRef = useRef<HTMLTextAreaElement>(null);
 
   const ready = text.trim().length >= TRY_FIRST_MIN_CHARS;
 
   const submit = async () => {
-    if (!ready || loading) return;
+    if (loading) return;
+    if (!ready) {
+      setNudged(true);
+      textRef.current?.focus();
+      track("try_first_blocked_tap", { length: text.trim().length });
+      return;
+    }
     setLoading(true);
     setError(null);
+    setOffTopic(false);
     track("try_first_submit", { length: text.trim().length });
     try {
       const res = await fetch("/api/try/plan", {
@@ -56,7 +69,16 @@ export function TryFirst() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      const data = (await res.json().catch(() => null)) as (TryFirstResult & { ok?: boolean; message?: string }) | null;
+      const data = (await res.json().catch(() => null)) as
+        | (TryFirstResult & { ok?: boolean; error?: string; reason?: string; message?: string })
+        | null;
+      if (data?.error === "off_topic") {
+        // Not about anyone (a test, gibberish, a non-care request): ask who to check in on.
+        setError(data.message || "Tell Nura who you’d like it to check in on, and how they’re doing.");
+        setOffTopic(true);
+        track("try_first_off_topic", { reason: data.reason ?? "unknown" });
+        return;
+      }
       if (!res.ok || !data?.ok) {
         setError(data?.message || "Nura couldn’t build that just now. Please try again.");
         track("try_first_error", { status: res.status });
@@ -120,7 +142,9 @@ export function TryFirst() {
             Try something else
           </button>
         </div>
-        <p className="try-first-note">Free to start, and your first check-in is on us. No card needed to sign up.</p>
+        <p className="try-first-note">
+          Try Nura free for 14 days. You add a card to start the trial and aren’t charged until it ends.
+        </p>
         <p className="try-first-fineprint">
           Nura is a wellbeing companion, not a medical device. {NURA_PRODUCT.crisisLine}
         </p>
@@ -141,6 +165,8 @@ export function TryFirst() {
       </label>
       <textarea
         id="try-first-text"
+        ref={textRef}
+        aria-describedby={ready ? undefined : "try-first-hint"}
         value={text}
         maxLength={TRY_FIRST_MAX_CHARS}
         rows={4}
@@ -148,6 +174,7 @@ export function TryFirst() {
         onChange={(event) => {
           setText(event.target.value);
           setError(null);
+          setNudged(false);
         }}
       />
       <div className="try-first-examples" role="group" aria-label="Examples">
@@ -158,6 +185,7 @@ export function TryFirst() {
             onClick={() => {
               setText(example);
               setError(null);
+              setNudged(false);
               track("try_first_example");
             }}
           >
@@ -165,9 +193,21 @@ export function TryFirst() {
           </button>
         ))}
       </div>
-      {error ? <p className="try-first-error" role="alert">{error}</p> : null}
+      {error ? (
+        <p className={offTopic ? "try-first-hint nudged" : "try-first-error"} role={offTopic ? "status" : "alert"}>
+          {error}
+        </p>
+      ) : null}
       <div className="try-first-actions">
-        <button type="submit" className="primary-cta large" disabled={!ready || loading}>
+        {/* Not `disabled` while empty: a disabled button swallows taps silently. It stays tappable
+            and, until there's text, points at what to do instead. */}
+        <button
+          type="submit"
+          className="primary-cta large"
+          disabled={loading}
+          aria-disabled={!ready || loading}
+          aria-describedby={ready ? undefined : "try-first-hint"}
+        >
           {loading ? (
             <>
               <Loader2 size={18} className="spin" /> Nura is thinking…
@@ -178,6 +218,11 @@ export function TryFirst() {
             </>
           )}
         </button>
+        {!ready && !loading ? (
+          <p id="try-first-hint" className={nudged ? "try-first-hint nudged" : "try-first-hint"} role={nudged ? "status" : undefined}>
+            Write a sentence about who Nura should check in on, or tap an example above.
+          </p>
+        ) : null}
       </div>
       <p className="try-first-fineprint">
         No account needed. To draft this, what you write is sent to Anthropic’s Claude model, and a copy of the

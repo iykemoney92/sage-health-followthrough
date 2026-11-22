@@ -10,8 +10,12 @@ import { logger } from "@/lib/logger";
  * numbers or anything a person said.
  *
  * Production only (VERCEL_ENV=production), like the AI tracing; OPS_ALERTS=off stops the PostHog
- * send and OPS_ALERTS=on turns it on elsewhere. The log line is always written. Each kind is sent
- * at most once per window per server instance, so a run of failures doesn't flood PostHog.
+ * send and OPS_ALERTS=on turns it on elsewhere. Each kind is sent at most once per window per
+ * server instance, so a run of failures doesn't flood PostHog.
+ *
+ * The log line is written every time, except for kinds in LOG_WINDOW_MINUTES: those are standing
+ * conditions re-detected on every dispatcher tick (~1/min), so they log at most once per window
+ * per instance, with a count of the repeats held back. Real failures (a refused call) always log.
  */
 
 const HOST = "https://eu.i.posthog.com/i/v0/e/";
@@ -36,7 +40,16 @@ const WINDOW_MINUTES: Record<OpsAlertKind, number> = {
   voice_credit_check_unavailable: 24 * 60,
 };
 
+/**
+ * Kinds whose log line is throttled. "Credit check unavailable" is true on every tick until the
+ * ElevenLabs key gets user_read, so unthrottled it wrote an error line a minute (22 Nov 2026).
+ */
+const LOG_WINDOW_MINUTES: Partial<Record<OpsAlertKind, number>> = {
+  voice_credit_check_unavailable: 60,
+};
+
 const lastSent = new Map<OpsAlertKind, number>();
+const lastLogged = new Map<OpsAlertKind, { at: number; suppressed: number }>();
 
 export function opsAlertsEnabled() {
   const flag = process.env.OPS_ALERTS?.trim().toLowerCase();
@@ -47,6 +60,27 @@ export function opsAlertsEnabled() {
 /** For tests. */
 export function resetOpsAlertState() {
   lastSent.clear();
+  lastLogged.clear();
+}
+
+/** Writes the ops_alert log line, unless this kind is throttled and logged inside its window. */
+function logOpsAlert(kind: OpsAlertKind, props: Record<string, unknown>, now: Date) {
+  const windowMinutes = LOG_WINDOW_MINUTES[kind];
+  if (windowMinutes === undefined) {
+    logger.error("ops_alert", { kind, ...props });
+    return;
+  }
+  const last = lastLogged.get(kind);
+  if (last && now.getTime() - last.at < windowMinutes * 60_000) {
+    last.suppressed += 1;
+    return;
+  }
+  logger.error("ops_alert", {
+    kind,
+    ...props,
+    ...(last && last.suppressed > 0 ? { repeats_not_logged: last.suppressed } : {}),
+  });
+  lastLogged.set(kind, { at: now.getTime(), suppressed: 0 });
 }
 
 export function opsAlertEvent(kind: OpsAlertKind, props: Record<string, unknown>, now = new Date()) {
@@ -69,7 +103,7 @@ export function opsAlertEvent(kind: OpsAlertKind, props: Record<string, unknown>
  * to PostHog (false when deduped, disabled or the send failed - the log line is written anyway).
  */
 export async function opsAlert(kind: OpsAlertKind, props: Record<string, unknown> = {}, now = new Date()): Promise<boolean> {
-  logger.error("ops_alert", { kind, ...props });
+  logOpsAlert(kind, props, now);
 
   const last = lastSent.get(kind);
   if (last !== undefined && now.getTime() - last < WINDOW_MINUTES[kind] * 60_000) return false;

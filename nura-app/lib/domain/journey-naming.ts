@@ -62,7 +62,7 @@ export function normalizeJourneyTitle(title: string, fallback: string) {
 
 /** Prompt fragment shared by Claude Journey draft paths. */
 export const JOURNEY_NAMING_GUIDANCE =
-  "Care plan titles must be specific and human (3–6 words), rooted in what the user actually shared — e.g. \"Headaches & night tablet\", \"GP review in two weeks\", \"Sleep after night shift\". " +
+  "Care plan titles must be specific and human (3–6 words), rooted in what the user actually shared — e.g. \"Sleep after night shift\", \"Evening wind-down after work\", \"Checking in on Mum\". " +
   "Never use vague titles like \"Watch and Follow-Up\", \"Stabilise My Week\", \"Health Care plan\", or bare \"Follow-Up\". " +
   "Also set category to the best match from: " +
   PLAN_CATEGORIES.join(", ") +
