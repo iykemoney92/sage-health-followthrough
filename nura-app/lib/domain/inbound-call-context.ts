@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isNuraSystemPhone } from "@/lib/agent/resolve-owner";
+import { voiceCountryNote } from "@/lib/domain/crisis-lines";
 import { NO_CIRCLE_PASS_ON } from "@/lib/domain/voice-checkin-context";
 import { guessTimeZoneFromPhoneDigits } from "@/lib/timezone";
 
@@ -85,19 +86,26 @@ export function inboundOwnerOpeningLine(firstName: string) {
 
 export const UNKNOWN_CALLER_OPENING_LINE = "Hi, it's Nura - who am I speaking with?";
 
-export function unknownCallerContext(): InboundCallContext {
+/**
+ * Generic welcome for a caller we can't match. The caller's country (from their number's country
+ * code) goes into call_brief and thread_context, which the minimal webhook reply always sends, so
+ * crisis numbers match the caller: Nura's call-in line is a US number, and on 22 Nov 2026 a US
+ * caller in crisis would have been given Samaritans and 999.
+ */
+export function unknownCallerContext(callerId?: string | null): InboundCallContext {
+  const countryNote = voiceCountryNote(callerId);
   return {
     matched: "unknown",
     firstMessage: UNKNOWN_CALLER_OPENING_LINE,
     dynamicVariables: {
       user_name: "there",
       thread_title: "an incoming call",
-      thread_context: "None - this caller has no Nura account linked to their number.",
+      thread_context: `None - this caller has no Nura account linked to their number. ${countryNote}`,
       checkin_goal: "None - they called Nura; find out what they'd like.",
       persona_guidance: "Use core Nura identity and safety boundaries.",
       knowledge_brief: "Use core Nura safety boundaries.",
       circle_pass_on: NO_CIRCLE_PASS_ON,
-      call_brief: UNKNOWN_CALLER_BRIEF,
+      call_brief: `${UNKNOWN_CALLER_BRIEF} ${countryNote}`,
       on_behalf_of: "",
     },
   };
@@ -159,10 +167,10 @@ export async function buildInboundCallContext(
   callerId: string | null | undefined,
 ): Promise<InboundCallContext> {
   const phone = digitsOnly(callerId);
-  if (!phone || isNuraSystemPhone(phone)) return unknownCallerContext();
+  if (!phone || isNuraSystemPhone(phone)) return unknownCallerContext(null);
 
   const owner = await findOwnerByPhone(supabase, phone);
-  if (!owner) return unknownCallerContext();
+  if (!owner) return unknownCallerContext(phone);
   const { ownerId } = owner;
 
   const [profileRes, plansRes, nextRes] = await Promise.all([
@@ -197,7 +205,7 @@ export async function buildInboundCallContext(
     persona_guidance: "Use core Nura identity and safety boundaries.",
     knowledge_brief: "Use core Nura safety boundaries.",
     circle_pass_on: NO_CIRCLE_PASS_ON,
-    call_brief: inboundOwnerCallBrief(firstName),
+    call_brief: `${inboundOwnerCallBrief(firstName)} ${voiceCountryNote(phone)}`,
     on_behalf_of: "",
     user_timezone: timeZone,
   };

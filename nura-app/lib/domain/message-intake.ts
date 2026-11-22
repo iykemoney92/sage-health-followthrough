@@ -729,6 +729,41 @@ export async function insertConversationTurn(
   return { error: null };
 }
 
+/**
+ * A check-in question that never repeats the internal note. The note is a directive to Nura
+ * ("ask whether she has managed her morning amlodipine..."), not words for the person: on 22 Nov
+ * 2026 the fallbacks pasted it into the text verbatim.
+ */
+export function checkinQuestion(planTitle: string | null | undefined): string {
+  const title = (planTitle ?? "").trim().replace(/[.!?]+$/, "");
+  if (!title || /^(your|their) care plan$/i.test(title)) return "how have things been?";
+  return `how have things been with ${title}?`;
+}
+
+/** Deterministic opener used when the model is unavailable. Never includes the internal note. */
+export function checkinOpenerFallback(firstName: string, planTitle: string | null | undefined): string {
+  const greeting = firstName && firstName.toLowerCase() !== "there" ? `Hey ${firstName}` : "Hey";
+  return `${greeting}, just checking in - ${checkinQuestion(planTitle)}`;
+}
+
+function normaliseForLeak(text: string) {
+  return text.toLowerCase().replace(/[’‘]/g, "'").replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * True when a drafted message repeats the internal note (or talks about it) instead of speaking to
+ * the person. Catches the note pasted whole, or its first several words.
+ */
+export function leaksInternalNote(text: string, note: string): boolean {
+  if (/internal note/i.test(text)) return true;
+  const n = normaliseForLeak(note);
+  if (n.length < 12) return false;
+  const t = normaliseForLeak(text);
+  if (t.includes(n)) return true;
+  const head = n.split(" ").slice(0, 6).join(" ");
+  return head.split(" ").length >= 5 && t.includes(head);
+}
+
 // Turns a scheduled check-in's internal "what to ask about" prompt into a warm, natural
 // opening message for an outbound WhatsApp text - the prompt itself is written as a directive
 // to Nura (e.g. "ask how their sleep has been going"), not user-facing copy.
@@ -739,7 +774,7 @@ export async function composeCheckinOpener(
   category?: string | null,
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const fallback = `Hey ${firstName}, checking in - ${prompt}`;
+  const fallback = checkinOpenerFallback(firstName, planTitle);
   if (!apiKey) return fallback;
 
   try {
@@ -751,7 +786,7 @@ export async function composeCheckinOpener(
         NURA_CORE_IDENTITY + " You are proactively texting someone on WhatsApp to open a scheduled check-in. " +
         NURA_TONE + " " +
         (agentContext.systemExtras ? agentContext.systemExtras + " " : "") +
-        "Write ONE short message (1-2 sentences) that naturally opens with what you want to check in about, based on the internal note you're given. Use the person's first name only if it feels natural, not in every message. Do not add a sign-off or ask multiple questions at once - just open the conversation.",
+        "Write ONE short message (1-2 sentences) that naturally opens with what you want to check in about, based on the internal note you're given. The internal note is for you, not them: never copy it or quote it, and speak to the person directly (\"you\"), never about them. Use the person's first name only if it feels natural, not in every message. Do not add a sign-off or ask multiple questions at once - just open the conversation.",
       messages: [
         {
           role: "user",
@@ -761,7 +796,8 @@ export async function composeCheckinOpener(
     });
     const block = message.content.find((b) => b.type === "text");
     const text = block && block.type === "text" ? block.text.trim() : "";
-    return text || fallback;
+    if (!text || leaksInternalNote(text, prompt)) return fallback;
+    return text;
   } catch {
     return fallback;
   }
@@ -791,15 +827,19 @@ const MISSED_CALL_ASK: Record<MissedCallReason, string> = {
   platform_failure: "briefly says your call didn't go through on your end - a problem on Nura's side, not theirs",
 };
 
-/** Deterministic wording used when the model is unavailable, or when its draft blames the person. */
-export function missedCallFallbackText(firstName: string, prompt: string, reason: MissedCallReason = "no_answer"): string {
+/**
+ * Deterministic wording used when the model is unavailable, or when its draft blames the person
+ * or repeats the internal note. Built from the Care plan's name, never the internal note.
+ */
+export function missedCallFallbackText(firstName: string, planTitle: string, reason: MissedCallReason = "no_answer"): string {
+  const ask = checkinQuestion(planTitle);
   if (reason === "platform_failure") {
-    return `Hey ${firstName}, I meant to call you just now but my call didn't go through on my end - sorry about that. I wanted to check in - ${prompt}. Happy to chat here instead?`;
+    return `Hey ${firstName}, I meant to call you just now but my call didn't go through on my end - sorry about that. I wanted to check in - ${ask} Happy to chat here instead?`;
   }
   if (reason === "voicemail") {
-    return `Hey ${firstName}, I tried calling just now and left you a quick voicemail. I wanted to check in - ${prompt}. Want to chat here instead?`;
+    return `Hey ${firstName}, I tried calling just now and left you a quick voicemail. I wanted to check in - ${ask} Want to chat here instead?`;
   }
-  return `Hey ${firstName}, I tried calling you just now but couldn't reach you. I wanted to check in - ${prompt}. Want to chat here instead?`;
+  return `Hey ${firstName}, I tried calling you just now but couldn't reach you. I wanted to check in - ${ask} Want to chat here instead?`;
 }
 
 /**
@@ -822,7 +862,7 @@ export async function composeMissedCallFollowup(
   reason: MissedCallReason = "no_answer",
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const fallback = missedCallFallbackText(firstName, prompt, reason);
+  const fallback = missedCallFallbackText(firstName, planTitle, reason);
   if (!apiKey) return fallback;
 
   try {
@@ -833,7 +873,7 @@ export async function composeMissedCallFollowup(
       system:
         NURA_CORE_IDENTITY + " " + MISSED_CALL_SITUATION[reason] + " " +
         NURA_TONE + " " +
-        `Write ONE short WhatsApp message (1-2 sentences) that: ${MISSED_CALL_ASK[reason]}, then opens the same check-in by text based on the internal note you're given. Use the person's first name only if it feels natural.`,
+        `Write ONE short WhatsApp message (1-2 sentences) that: ${MISSED_CALL_ASK[reason]}, then opens the same check-in by text based on the internal note you're given. The internal note is for you, not them: never copy it or quote it, and speak to the person directly ("you"), never about them. Use the person's first name only if it feels natural.`,
       messages: [
         {
           role: "user",
@@ -843,7 +883,7 @@ export async function composeMissedCallFollowup(
     });
     const block = message.content.find((b) => b.type === "text");
     const text = block && block.type === "text" ? block.text.trim() : "";
-    if (!text || followupBlamesPerson(text, reason)) return fallback;
+    if (!text || followupBlamesPerson(text, reason) || leaksInternalNote(text, prompt)) return fallback;
     return text;
   } catch {
     return fallback;

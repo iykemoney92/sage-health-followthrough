@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseServerClient();
     const context = await Promise.race([
       buildInboundCallContext(supabase, callerId),
-      new Promise<InboundCallContext>((resolve) => setTimeout(() => resolve(unknownCallerContext()), BUILD_TIMEOUT_MS)),
+      new Promise<InboundCallContext>((resolve) => setTimeout(() => resolve(unknownCallerContext(callerId)), BUILD_TIMEOUT_MS)),
     ]);
     logger.info("voice_inbound.context", { matched: context.matched, ms: Date.now() - startedAt, ...requestInfo });
     return toResponse(context, mode);
@@ -83,6 +83,6 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : String(error),
       ...requestInfo,
     });
-    return toResponse(unknownCallerContext(), mode);
+    return toResponse(unknownCallerContext(callerId), mode);
   }
 }

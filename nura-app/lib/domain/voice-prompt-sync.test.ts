@@ -18,6 +18,11 @@ describe("voice agent prompt (scripts/sync-elevenlabs-agent.mjs)", () => {
     expect(NURA_SAFETY_BOUNDARIES).not.toMatch(/contact local emergency services/);
   });
 
+  it("gives US and Canada callers 988, not just 911 (22 Nov 2026 eval)", () => {
+    expect(NURA_SAFETY_BOUNDARIES).toContain("US and Canada - call or text 988 for suicidal thoughts, 911 in an emergency");
+    expect(NURA_SAFETY_BOUNDARIES).toContain("If the call brief");
+  });
+
   it("says Care plan, not Journey, and caps spoken turns", () => {
     expect(sync.VOICE_PROMPT).not.toMatch(/\bJourney (name|purpose)\b|also called Journeys/);
     expect(sync.VOICE_PROMPT).toContain("about 30 words");

@@ -2,10 +2,11 @@ import { createHmac } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { checkKeyedRateLimit } from "@/lib/auth/rate-limit";
-import { draftPlanFromIntake } from "@/lib/domain/draft-plan-from-intake";
+import { draftPlanFromIntake, type PlanDraft } from "@/lib/domain/draft-plan-from-intake";
 import { draftFirstCheckInFromIntake } from "@/lib/domain/journey-create";
 import { inferJourneyDraft, isPlanCategory } from "@/lib/domain/journey-naming";
-import { composeCheckinOpener } from "@/lib/domain/message-intake";
+import { crisisCountry, countryFromLocale, crisisGuidance, detectCrisis, type CrisisKind } from "@/lib/domain/crisis-lines";
+import { checkinOpenerFallback, composeCheckinOpener } from "@/lib/domain/message-intake";
 import { gateTryFirstText } from "@/lib/domain/try-first-gate";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -29,6 +30,7 @@ const EVERYONE_ID = "00000000-0000-4000-8000-000000007e57";
 
 const bodySchema = z.object({
   text: z.string().trim().min(TRY_FIRST_MIN_CHARS).max(TRY_FIRST_MAX_CHARS),
+  locale: z.string().max(40).optional(),
 });
 
 function withTimeout<T>(promise: Promise<T>, fallback: T, ms: number) {
@@ -50,8 +52,43 @@ function limited(message: string) {
   return NextResponse.json({ ok: false, error: "limited", message }, { status: 429 });
 }
 
+/**
+ * Country for crisis numbers: the browser's locale region first ("en-US"), then the country
+ * Vercel sees the request from. Unsupported or unknown → null (UK numbers plus "your local
+ * emergency number").
+ */
+function visitorCountry(request: NextRequest, locale: string | undefined) {
+  const fromLocale = countryFromLocale(locale);
+  const fromIp = request.headers.get("x-vercel-ip-country")?.trim().toUpperCase() || null;
+  // "en-US" is the default locale on many phones outside the US: when the two disagree, don't
+  // pick one; fall back to UK numbers plus "your local emergency number".
+  if (fromLocale && fromIp && fromLocale !== fromIp) return null;
+  return crisisCountry(fromLocale ?? fromIp);
+}
+
+/**
+ * Crisis or emergency text gets the numbers to call, never a plan (22 Nov 2026 eval: "I've been
+ * saving my tablets" became a Care plan with a check-in tomorrow). 200 with ok:false, so an older
+ * page that only knows `message` still shows the numbers as its error line.
+ */
+function crisisResponse(request: NextRequest, kind: CrisisKind, locale: string | undefined, source: "screen" | "model") {
+  const guidance = crisisGuidance(kind, visitorCountry(request, locale));
+  console.info("[try-first] crisis:", kind, source, guidance.country ?? "unknown");
+  return NextResponse.json({ ok: false, error: "crisis", crisis: guidance, message: guidance.message }, { status: 200 });
+}
+
 export async function POST(request: NextRequest) {
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  const raw = (await request.json().catch(() => null)) as { text?: unknown; locale?: unknown } | null;
+  const rawLocale = typeof raw?.locale === "string" ? raw.locale.slice(0, 40) : undefined;
+
+  // Before anything else (length, the probe gate, rate limits): "kill myself" is too short for a
+  // plan and would read as gibberish to the gate, but must still get the numbers. No model call.
+  if (typeof raw?.text === "string") {
+    const kind = detectCrisis(raw.text.slice(0, TRY_FIRST_MAX_CHARS * 2));
+    if (kind) return crisisResponse(request, kind, rawLocale, "screen");
+  }
+
+  const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
       {
@@ -93,7 +130,9 @@ export async function POST(request: NextRequest) {
 
   // Signed out: no person, so the three calls share one anonymous trace.
   const traceCtx = newAiTrace({});
-  const plan = await withTimeout(withAiTrace(traceCtx, () => draftPlanFromIntake(text)), inferJourneyDraft(text, []), 20000);
+  const plan = await withTimeout<PlanDraft>(withAiTrace(traceCtx, () => draftPlanFromIntake(text)), inferJourneyDraft(text, []), 20000);
+  // The model's own safety flag, for crisis or emergency wording the screen above missed.
+  if (plan.safety) return crisisResponse(request, plan.safety, parsed.data.locale, "model");
   const checkIn = await withAiTrace(traceCtx, () => draftFirstCheckInFromIntake({
     plan: {
       title: plan.title,
@@ -108,7 +147,7 @@ export async function POST(request: NextRequest) {
   }));
   const message = await withTimeout(
     withAiTrace(traceCtx, () => composeCheckinOpener("there", plan.title, checkIn.prompt, plan.category)),
-    `Checking in on ${plan.title}: ${checkIn.prompt}`,
+    checkinOpenerFallback("there", plan.title),
     15000,
   );
 

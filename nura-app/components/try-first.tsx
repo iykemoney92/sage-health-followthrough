@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Loader2, MessageCircle, Phone, Smartphone } from "lucide-react";
+import { ArrowRight, LifeBuoy, Loader2, MessageCircle, Phone, Smartphone } from "lucide-react";
 import { track } from "@/lib/analytics";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
 import { saveTryFirst, TRY_FIRST_MAX_CHARS, TRY_FIRST_MIN_CHARS, type TryFirstResult } from "@/lib/try-first";
@@ -14,6 +14,17 @@ const EXAMPLES = [
   "I want more energy: move more, drink more water, and stop crashing in the afternoon.",
   "Mum lives on her own now and I’d like a gentle check-in on how she’s doing.",
 ];
+
+/** Crisis or emergency text gets numbers to call instead of a plan (app/api/try/plan). */
+type TryFirstCrisis = { kind: "suicide" | "emergency"; title: string; lead: string; more: string[] };
+
+function browserLocale() {
+  try {
+    return navigator.languages?.[0] || navigator.language || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const CHANNEL_COPY: Record<TryFirstResult["checkIn"]["channel"], { label: string; Icon: typeof Phone }> = {
   in_app: { label: "in the app", Icon: Smartphone },
@@ -47,6 +58,7 @@ export function TryFirst() {
   const [nudged, setNudged] = useState(false);
   // The error is a gentle "tell me who to check in on" rather than a failure.
   const [offTopic, setOffTopic] = useState(false);
+  const [crisis, setCrisis] = useState<TryFirstCrisis | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   const ready = text.trim().length >= TRY_FIRST_MIN_CHARS;
@@ -67,11 +79,17 @@ export function TryFirst() {
       const res = await fetch("/api/try/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, locale: browserLocale() }),
       });
       const data = (await res.json().catch(() => null)) as
-        | (TryFirstResult & { ok?: boolean; error?: string; reason?: string; message?: string })
+        | (TryFirstResult & { ok?: boolean; error?: string; reason?: string; message?: string; crisis?: TryFirstCrisis })
         | null;
+      if (data?.error === "crisis" && data.crisis) {
+        // Suicidal thoughts, self-harm or a medical emergency: the numbers to call, never a plan.
+        setCrisis(data.crisis);
+        track("try_first_crisis", { kind: data.crisis.kind });
+        return;
+      }
       if (data?.error === "off_topic") {
         // Not about anyone (a test, gibberish, a non-care request): ask who to check in on.
         setError(data.message || "Tell Nura who you’d like it to check in on, and how they’re doing.");
@@ -102,9 +120,33 @@ export function TryFirst() {
 
   const reset = () => {
     setResult(null);
+    setCrisis(null);
     setError(null);
     track("try_first_reset");
   };
+
+  if (crisis) {
+    return (
+      <div className="try-first-result try-first-crisis" role="alert" aria-live="assertive">
+        <span className="try-first-label">
+          <LifeBuoy size={14} /> {crisis.kind === "emergency" ? "Get help now" : "You’re not alone"}
+        </span>
+        <h3>{crisis.title}</h3>
+        <p className="try-first-crisis-lead">{crisis.lead}</p>
+        {crisis.more.map((line) => (
+          <p key={line} className="try-first-crisis-more">
+            {line}
+          </p>
+        ))}
+        <div className="try-first-actions">
+          <button type="button" className="try-first-again" onClick={reset}>
+            Go back
+          </button>
+        </div>
+        <p className="try-first-fineprint">Nura is a wellbeing companion, not an emergency service.</p>
+      </div>
+    );
+  }
 
   if (result) {
     const channel = CHANNEL_COPY[result.checkIn.channel] ?? CHANNEL_COPY.in_app;
