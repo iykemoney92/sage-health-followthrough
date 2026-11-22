@@ -93,8 +93,38 @@ export function inferClaritiKind(input: AnalyzeInput): ClaritiAnalysisKind {
 
   if (strongest[1] >= 3 && strongest[0] !== input.kind) return strongest[0];
   if (strongest[1] >= 3) return strongest[0];
+  // The home screen starts on "medical bill", so a typed question with no document
+  // behind it ("is this pimple on my arm something to worry about?") used to keep
+  // that default and was filed, and later read back, as somebody's medical bill.
+  // Nothing in it is paperwork, so it is filed as what it is: not a document.
+  if (looksLikeTypedQuestion(input)) return "unknown";
   if (input.kind === "unknown" && strongest[1] >= 2) return strongest[0];
   return input.kind;
+}
+
+/**
+ * True when the "document" is a person typing, not paperwork: short, written in the
+ * first person or as a question, and carrying none of the furniture every real
+ * document has (labelled fields, amounts, dates, reference numbers, several lines).
+ * Deliberately narrow — a short real letter must never be filed as a question — so
+ * it only decides between "unknown" and a default kind nothing in the text supports.
+ */
+export function looksLikeTypedQuestion(input: Pick<AnalyzeInput, "question" | "documentText">) {
+  const text = input.documentText.trim();
+  if (text.length === 0 || text.length > 600) return false;
+
+  const lines = text.split(/\n+/).filter((line) => line.trim().length > 0);
+  const labelledFields = lines.filter((line) => /^\s*[A-Za-z][A-Za-z ./&()-]{1,40}:\s*\S/.test(line)).length;
+  const paperwork =
+    labelledFields >= 2 ||
+    lines.length > 6 ||
+    /[$£€]\s?\d|\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b|\b(?:mrn|nhs (?:no|number)|dob|date of birth|account (?:no|number)|claim (?:no|number)|invoice|patient name|ref(?:erence)?(?: no)?[:.])\b/i.test(text);
+  if (paperwork) return false;
+
+  const firstPerson = /\b(?:i|i'm|i’m|i've|i’ve|im|my|me|mine)\b/i.test(text);
+  const asks = /\?|^(?:what|why|how|is|are|can|could|should|do|does|will|would|when|where|who)\b/i.test(text);
+  const sameAsQuestion = text.toLowerCase() === input.question.trim().toLowerCase();
+  return sameAsQuestion || firstPerson || asks;
 }
 
 export function buildFallbackAnalysis(input: AnalyzeInput): ClaritiAnalysis {

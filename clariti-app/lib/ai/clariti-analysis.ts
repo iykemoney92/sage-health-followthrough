@@ -3,6 +3,7 @@ import { generateObject, type LanguageModel } from "ai";
 import { z } from "zod";
 import { buildFallbackAnalysis } from "@/lib/domain/clariti-fallback-analysis";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
+import { DOSE_RULE, dateOrderFor, dateRule, safetyFlagsFor, urgentCareRule, type ClaritiReader } from "@/lib/ai/clariti-safety";
 
 export const claritiDocumentKindSchema = z.enum([
   "medical_bill",
@@ -53,6 +54,8 @@ type AnalyzeInput = {
   kind: ClaritiAnalysisKind;
   question: string;
   documentText: string;
+  /** Where the reader is, from the request (lib/ai/clariti-safety.ts). Picks the date order and the emergency number. */
+  reader?: ClaritiReader | null;
 };
 
 /**
@@ -79,6 +82,7 @@ export async function analyzeClaritiDocument(input: AnalyzeInput, wrapModel: Wra
   if (!hasGatewayAuth && !hasAnthropicKey) return { analysis: buildFallbackAnalysis(input), degraded: true };
 
   const kindMeta = getClaritiKindMeta(input.kind);
+  const dateOrder = dateOrderFor(input.documentText, input.reader);
 
   try {
     const result = await generateObject({
@@ -108,7 +112,9 @@ export async function analyzeClaritiDocument(input: AnalyzeInput, wrapModel: Wra
         "Flag labels are short headlines the user sees first, so keep them calm and specific rather than blunt or alarming — " +
         "prefer 'Some changes since your last scan' over 'Things have gotten worse', and 'A nerve is being touched' over dramatic phrasing. " +
         "Reserve severity 'urgent' only for findings that need prompt medical attention; use 'check' for things worth discussing with a clinician, and 'info' for reassuring or purely informational notes. " +
-        "For urgent symptoms or emergency language, tell the user to seek urgent or emergency care.",
+        urgentCareRule(input.reader) + " " +
+        dateRule(dateOrder, input.reader) + " " +
+        DOSE_RULE,
       prompt:
         `Document type: ${input.kind} (${kindMeta.title})\n` +
         `User question: ${input.question}\n\n` +
@@ -132,7 +138,7 @@ export async function analyzeClaritiDocument(input: AnalyzeInput, wrapModel: Wra
       // rewrites "Impression" to "Conclusion" exactly when the report says
       // Conclusion, so checking first would strip a citation for naming the
       // section the document actually uses.
-      analysis: verifyKeyPointAnchors(normalized, input.documentText),
+      analysis: addSafetyFlags(verifyKeyPointAnchors(normalized, input.documentText), input.documentText, dateOrder),
       degraded: false,
     };
   } catch (error) {
@@ -226,4 +232,31 @@ function verifyKeyPointAnchors(analysis: ClaritiAnalysis, documentText: string):
       return { ...point, sourceAnchor: "" };
     }),
   };
+}
+
+/** Everything Clariti wrote for the reader, as one string for the code checks. Quotes are left out: they are checked above. */
+export function analysisReaderText(analysis: ClaritiAnalysis) {
+  return [
+    analysis.title,
+    analysis.summary,
+    analysis.plainEnglish,
+    ...analysis.keyPoints.flatMap((point) => [point.label, point.detail]),
+    ...analysis.metrics.flatMap((metric) => [metric.label, metric.value, metric.caveat ?? ""]),
+    ...analysis.flags.flatMap((flag) => [flag.label, flag.detail]),
+    ...analysis.questions,
+    ...analysis.nextActions,
+    analysis.safetyNote,
+  ].join("\n");
+}
+
+/**
+ * The prompt asks for dates copied as written and doses from a rough scan sent back
+ * to the reader's copy; this is the part code can check. A date Clariti wrote that
+ * the document does not hold, or a dose read off a rough scan, gets a "check" flag
+ * the reader sees beside the others. Nothing the model wrote is rewritten: Clariti
+ * cannot know the right date, only that this one is not on the page.
+ */
+function addSafetyFlags(analysis: ClaritiAnalysis, documentText: string, dateOrder: ReturnType<typeof dateOrderFor>): ClaritiAnalysis {
+  const added = safetyFlagsFor(analysisReaderText(analysis), documentText, dateOrder, analysis.flags);
+  return added.length > 0 ? { ...analysis, flags: [...analysis.flags, ...added] } : analysis;
 }

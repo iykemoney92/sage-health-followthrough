@@ -10,6 +10,14 @@ import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/sup
 import { newAiTrace, tracedModel, withAiTrace } from "@/lib/ai/trace";
 import { reportError } from "@/lib/observability/report-error";
 
+/**
+ * A blurred dose or date copied as a confident guess is the one OCR slip a reader
+ * cannot see. Marked, the analysis can tell the reader to check that line against
+ * their copy (lib/ai/clariti-safety.ts looks for the mark).
+ */
+const UNCLEAR_MARK_RULE =
+  "If a number, dose, date or name is blurred or only partly readable, copy exactly the characters you can see and write [unclear] straight after it. Never repair or guess it.";
+
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -176,7 +184,7 @@ async function extractWithAiFile(buffer: Buffer, mimeType: string, filename: str
       content: [
         {
           type: "text",
-          text: "Extract the readable text from this health document. Return only text present in the document. Preserve useful line breaks. Do not summarize, diagnose, or infer missing words.",
+          text: "Extract the readable text from this health document. Return only text present in the document. Preserve useful line breaks. Do not summarize, diagnose, or infer missing words. " + UNCLEAR_MARK_RULE,
         },
         {
           type: "file",
@@ -273,7 +281,8 @@ async function extractWithVisionImages(
           text:
             `Extract the readable text from this health document image/PDF (${filename}). ` +
             "Return only text that is visibly present in the pages. Preserve section headings such as PROCEDURE, FINDINGS, IMPRESSION, CONCLUSION, DIAGNOSIS, CHARGES, PATIENT RESPONSIBILITY, REFERENCE RANGE, MEDICATIONS, PLAN, FOLLOW-UP, DISCHARGE, AUTHORIZATION, or REFERRAL. " +
-            "Do not summarize, diagnose, calculate, or infer missing words. If a page has no readable clinical/document text, write [no readable text on page].",
+            "Do not summarize, diagnose, calculate, or infer missing words. If a page has no readable clinical/document text, write [no readable text on page]. " +
+            UNCLEAR_MARK_RULE,
         },
         ...images.flatMap((image) => [
           {
