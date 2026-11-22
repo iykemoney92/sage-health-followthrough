@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  AGENT_DEFINED_VARIABLES,
   buildInboundCallContext,
   inboundOwnerCallBrief,
   inboundOwnerOpeningLine,
@@ -30,6 +31,15 @@ describe("inbound call context", () => {
     // Never leaks an account: no user or plan id for someone we couldn't match.
     expect(dynamicVariables.user_id).toBeUndefined();
     expect(dynamicVariables.plan_id).toBeUndefined();
+  });
+
+  it("tells the agent an unknown US caller's own crisis numbers (22 Nov 2026 eval)", () => {
+    const { dynamicVariables } = unknownCallerContext("17065550100");
+    expect(dynamicVariables.call_brief).toContain("988");
+    expect(dynamicVariables.thread_context).toContain("the US or Canada");
+    // Both are agent-defined variables, so the minimal webhook reply (PR #90) carries them.
+    expect(AGENT_DEFINED_VARIABLES).toEqual(expect.arrayContaining(["call_brief", "thread_context"]));
+    expect(unknownCallerContext(null).dynamicVariables.call_brief).toContain("ask where they are");
   });
 
   it("falls back to the generic welcome when there is no caller id", async () => {

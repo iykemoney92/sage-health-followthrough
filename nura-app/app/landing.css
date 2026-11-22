@@ -843,6 +843,34 @@
   color: #9a3b2a;
   font-size: 14px;
 }
+.try-first-crisis {
+  border: 2px solid #9a3b2a;
+}
+.try-first-crisis .try-first-label {
+  color: #9a3b2a;
+}
+.try-first-crisis h3 {
+  margin: 8px 0 12px;
+  color: var(--landing-ink);
+  font-family: var(--landing-serif);
+  font-size: 24px;
+  line-height: 1.25;
+}
+.try-first-crisis-lead {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #fbeae6;
+  color: #5c1f14;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.try-first-crisis-more {
+  margin: 0 0 8px;
+  color: var(--landing-ink);
+  line-height: 1.5;
+}
 .try-first-fineprint {
   margin: 14px 0 0;
   color: var(--landing-muted);
