@@ -3,7 +3,7 @@ import { generateObject, type LanguageModel } from "ai";
 import { z } from "zod";
 import { buildFallbackAnalysis } from "@/lib/domain/clariti-fallback-analysis";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
-import { DOSE_RULE, dateOrderFor, dateRule, safetyFlagsFor, urgentCareRule, type ClaritiReader } from "@/lib/ai/clariti-safety";
+import { DOSE_RULE, SCAM_RULE, crisisRule, dateOrderFor, dateRule, safetyFlagsFor, urgentCareRule, type ClaritiReader } from "@/lib/ai/clariti-safety";
 
 export const claritiDocumentKindSchema = z.enum([
   "medical_bill",
@@ -113,6 +113,8 @@ export async function analyzeClaritiDocument(input: AnalyzeInput, wrapModel: Wra
         "prefer 'Some changes since your last scan' over 'Things have gotten worse', and 'A nerve is being touched' over dramatic phrasing. " +
         "Reserve severity 'urgent' only for findings that need prompt medical attention; use 'check' for things worth discussing with a clinician, and 'info' for reassuring or purely informational notes. " +
         urgentCareRule(input.reader) + " " +
+        crisisRule(input.reader) + " When that applies to this analysis: summary is the warm sentence with the crisis number, the first flag has severity 'urgent' and gives the same numbers, and safetyNote repeats the number. " +
+        SCAM_RULE + " When that applies to this analysis: the summary says it looks like a scam, the first flag has severity 'urgent' and says not to click, call or pay, and nextActions say to contact the organisation through its official website. " +
         dateRule(dateOrder, input.reader) + " " +
         DOSE_RULE,
       prompt:
@@ -121,7 +123,7 @@ export async function analyzeClaritiDocument(input: AnalyzeInput, wrapModel: Wra
         `Document text:\n${input.documentText.slice(0, 12000)}\n\n` +
         "Return kind, title, summary, plainEnglish, sourceAnchors, keyPoints, metrics, flags, questions, nextActions, and safetyNote. " +
         "Do not include videoScenes in this first-pass response — Clariti builds those later if needed. " +
-        "summary must be one plain sentence a friend could understand. plainEnglish must be 2-3 short everyday sentences. safetyNote must be one short reassuring sentence. " +
+        "summary must be one plain sentence a friend could understand. plainEnglish must be 2-3 short everyday sentences. safetyNote must be one short, calm, factual sentence that is true from the document: no comfort or reassurance the document does not give, and no claim about what is likely to happen. " +
         "keyPoint labels should be everyday phrases, not clinical headings. " +
         "Every keyPoint, metric and flag must be grounded in the document. " +
         "Each sourceAnchors entry and each keyPoint sourceAnchor must be an exact quote, copied word for word from the document text above — " +

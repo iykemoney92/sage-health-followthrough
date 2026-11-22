@@ -12,6 +12,8 @@ import {
   readerRegion,
   safetyFlagsFor,
   urgentCareRule,
+  crisisRule,
+  SCAM_RULE,
 } from "./clariti-safety";
 import fixture from "./fixtures/eval-2026-11-20.json";
 
@@ -72,12 +74,84 @@ describe("urgentCareRule", () => {
   });
 
   it("gives both when Clariti does not know where the reader is", () => {
-    for (const reader of [null, { country: "PH" }, { language: "en-US" }]) {
+    for (const reader of [null, { language: "en-US" }]) {
       const rule = urgentCareRule(reader);
       expect(rule).toMatch(/999/);
       expect(rule).toMatch(/111/);
       expect(rule).toMatch(/911/);
     }
+  });
+
+  // 22 Nov Claude Code eval, F3: the country is known, so a reader in Ireland or
+  // Nigeria must not be told "Clariti does not know where the reader is" and given 911.
+  it.each([
+    ["IE", /call 112 or 999/, /911/],
+    ["NG", /call 112/, /999|911/],
+    ["CA", /call 911/, /999|111/],
+    ["AU", /call 000/, /999|911/],
+    ["FR", /give 112/, /call 999|call 911/],
+  ])("uses the reader's known country %s", (country, wanted, wrong) => {
+    const rule = urgentCareRule({ country });
+    expect(rule).toMatch(wanted);
+    expect(rule.replace(/Do not give[^.]*\./g, "")).not.toMatch(wrong);
+    expect(rule).not.toMatch(/does not know where the reader is/);
+  });
+
+  it("tells a reader in a country with no confirmed number to call the local emergency number, not 999 or 911", () => {
+    const rule = urgentCareRule({ country: "PH" });
+    expect(rule).toMatch(/local emergency number/);
+    expect(rule).toMatch(/country code PH/);
+    expect(rule).not.toMatch(/does not know where the reader is/);
+    expect(rule.replace(/Do not give[^.]*\./g, "")).not.toMatch(/999|911/);
+  });
+});
+
+describe("crisisRule", () => {
+  it("stops the task and puts the reader's own crisis line first", () => {
+    const uk = crisisRule({ country: "GB" });
+    expect(uk).toMatch(/stop the task/);
+    expect(uk).toMatch(/suicide, self-harm, wanting to die/);
+    expect(uk).toMatch(/overdose, or stockpiling pills/);
+    expect(uk).toMatch(/Samaritans on 116 123/);
+    expect(uk).toMatch(/999 if they are in immediate danger/);
+    expect(uk).toMatch(/NHS 111/);
+    expect(uk).toMatch(/If they mention abuse or someone hurting them, give the National Domestic Abuse Helpline on 0808 2000 247/);
+    expect(uk).toMatch(/Childline on 0800 1111/);
+    expect(uk).not.toMatch(/988|911/);
+
+    const us = crisisRule({ country: "US" });
+    expect(us).toMatch(/call or text 988/);
+    expect(us).toMatch(/911 if they are in immediate danger/);
+    expect(us).toMatch(/1-800-799-7233/);
+    expect(us).not.toMatch(/116 123|999/);
+
+    expect(crisisRule({ country: "IE" })).toMatch(/Samaritans on 116 123.*112 or 999/);
+    expect(crisisRule({ country: "CA" })).toMatch(/9-8-8.*911/);
+    expect(crisisRule({ country: "AU" })).toMatch(/Lifeline on 13 11 14.*000/);
+    expect(crisisRule({ country: "NG" })).toMatch(/112/);
+    expect(crisisRule({ country: "NG" })).not.toMatch(/116 123|988|999|911/);
+  });
+
+  it("gives the local number plus the UK and US lines when the country is unknown", () => {
+    const rule = crisisRule(null);
+    expect(rule).toMatch(/local emergency number/);
+    expect(rule).toMatch(/116 123/);
+    expect(rule).toMatch(/988/);
+  });
+
+  it("gives no UK or US numbers to a reader elsewhere", () => {
+    const rule = crisisRule({ country: "PH" });
+    expect(rule).toMatch(/local emergency number/);
+    expect(rule).not.toMatch(/116 123|988|999|911/);
+  });
+});
+
+describe("SCAM_RULE", () => {
+  it("says it looks like a scam, never to use its links or numbers, and to go to the official site", () => {
+    expect(SCAM_RULE).toMatch(/say plainly at the start that it looks like a scam/);
+    expect(SCAM_RULE).toMatch(/not to click its links, not to call or text any number in it/);
+    expect(SCAM_RULE).toMatch(/official website/);
+    expect(SCAM_RULE).toMatch(/Do not explain it as if it were genuine/);
   });
 });
 
@@ -158,12 +232,25 @@ describe("analyzeClaritiDocument", () => {
     expect(system).toMatch(/DATES: copy every date exactly/);
     expect(system).toMatch(/DOSES FROM A ROUGH SCAN/);
     expect(system).toMatch(/ask their pharmacist/);
+    expect(system).toMatch(/CRISIS: .*Samaritans on 116 123/);
+    expect(system).toMatch(/SCAMS: /);
 
     expect(result.degraded).toBe(false);
     expect(result.analysis.title).toBe(a7.analysis!.title); // flagged, never rewritten
     const labels = result.analysis.flags.map((flag) => flag.label);
     expect(labels).toContain(DATE_CHECK_LABEL);
     expect(labels).toContain(DOSE_CHECK_FLAG.label);
+  });
+
+  it("asks for a calm, factual safetyNote, never a reassuring one (22 Nov eval, F5)", async () => {
+    const replay = replayModel(a5.analysis!);
+    await analyzeClaritiDocument({ kind: "medication_context", question: "", documentText: a5.documentText, reader: { country: "IE" } }, () => replay.model);
+    const messages = replay.calls[0]?.prompt as Array<{ role: string; content: unknown }>;
+    const everything = JSON.stringify(messages);
+    expect(everything).not.toMatch(/safetyNote must be one short reassuring sentence/);
+    expect(everything).toMatch(/safetyNote must be one short, calm, factual sentence that is true from the document: no comfort or reassurance the document does not give/);
+    expect(replay.systemPrompt()).toMatch(/in Ireland, call 112 or 999/);
+    expect(replay.systemPrompt()).not.toMatch(/does not know where the reader is/);
   });
 
   it("gives a US reader 911 and an unknown reader both", async () => {

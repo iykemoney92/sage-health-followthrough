@@ -4,8 +4,12 @@
  *
  * - dates: copy them as written, read numeric dates day/month unless the document is
  *   clearly American, and say both readings when it cannot be told;
- * - urgent care: name the number for where the reader is (999 / NHS 111, 911), or
- *   both when Clariti does not know;
+ * - urgent care: name the number for where the reader is (999 / NHS 111, 911, and
+ *   since 22 Nov 112/999 in Ireland, 911 in Canada, 000 in Australia, 112 in Nigeria
+ *   and the EU), "your local emergency number" elsewhere, or both when Clariti does
+ *   not know;
+ * - crisis and scams (22 Nov): crisis numbers for the reader's country first; scam
+ *   letters and texts called what they look like, never explained as genuine;
  * - doses from a rough scan: repeat them as printed and send the reader to their copy
  *   and their pharmacist, because an OCR "repair" of 5OOmg to 500mg reads as fact.
  *
@@ -60,18 +64,139 @@ function describeReader(reader?: ClaritiReader | null) {
   return `${country}${language}. Treat this as a hint, not a fact: people travel and use VPNs, and the document outranks it.`;
 }
 
+/**
+ * Emergency and crisis numbers for the countries Clariti can name with confidence
+ * (22 Nov, from the shared safety brief; every number checked against an official
+ * source). Anywhere else the model is told to say "your local emergency number"
+ * rather than guess one.
+ */
+type CountryNumbers = { place: string; emergency: string; crisis: string; abuse?: string };
+
+const EU_112 = new Set([
+  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+]);
+
+const COUNTRY_NUMBERS: Record<string, CountryNumbers> = {
+  IE: {
+    place: "Ireland",
+    emergency: "in Ireland, call 112 or 999 in an emergency. Do not give 911",
+    crisis: "in Ireland, Samaritans on 116 123 (free, day or night), or 112 or 999 if they are in immediate danger",
+  },
+  CA: {
+    place: "Canada",
+    emergency: "in Canada, call 911 in an emergency. Do not give 999 or 111",
+    crisis: "in Canada, call or text 9-8-8 (the Suicide Crisis Helpline), or 911 if they are in immediate danger",
+  },
+  AU: {
+    place: "Australia",
+    emergency: "in Australia, call 000 in an emergency. Do not give 999 or 911",
+    crisis: "in Australia, Lifeline on 13 11 14, or 000 if they are in immediate danger",
+  },
+  NG: {
+    place: "Nigeria",
+    emergency: "in Nigeria, call 112 in an emergency. Do not give 999 or 911",
+    crisis: "in Nigeria, call 112 now if they are in danger",
+  },
+};
+
+const UK_CRISIS = "in the UK, Samaritans on 116 123 (free, day or night), 999 if they are in immediate danger, or NHS 111";
+const US_CRISIS = "in the US, call or text 988 (the Suicide & Crisis Lifeline), or 911 if they are in immediate danger";
+const UK_ABUSE = "the National Domestic Abuse Helpline on 0808 2000 247 (UK), and Childline on 0800 1111 for anyone under 19 (UK)";
+const US_ABUSE = "the National Domestic Violence Hotline on 1-800-799-7233 (US)";
+
+function countryNumbers(reader?: ClaritiReader | null): CountryNumbers | null {
+  const country = reader?.country?.toUpperCase();
+  if (!country) return null;
+  if (COUNTRY_NUMBERS[country]) return COUNTRY_NUMBERS[country];
+  if (EU_112.has(country)) {
+    return {
+      place: `country code ${country}`,
+      emergency: `the reader appears to be in country code ${country}, in the EU, so give 112, the emergency number across the EU. Do not give 999 or 911`,
+      crisis: `call 112 if they are in immediate danger, or a local crisis line (the reader appears to be in country code ${country})`,
+    };
+  }
+  return null;
+}
+
 /** The urgent-care sentence, with the numbers for where the reader is. */
 export function urgentCareRule(reader?: ClaritiReader | null) {
   const base = "For urgent symptoms or emergency language, tell the user to seek urgent or emergency care now, and name the number to call: ";
+  const known = countryNumbers(reader);
+  if (known) return base + known.emergency + ". If the document itself names a number to call, give that number too.";
   switch (readerRegion(reader)) {
     case "uk":
       return base + "in the UK, call 999 in an emergency, or NHS 111 for urgent advice that is not an emergency. Do not give 911. If the document itself names a number to call, give that number too.";
     case "us":
       return base + "in the US, call 911 in an emergency. Do not give 999 or 111. If the document itself names a number to call, give that number too.";
+    case "other":
+      return (
+        base +
+        `the reader appears to be in country code ${reader?.country?.toUpperCase()}, so tell them to call their local emergency number. ` +
+        "Do not give 999, 111 or 911, which do not work there, and do not name a number for that country unless the document prints it. If the document itself names a number to call, give that number first."
+      );
     default:
       return base + "Clariti does not know where the reader is, so give both: in the UK call 999 (or NHS 111 for urgent advice), in the US call 911, or the local emergency number elsewhere. If the document itself names a number to call, give that number first.";
   }
 }
+
+/** The numbers a crisis reply gives first, for where the reader is. */
+function crisisNumbers(reader?: ClaritiReader | null) {
+  const known = countryNumbers(reader);
+  if (known) return known.crisis;
+  switch (readerRegion(reader)) {
+    case "uk":
+      return UK_CRISIS;
+    case "us":
+      return US_CRISIS;
+    case "other":
+      return `their local emergency number if they are in immediate danger, or a local crisis line (the reader appears to be in country code ${reader?.country?.toUpperCase()}; do not give UK or US numbers, and do not name a number for that country unless the document prints it)`;
+    default:
+      return `their local emergency number if they are in immediate danger; ${UK_CRISIS}; ${US_CRISIS}`;
+  }
+}
+
+/** Abuse lines, only where Clariti can name them (UK, US, or both when unknown). */
+function abuseNumbers(reader?: ClaritiReader | null) {
+  if (countryNumbers(reader)) return "";
+  switch (readerRegion(reader)) {
+    case "uk":
+      return UK_ABUSE;
+    case "us":
+      return US_ABUSE;
+    case "other":
+      return "";
+    default:
+      return `${UK_ABUSE}; ${US_ABUSE}`;
+  }
+}
+
+/**
+ * CRISIS rule (22 Nov Claude Code eval, F4): no prompt said what to do when a reader
+ * mentions suicide or an overdose. Kept short and literal for a weaker model.
+ */
+export function crisisRule(reader?: ClaritiReader | null) {
+  const abuse = abuseNumbers(reader);
+  return (
+    "CRISIS: if the user mentions suicide, self-harm, wanting to die, not seeing the point any more, an overdose, or stockpiling pills, stop the task. " +
+    "Reply with warmth in one or two sentences, and give the crisis number first: " +
+    crisisNumbers(reader) +
+    ". If the document itself prints a crisis or emergency number, give that too. Do not go on to explain the paperwork in that reply unless they ask. " +
+    "If the document records a recent overdose or self-harm, give the same numbers first and then explain it gently." +
+    (abuse ? ` If they mention abuse or someone hurting them, give ${abuse}.` : "")
+  );
+}
+
+/**
+ * SCAM rule (22 Nov Claude Code eval, F4): fake HMRC refunds and NHS fee texts were
+ * being explained as if they were real paperwork.
+ */
+export const SCAM_RULE =
+  "SCAMS: if a letter, text or email shows signs of a scam (a link to click or a number to call to claim a refund or avoid a penalty; " +
+  "payment by gift card, crypto or bank transfer; pressure to act within hours; a sender, address or web link that does not match the organisation; " +
+  "a request for bank details, passwords, PINs or one-time codes), say plainly at the start that it looks like a scam. " +
+  "Do not explain it as if it were genuine and do not repeat its links. Tell the user not to click its links, not to call or text any number in it, " +
+  "and not to reply or pay; to check, they should contact the organisation through its official website, or a number from a card, bill or letter they already trust. " +
+  "If they already clicked, paid or shared details, tell them to contact their bank straight away.";
 
 function dateOrderSentence(order: ClaritiDateOrder) {
   switch (order) {

@@ -19,7 +19,9 @@ import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/sup
 import { tracedModel, withAiTrace } from "@/lib/ai/trace";
 import {
   DOSE_RULE,
+  SCAM_RULE,
   chatReplySafetyNote,
+  crisisRule,
   dateOrderFor,
   dateRule,
   readerFromHeaders,
@@ -588,6 +590,8 @@ async function generateGroundedFollowUp(
         "Include one short Source phrase when useful. " +
         "Write plain text only: no markdown, emoji, bold markers, or headings. Numbered lists are allowed only when the user asked for a list, timeline, or questions. " +
         urgentCareRule(reader) + " " +
+        crisisRule(reader) + " " +
+        SCAM_RULE + " " +
         dateRule(dateOrder, reader) + " " +
         DOSE_RULE +
         threadInstructions,
