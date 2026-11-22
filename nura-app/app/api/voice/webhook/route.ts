@@ -1,7 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
-import { parseConversationOutcome, type RawConversationBody } from "@/lib/integrations/elevenlabs";
+import { isAccountWideVoiceError, parseConversationOutcome, type RawConversationBody } from "@/lib/integrations/elevenlabs";
+import { alertVoiceCallFailed } from "@/lib/domain/voice-availability";
 import { resolveCallForCheckIn, type ResolvableCheckIn } from "@/lib/domain/call-outcome";
 import { logger } from "@/lib/logger";
 import { traceNuraCall } from "@/lib/ai/voice-trace";
@@ -51,6 +52,40 @@ type WebhookPayload = {
   type?: string;
   data?: RawConversationBody & { conversation_id?: string };
 };
+
+/**
+ * A call ElevenLabs couldn't start. If it was one of our check-in calls, resolve it now as a
+ * failure on Nura's side (text fallback, real reason on the row) instead of waiting for the poll.
+ */
+async function handleInitiationFailure(data: Record<string, unknown>) {
+  const conversationId = typeof data.conversation_id === "string" ? data.conversation_id : null;
+  const reason = String(data.failure_reason ?? "call initiation failure");
+  const accountWide = isAccountWideVoiceError(null, reason);
+  await alertVoiceCallFailed({ stage: "initiation_webhook", reason, accountWide });
+  if (!conversationId) return;
+
+  const supabase = getSupabaseServerClient();
+  const { data: checkIn } = await supabase
+    .from("nura_check_ins")
+    .select("id, owner_id, plan_id, prompt, contact_phone, call_conversation_id, triggered_at, call_attempts, nura_plans(title)")
+    .eq("call_conversation_id", conversationId)
+    .eq("call_status", "placed")
+    .maybeSingle();
+  if (!checkIn) return;
+
+  await resolveCallForCheckIn(
+    supabase,
+    checkIn as unknown as ResolvableCheckIn,
+    {
+      status: "failed",
+      callSuccessful: null,
+      durationSecs: 0,
+      hasTranscript: false,
+      platformError: { code: null, reason, accountWide },
+    },
+    false,
+  );
+}
 
 async function handlePostCallWebhook(payload: WebhookPayload) {
   const conversationId = payload.data?.conversation_id;
@@ -102,6 +137,13 @@ export async function POST(request: NextRequest) {
         failureReason: data.failure_reason ?? null,
         metadata: JSON.stringify(data.metadata ?? null).slice(0, 1500),
       });
+      after(() =>
+        handleInitiationFailure(data).catch((error) => {
+          logger.error("voice_webhook.initiation_failure_handling_failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }),
+      );
       return NextResponse.json({ ok: true, logged: true });
     }
 

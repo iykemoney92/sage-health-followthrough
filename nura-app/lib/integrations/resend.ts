@@ -542,18 +542,25 @@ export function missedCheckInEmailHtml({
   planTitle,
   firstName,
   message,
+  ourSide = false,
 }: {
   workspaceUrl: string;
   planTitle: string;
   firstName?: string;
   message: string;
+  /** The call never started because of a problem on Nura's side (not a missed call). */
+  ourSide?: boolean;
 }) {
   const greeting = firstName ? `Hi ${firstName},` : "Hi,";
   return nuraEmailShell({
-    preview: `Nura tried to call about ${planTitle} but couldn't reach you.`,
-    eyebrow: "Missed check-in call",
-    title: "Nura tried to call.",
-    bodyHtml: `${greeting}<br/><br/>Nura called about <strong>${planTitle}</strong> but the call didn't go through.<br/><br/>${message}`,
+    preview: ourSide
+      ? `Nura's call about ${planTitle} didn't go through - a problem on our side.`
+      : `Nura tried to call about ${planTitle} but couldn't reach you.`,
+    eyebrow: ourSide ? "Check-in" : "Missed check-in call",
+    title: ourSide ? "Nura's call didn't go through." : "Nura tried to call.",
+    bodyHtml: ourSide
+      ? `${greeting}<br/><br/>Nura meant to call about <strong>${planTitle}</strong>, but the call didn't go through on our side.<br/><br/>${message}`
+      : `${greeting}<br/><br/>Nura called about <strong>${planTitle}</strong> but the call didn't go through.<br/><br/>${message}`,
     ctaLabel: "Open Care plan",
     ctaUrl: workspaceUrl,
     footerNote: "You can reply anytime from your Care plan — no need to wait for the next call.",
@@ -565,18 +572,21 @@ export function missedCheckInEmailText({
   planTitle,
   firstName,
   message,
+  ourSide = false,
 }: {
   workspaceUrl: string;
   planTitle: string;
   firstName?: string;
   message: string;
+  /** The call never started because of a problem on Nura's side (not a missed call). */
+  ourSide?: boolean;
 }) {
   const greeting = firstName ? `Hi ${firstName},` : "Hi,";
   return `Nura — Wellbeing companion
 
 ${greeting}
 
-Nura called about ${planTitle} but the call didn't go through.
+${ourSide ? `Nura meant to call about ${planTitle}, but the call didn't go through on our side.` : `Nura called about ${planTitle} but the call didn't go through.`}
 
 ${message}
 

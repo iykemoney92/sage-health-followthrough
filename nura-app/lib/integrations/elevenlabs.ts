@@ -30,7 +30,43 @@ export type ConversationOutcome = {
   reachedVoicemail?: boolean;
   /** ElevenLabs' own short summary of the conversation, once it has finished processing. */
   summary?: string | null;
+  /**
+   * The call never started because of a problem on our side (ElevenLabs refused it: credits ran
+   * out, "agent not available", a config error). The person did nothing wrong - they never rang.
+   */
+  platformError?: VoicePlatformError | null;
 };
+
+export type VoicePlatformError = {
+  code: number | null;
+  reason: string;
+  /** Looks account-wide (credits/quota, agent not available, auth) - every call would fail the same way. */
+  accountWide: boolean;
+};
+
+/**
+ * ElevenLabs answers a call it won't run with code 3000 "The AI agent you are trying to reach is
+ * not available." That is what every Nura call got from 20 Nov 2026 when the free credits ran out,
+ * so it's treated as account-wide, like an explicit quota/credit/auth error.
+ */
+export function isAccountWideVoiceError(code: number | null | undefined, text: string | null | undefined) {
+  if (code === 3000 || code === 401 || code === 402 || code === 429) return true;
+  return /quota|credit|insufficient|not available|unavailable|payment|subscription|exceeded|unauthori[sz]ed|missing.*permission|not configured/i.test(
+    text ?? "",
+  );
+}
+
+/** Thrown when ElevenLabs refuses to start an outbound call (the phone never rang). */
+export class VoiceCallStartError extends Error {
+  readonly status: number | null;
+  readonly accountWide: boolean;
+  constructor(message: string, status: number | null) {
+    super(message);
+    this.name = "VoiceCallStartError";
+    this.status = status;
+    this.accountWide = isAccountWideVoiceError(status, message) || (status !== null && status >= 500);
+  }
+}
 
 export function isElevenLabsCallingConfigured() {
   return Boolean(
@@ -47,31 +83,48 @@ export async function placeOutboundCall({ toNumber, dynamicVariables, agentId, f
   const agentPhoneNumberId = process.env.ELEVENLABS_AGENT_PHONE_NUMBER_ID;
 
   if (!apiKey || !resolvedAgentId || !agentPhoneNumberId) {
-    throw new Error("ElevenLabs outbound calling is not configured.");
+    throw new VoiceCallStartError("ElevenLabs outbound calling is not configured.", null);
   }
 
-  const response = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
-    method: "POST",
-    headers: {
-      "xi-api-key": apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      agent_id: resolvedAgentId,
-      agent_phone_number_id: agentPhoneNumberId,
-      to_number: toNumber,
-      call_recording_enabled: true,
-      conversation_initiation_client_data: {
-        dynamic_variables: dynamicVariables,
-        ...(firstMessage ? { conversation_config_override: { agent: { first_message: firstMessage } } } : {}),
+  let response: Response;
+  try {
+    response = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
+      method: "POST",
+      headers: {
+        "xi-api-key": apiKey,
+        "Content-Type": "application/json",
       },
-    }),
-  });
+      body: JSON.stringify({
+        agent_id: resolvedAgentId,
+        agent_phone_number_id: agentPhoneNumberId,
+        to_number: toNumber,
+        call_recording_enabled: true,
+        conversation_initiation_client_data: {
+          dynamic_variables: dynamicVariables,
+          ...(firstMessage ? { conversation_config_override: { agent: { first_message: firstMessage } } } : {}),
+        },
+      }),
+    });
+  } catch (error) {
+    throw new VoiceCallStartError(
+      `ElevenLabs could not be reached (${error instanceof Error ? error.message : "network error"}).`,
+      503,
+    );
+  }
 
-  const body = (await response.json().catch(() => null)) as OutboundCallResult | null;
+  const body = (await response.json().catch(() => null)) as (OutboundCallResult & { detail?: unknown }) | null;
 
   if (!response.ok || !body?.success) {
-    throw new Error(body?.message ?? `ElevenLabs outbound call failed (${response.status}).`);
+    const detail =
+      typeof body?.detail === "string"
+        ? body.detail
+        : body?.detail && typeof body.detail === "object"
+          ? String((body.detail as { message?: unknown }).message ?? "")
+          : "";
+    throw new VoiceCallStartError(
+      body?.message || detail || `ElevenLabs outbound call failed (${response.status}).`,
+      response.ok ? null : response.status,
+    );
   }
 
   return body;
@@ -80,7 +133,13 @@ export async function placeOutboundCall({ toNumber, dynamicVariables, agentId, f
 export type RawConversationBody = {
   status?: string;
   call_successful?: string | boolean | null;
-  metadata?: { call_duration_secs?: number; duration_secs?: number; termination_reason?: string | null } | null;
+  metadata?: {
+    call_duration_secs?: number;
+    duration_secs?: number;
+    termination_reason?: string | null;
+    /** Set when ElevenLabs refused to start the call, e.g. {code: 3000, reason: "The AI agent ... is not available."}. */
+    error?: { code?: number | null; reason?: string | null; error_type?: string | null } | null;
+  } | null;
   analysis?: { call_successful?: string | boolean | null; transcript_summary?: string | null } | null;
   transcript?: unknown[] | null;
 };
@@ -126,6 +185,16 @@ export function parseConversationOutcome(body: RawConversationBody | null): Conv
     turns.some((turn) => (turn?.tool_calls ?? []).some((call) => call?.tool_name === "voicemail_detection")) ||
     /voicemail/i.test(body.metadata?.termination_reason ?? "");
 
+  const rawError = body.metadata?.error ?? null;
+  const platformError: VoicePlatformError | null =
+    rawError && (rawError.code != null || rawError.reason)
+      ? {
+          code: typeof rawError.code === "number" ? rawError.code : null,
+          reason: (rawError.reason ?? rawError.error_type ?? "unknown error").trim(),
+          accountWide: isAccountWideVoiceError(rawError.code, `${rawError.reason ?? ""} ${rawError.error_type ?? ""}`),
+        }
+      : null;
+
   return {
     status: String(body.status ?? "unknown"),
     callSuccessful,
@@ -133,6 +202,7 @@ export function parseConversationOutcome(body: RawConversationBody | null): Conv
     hasTranscript,
     reachedVoicemail,
     summary: body.analysis?.transcript_summary?.trim() || null,
+    platformError,
   };
 }
 

@@ -767,11 +767,62 @@ export async function composeCheckinOpener(
   }
 }
 
-// Used when a scheduled voice check-in call went unanswered/failed and Nura is falling back to
-// a WhatsApp text instead - should own the fact the call didn't land, not pretend it didn't happen.
-export async function composeMissedCallFollowup(firstName: string, planTitle: string, prompt: string): Promise<string> {
+/**
+ * Why a check-in call didn't become a conversation. Only "no_answer" and "voicemail" are about the
+ * person; "platform_failure" means Nura's own call never started (ElevenLabs refused it, e.g. the
+ * credits ran out), so the person did nothing wrong and must never be told they were busy or
+ * missed it (22 Nov 2026 QA: a person who had asked for a callback was told Nura "might've
+ * caught you at a bad time" when Nura's callbacks had failed).
+ */
+export type MissedCallReason = "no_answer" | "voicemail" | "platform_failure";
+
+const MISSED_CALL_SITUATION: Record<MissedCallReason, string> = {
+  no_answer:
+    "You just tried to place a scheduled phone check-in call to this person and it went unanswered, so you're following up on WhatsApp instead.",
+  voicemail:
+    "You just tried to place a scheduled phone check-in call to this person; it went to their voicemail and you left a short message, so you're following up on WhatsApp instead.",
+  platform_failure:
+    "You meant to phone this person for a scheduled check-in, but YOUR call never went through because of a technical problem on Nura's side. The phone never rang for them: they did not miss it, ignore it or decline it, and they were not busy. Say plainly and briefly that your call didn't go through on your end (one short apology at most), never suggest it was a bad time for them or that they missed it, and do not promise another call at a specific time.",
+};
+
+const MISSED_CALL_ASK: Record<MissedCallReason, string> = {
+  no_answer: "briefly and warmly acknowledges the call didn't connect (don't over-apologize or sound robotic about it)",
+  voicemail: "briefly and warmly mentions you tried calling and left a quick voicemail (don't over-apologize or sound robotic about it)",
+  platform_failure: "briefly says your call didn't go through on your end - a problem on Nura's side, not theirs",
+};
+
+/** Deterministic wording used when the model is unavailable, or when its draft blames the person. */
+export function missedCallFallbackText(firstName: string, prompt: string, reason: MissedCallReason = "no_answer"): string {
+  if (reason === "platform_failure") {
+    return `Hey ${firstName}, I meant to call you just now but my call didn't go through on my end - sorry about that. I wanted to check in - ${prompt}. Happy to chat here instead?`;
+  }
+  if (reason === "voicemail") {
+    return `Hey ${firstName}, I tried calling just now and left you a quick voicemail. I wanted to check in - ${prompt}. Want to chat here instead?`;
+  }
+  return `Hey ${firstName}, I tried calling you just now but couldn't reach you. I wanted to check in - ${prompt}. Want to chat here instead?`;
+}
+
+/**
+ * True when a follow-up for a call that failed on Nura's side still reads as if the person
+ * missed it ("caught you at a bad time", "couldn't reach you", "missed my call"...).
+ */
+export function followupBlamesPerson(text: string, reason: MissedCallReason): boolean {
+  if (reason !== "platform_failure") return false;
+  return /bad time|caught you|couldn'?t (reach|get hold of|get through to) you|could not reach you|missed (my|the|our) call|didn'?t (pick up|answer)|no answer|you were busy|you('re| are) busy|unanswered|voicemail/i.test(
+    text,
+  );
+}
+
+// Used when a scheduled voice check-in call didn't connect and Nura is falling back to a text
+// instead - should own what actually happened, not pretend it didn't happen or blame the person.
+export async function composeMissedCallFollowup(
+  firstName: string,
+  planTitle: string,
+  prompt: string,
+  reason: MissedCallReason = "no_answer",
+): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const fallback = `Hey ${firstName}, I tried calling you just now but couldn't reach you. I wanted to check in - ${prompt}. Want to chat here instead?`;
+  const fallback = missedCallFallbackText(firstName, prompt, reason);
   if (!apiKey) return fallback;
 
   try {
@@ -780,19 +831,20 @@ export async function composeMissedCallFollowup(firstName: string, planTitle: st
       model: "claude-sonnet-5",
       max_tokens: 200,
       system:
-        NURA_CORE_IDENTITY + " You just tried to place a scheduled phone check-in call to this person and it went unanswered, so you're following up on WhatsApp instead. " +
+        NURA_CORE_IDENTITY + " " + MISSED_CALL_SITUATION[reason] + " " +
         NURA_TONE + " " +
-        "Write ONE short WhatsApp message (1-2 sentences) that: briefly and warmly acknowledges the call didn't connect (don't over-apologize or sound robotic about it), then opens the same check-in by text based on the internal note you're given. Use the person's first name only if it feels natural.",
+        `Write ONE short WhatsApp message (1-2 sentences) that: ${MISSED_CALL_ASK[reason]}, then opens the same check-in by text based on the internal note you're given. Use the person's first name only if it feels natural.`,
       messages: [
         {
           role: "user",
-          content: `First name: ${firstName}\nCare plan: ${planTitle}\nInternal note on what to check in about: ${prompt}\n\nWrite the WhatsApp follow-up now.`,
+          content: `First name: ${firstName}\nCare plan: ${planTitle}\nWhat happened with the call: ${reason}\nInternal note on what to check in about: ${prompt}\n\nWrite the WhatsApp follow-up now.`,
         },
       ],
     });
     const block = message.content.find((b) => b.type === "text");
     const text = block && block.type === "text" ? block.text.trim() : "";
-    return text || fallback;
+    if (!text || followupBlamesPerson(text, reason)) return fallback;
+    return text;
   } catch {
     return fallback;
   }
