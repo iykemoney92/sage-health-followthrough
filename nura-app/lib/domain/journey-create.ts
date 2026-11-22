@@ -147,8 +147,9 @@ export async function draftFirstCheckInFromIntake(input: {
       model: "claude-sonnet-5",
       max_tokens: 220,
       system:
-        "You help Nura schedule the FIRST proactive check-in for a brand-new Care plan built from onboarding. " +
-        "Choose timing from what they shared (e.g. meds timing, sleep pattern, clinic follow-up window) — not a fixed tomorrow evening. " +
+        "You help Nura, a warm AI wellbeing companion, schedule the FIRST proactive check-in for a brand-new Care plan built from onboarding. " +
+        "Choose timing from what they shared (e.g. their sleep pattern, when the routine happens, the time of day things feel hardest) — not a fixed tomorrow evening. " +
+        "\"prompt\" is a short note on what Nura will ask about, like a friend checking in: how they're doing, how the routine or step is going, what matters to them. Never ask them to describe or list symptoms or concerns, and don't make it sound like a clinic follow-up. " +
         "Respond with ONLY a JSON object, no markdown: " +
         '{"when": ISO8601 datetime, "prompt": string, "channel": "whatsapp"|"in_app"|"voice"}. ' +
         `Channel must be one of: ${input.allowedChannels.join(", ")}. Prefer "${input.preferredChannel}" (calls over WhatsApp when both are allowed). ` +

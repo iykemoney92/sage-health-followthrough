@@ -813,6 +813,22 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+.try-first-actions .primary-cta[aria-disabled="true"] {
+  opacity: 0.55;
+}
+.try-first-hint {
+  margin: 0;
+  color: var(--landing-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.try-first-hint.nudged {
+  color: var(--landing-ink);
+  font-weight: 600;
+}
+.try-first-form > .try-first-hint {
+  margin-top: 12px;
+}
 .try-first-again {
   border: 0;
   background: none;

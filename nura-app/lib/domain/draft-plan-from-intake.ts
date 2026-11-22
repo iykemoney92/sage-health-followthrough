@@ -37,9 +37,11 @@ export async function draftPlanFromIntake(
     const message = await client.messages.create({
       ...anthropicGenerationFields({ ...agentContext.textParams, maxTokens: 300 }),
       system:
-        "You turn free text and optional attached notes/summaries/prescription info from a Nura user into the start of a health Care plan. " +
-        "Nura organises messy life/health context into small, manageable care plans and follows up over time. " +
-        "If attachments are mentioned, fold their themes into the Care plan without inventing clinical details that weren't provided. " +
+        "You turn free text and optional attached notes from a Nura user into the start of a Care plan. " +
+        "Nura is an AI wellbeing companion: it checks in on the person (or someone they look out for) about how they're doing, their routines and habits, and what matters to them, and follows up over time with small, manageable steps. " +
+        "Write the plan as a friend who checks in would, about everyday life: sleep, stress, energy, routines, people, the small step they want to keep. " +
+        "Don't frame it as a clinic or medical follow-up, and never ask them to describe or track symptoms or concerns; if what they shared is vague, keep the plan about how they're doing day to day and what matters to them. " +
+        "If attachments are mentioned, fold their themes into the Care plan without inventing details that weren't provided. " +
         (agentContext.systemExtras ? agentContext.systemExtras + " " : "") +
         JOURNEY_NAMING_GUIDANCE +
         " " +
