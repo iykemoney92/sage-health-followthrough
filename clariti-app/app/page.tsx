@@ -5,7 +5,9 @@ import { HomeEntry } from "./home-entry";
 
 export const metadata: Metadata = {
   // Absolute, so the layout's "%s · Clariti" template does not apply to the home page.
-  title: { absolute: "Clariti — understand medical bills, EOBs and lab results" },
+  title: { absolute: "Clariti app: understand medical bills, EOBs and labs" },
+  description:
+    "Attach a medical bill, EOB, lab result or insurance letter and Clariti explains it in plain English, flags what to check and suggests what to ask next.",
   alternates: { canonical: "/" },
 };
 

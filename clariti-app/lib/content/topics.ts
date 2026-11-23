@@ -450,9 +450,9 @@ const BASE_TOPICS: TopicGuide[] = [
   {
     slug: "claim-denied-on-eob",
     category: "insurance",
-    metaTitle: "Claim denied on your EOB? What it means and how to appeal",
+    metaTitle: "EOB says claim denied? What you owe and next steps",
     metaDescription:
-      "What a denied claim on an EOB means, how to find the reason, and the internal appeal and external review steps HealthCare.gov describes.",
+      "A denied claim on your EOB is not a bill yet. Find the denial reason, check what you may owe, and use the 180-day appeal and external review steps.",
     kicker: "DENIED CLAIM",
     h1: "My EOB says the claim was denied. What does that mean, and can I appeal?",
     answer:
@@ -890,9 +890,9 @@ const BASE_TOPICS: TopicGuide[] = [
   {
     slug: "why-two-bills-for-one-hospital-visit",
     category: "bills",
-    metaTitle: "Why did I get two bills for one hospital visit?",
+    metaTitle: "Two bills for one hospital visit: double billing?",
     metaDescription:
-      "Hospitals and the clinicians who treat you often bill separately. How facility and professional bills differ and how to match each to an EOB.",
+      "Two bills after one ER or hospital visit are usually a facility fee and a doctor’s fee, not double billing. How to tell them apart and match each to an EOB.",
     kicker: "TWO BILLS",
     h1: "Why did I get two (or more) bills for one hospital visit?",
     answer:

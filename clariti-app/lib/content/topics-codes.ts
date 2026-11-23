@@ -847,9 +847,9 @@ export const CODE_TOPICS: TopicGuide[] = [
     code: "82306",
     system: "CPT",
     short: "vitamin D (25-hydroxy) test",
-    metaTitle: "CPT 82306 meaning: vitamin D test, and why it’s denied",
+    metaTitle: "CPT 82306: vitamin D test code and why it’s denied",
     metaDescription:
-      "82306 is the 25-hydroxy vitamin D blood test. Why plans often deny it without a qualifying diagnosis, and how it differs from 82652.",
+      "Procedure code 82306 is the 25-hydroxy vitamin D blood test. Why insurers and Medicare often deny it, what to ask, and how it differs from 82652.",
     answer:
       "CPT 82306 is the code for the 25-hydroxy vitamin D blood test, the standard test of your vitamin D level. It is one of the lab tests most often refused by insurers, because many plans — including Medicare — only pay for it when the diagnosis on the claim meets their coverage rules.",
     why: [
@@ -1074,9 +1074,9 @@ export const CODE_TOPICS: TopicGuide[] = [
     code: "71046",
     system: "CPT",
     short: "chest X-ray, two views",
-    metaTitle: "CPT 71046 meaning: chest X-ray (2 views) on a bill",
+    metaTitle: "Chest X-ray 2 views CPT code: 71046 explained",
     metaDescription:
-      "71046 is a chest X-ray with two views. Why it can appear twice — once for taking the images and once for the radiologist’s reading.",
+      "The CPT code for a 2-view chest X-ray is 71046 (71045 is 1 view, 71047 is 3). Why it shows up twice on a bill, with modifiers -TC and -26.",
     answer:
       "CPT 71046 is the code for a chest X-ray with two views (usually front and side). It often appears twice for one X-ray: once for taking the images (the technical part) and once, with modifier -26, for the radiologist who read them (the professional part) — sometimes on separate bills.",
     why: [
