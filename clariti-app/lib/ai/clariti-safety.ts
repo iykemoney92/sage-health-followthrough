@@ -6,8 +6,10 @@
  *   clearly American, and say both readings when it cannot be told;
  * - urgent care: name the number for where the reader is (999 / NHS 111, 911, and
  *   since 22 Nov 112/999 in Ireland, 911 in Canada, 000 in Australia, 112 in Nigeria
- *   and the EU), "your local emergency number" elsewhere, or both when Clariti does
- *   not know;
+ *   and the EU; since 25 Nov 911 in the Philippines and Mexico, 999/112 in Kenya, 999
+ *   in Malaysia, 111 in New Zealand, 112 in India), "your local emergency number"
+ *   elsewhere, never a claim that some number "does not work" there, or both when
+ *   Clariti does not know;
  * - crisis and scams (22 Nov): crisis numbers for the reader's country first; scam
  *   letters and texts called what they look like, never explained as genuine;
  * - doses from a rough scan: repeat them as printed and send the reader to their copy
@@ -69,6 +71,13 @@ function describeReader(reader?: ClaritiReader | null) {
  * (22 Nov, from the shared safety brief; every number checked against an official
  * source). Anywhere else the model is told to say "your local emergency number"
  * rather than guess one.
+ *
+ * 25 Nov eval, F1: the "anywhere else" wording used to add that 999, 111 and 911 "do
+ * not work there", which is false for the Philippines (911), Kenya (999) and New
+ * Zealand (111), among others. Added, each checked on an official source on 25 Nov:
+ * PH 911 (DILG, EO 56), MX 911 (gob.mx/911), KE 999/112 (National Police Service),
+ * MY 999 (malaysia.gov.my, NG MERS 999), NZ 111 (police.govt.nz, govt.nz), IN 112
+ * (112.gov.in, MHA ERSS). No crisis lines are named for these: none were confirmed.
  */
 type CountryNumbers = { place: string; emergency: string; crisis: string; abuse?: string };
 
@@ -96,6 +105,35 @@ const COUNTRY_NUMBERS: Record<string, CountryNumbers> = {
     place: "Nigeria",
     emergency: "in Nigeria, call 112 in an emergency. Do not give 999 or 911",
     crisis: "in Nigeria, call 112 now if they are in danger",
+  },  PH: {
+    place: "the Philippines",
+    emergency: "in the Philippines, call 911, the national emergency number",
+    crisis: "call 911 if they are in immediate danger, or a local crisis line (the reader appears to be in the Philippines)",
+  },
+  MX: {
+    place: "Mexico",
+    emergency: "in Mexico, call 911, the national emergency number",
+    crisis: "call 911 if they are in immediate danger, or a local crisis line (the reader appears to be in Mexico)",
+  },
+  KE: {
+    place: "Kenya",
+    emergency: "in Kenya, call 999 or 112 in an emergency",
+    crisis: "call 999 or 112 if they are in immediate danger, or a local crisis line (the reader appears to be in Kenya)",
+  },
+  MY: {
+    place: "Malaysia",
+    emergency: "in Malaysia, call 999 in an emergency",
+    crisis: "call 999 if they are in immediate danger, or a local crisis line (the reader appears to be in Malaysia)",
+  },
+  NZ: {
+    place: "New Zealand",
+    emergency: "in New Zealand, call 111 in an emergency",
+    crisis: "call 111 if they are in immediate danger, or a local crisis line (the reader appears to be in New Zealand)",
+  },
+  IN: {
+    place: "India",
+    emergency: "in India, call 112, the national emergency number",
+    crisis: "call 112 if they are in immediate danger, or a local crisis line (the reader appears to be in India)",
   },
 };
 
@@ -131,8 +169,9 @@ export function urgentCareRule(reader?: ClaritiReader | null) {
     case "other":
       return (
         base +
-        `the reader appears to be in country code ${reader?.country?.toUpperCase()}, so tell them to call their local emergency number. ` +
-        "Do not give 999, 111 or 911, which do not work there, and do not name a number for that country unless the document prints it. If the document itself names a number to call, give that number first."
+        `the reader appears to be in country code ${reader?.country?.toUpperCase()}, and Clariti has no confirmed emergency number for that country, so tell them to call their local emergency number. ` +
+        "Do not name a number for that country unless the document prints it, and never tell them that a number such as 999, 111, 911 or 112 is wrong for their country: many countries use them. " +
+        "If they ask whether a particular number is the right one, tell them to use the number the document gives or their local emergency number. If the document itself names a number to call, give that number first."
       );
     default:
       return base + "Clariti does not know where the reader is, so give both: in the UK call 999 (or NHS 111 for urgent advice), in the US call 911, or the local emergency number elsewhere. If the document itself names a number to call, give that number first.";

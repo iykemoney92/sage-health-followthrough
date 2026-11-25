@@ -121,9 +121,35 @@ const US_SIGNALS: RegExp[] = [
   /\bmedicare\b|\bmedicaid\b/i,
   /\bco-?pay(?:ment)?\b|\bdeductible\b|\bcoinsurance\b/i,
   /\$\s?\d/,
-  /\b(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\s+\d{5}(?:-\d{4})?\b/,
   /\b(?:cpt|npi|hcpcs)\b/i,
 ];
+
+// A US state code + ZIP, e.g. "Columbus OH 43215" or "Sacramento, CA 95819".
+const STATE_ZIP = /\b(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\s+\d{5}(?:-\d{4})?\b/g;
+// Words that put an ID or reference number, not a town, before the "state code".
+const ID_LABEL = /^(?:id|ids|member|membership|enrollee|enrolee|patient|policy|group|plan|claim|account|acct|customer|client|subscriber|ref|reference|case|invoice|no|number|nr|num|code|pin|auth|authorization|authorisation|approval|prior|mrn|nhs|file|order|ticket|confirmation|booking|record|registration|hospital|card)$/i;
+
+/**
+ * True when the text has a US state code + ZIP on an address line ("Columbus OH 43215").
+ *
+ * 25 Nov eval, F3: "Member ID 10293" on an Irish insurer's letter, "Enrollee ID 40213"
+ * on a Nigerian HMO letter and "Ref: PA 20391" on a UK letter all matched as a US ZIP
+ * ("ID" is Idaho, "PA" Pennsylvania), so the document was read as American and its
+ * dates month/day. A ZIP now counts only when a town name, not an ID or reference
+ * label, a colon or "#", comes right before the state code on the same line.
+ */
+export function hasUsZipCode(text: string) {
+  for (const match of text.matchAll(STATE_ZIP)) {
+    const lineStart = text.lastIndexOf("\n", match.index - 1) + 1;
+    const before = text.slice(lineStart, match.index);
+    const town = /([A-Za-z][A-Za-z.'-]*),?\s+$/.exec(before);
+    if (!town) continue; // line start, or after ":", "#", a digit: an ID, not an address
+    if (ID_LABEL.test(town[1].replace(/\.+$/, ""))) continue;
+    return true;
+  }
+  return false;
+}
+
 const UK_SIGNALS: RegExp[] = [
   /\bnhs\b/i,
   /£\s?\d/,
@@ -133,14 +159,19 @@ const UK_SIGNALS: RegExp[] = [
 ];
 
 const UK_COUNTRIES = new Set(["GB", "UK", "IM", "JE", "GG"]);
+/** Countries that write numeric dates month/day: the US and the Philippines. */
+const MONTH_DAY_COUNTRIES = new Set(["US", "PH"]);
 
 /**
  * Which way round this document writes numeric dates.
  *
  * The document wins over the reader: a US bill read in London is still US paperwork.
  * A date like 25/10/2026 settles it outright. With nothing in the document, a reader
- * in the US makes it a genuine toss-up ("either"); everyone else gets day/month,
- * which is how most of the world, and every NHS letter, writes dates.
+ * in the US or the Philippines (both write month/day, 25 Nov eval F2) makes it a
+ * genuine toss-up ("either"), and so does a reader whose country is not known: an
+ * ambiguous date then gets "Check this date" instead of a silent day/month guess.
+ * A reader in any other known country gets day/month, which is how most of the
+ * world, and every NHS letter, writes dates.
  */
 export function detectDateOrder(documentText: string, readerCountry?: string | null): ClaritiDateOrder {
   let dmyEvidence = 0;
@@ -154,14 +185,14 @@ export function detectDateOrder(documentText: string, readerCountry?: string | n
   if (dmyEvidence > 0 && mdyEvidence === 0) return "dmy";
   if (mdyEvidence > 0 && dmyEvidence === 0) return "mdy";
 
-  const us = US_SIGNALS.filter((pattern) => pattern.test(documentText)).length;
+  const us = US_SIGNALS.filter((pattern) => pattern.test(documentText)).length + (hasUsZipCode(documentText) ? 1 : 0);
   const uk = UK_SIGNALS.filter((pattern) => pattern.test(documentText)).length;
   if (us > uk) return "mdy";
   if (uk > us) return "dmy";
 
   const country = readerCountry?.toUpperCase() ?? null;
-  if (country === "US") return "either";
-  if (country && UK_COUNTRIES.has(country)) return "dmy";
+  if (!country || MONTH_DAY_COUNTRIES.has(country)) return "either";
+  if (UK_COUNTRIES.has(country)) return "dmy";
   return "dmy";
 }
 
@@ -210,9 +241,11 @@ export function findUnsupportedDates(output: string, sources: string[], order: C
     if (sourceFlat.includes(squash(date.text))) continue;
     const readings = date.primary ? [date.primary] : date.readings;
     if (readings.some((reading) => allowed.some((source) => sameDay(reading, source)))) continue;
+    // The right reading must be written out ("4 March"): copying the printed
+    // "04/03/2026" next to a wrong "April 3" is not giving both (25 Nov eval, N13).
     const bothGiven = readings.some((reading) =>
       alternates.some(({ alternate, primary }) =>
-        sameDay(reading, alternate) && outputDates.some((other) => other !== date && (other.primary ? [other.primary] : other.readings).some((r) => sameDay(r, primary)))));
+        sameDay(reading, alternate) && outputDates.some((other) => other !== date && other.readings.length === 1 && sameDay(other.readings[0], primary))));
     if (bothGiven) continue;
     if (!flagged.includes(date.text)) flagged.push(date.text);
   }
