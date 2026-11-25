@@ -5,7 +5,15 @@ import { checkKeyedRateLimit } from "@/lib/auth/rate-limit";
 import { draftPlanFromIntake, type PlanDraft } from "@/lib/domain/draft-plan-from-intake";
 import { draftFirstCheckInFromIntake } from "@/lib/domain/journey-create";
 import { inferJourneyDraft, isPlanCategory } from "@/lib/domain/journey-naming";
-import { crisisCountry, countryFromLocale, crisisGuidance, detectCrisis, type CrisisKind } from "@/lib/domain/crisis-lines";
+import {
+  crisisCountry,
+  countryFromLocale,
+  crisisGuidance,
+  screenCrisis,
+  type CrisisGuidance,
+  type CrisisKind,
+  type CrisisScreen,
+} from "@/lib/domain/crisis-lines";
 import { checkinOpenerFallback, composeCheckinOpener } from "@/lib/domain/message-intake";
 import { gateTryFirstText } from "@/lib/domain/try-first-gate";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
@@ -31,6 +39,8 @@ const EVERYONE_ID = "00000000-0000-4000-8000-000000007e57";
 const bodySchema = z.object({
   text: z.string().trim().min(TRY_FIRST_MIN_CHARS).max(TRY_FIRST_MAX_CHARS),
   locale: z.string().max(40).optional(),
+  /** The visitor tapped "It isn't an emergency: show me the plan" on an emergency card. */
+  notEmergency: z.boolean().optional(),
 });
 
 function withTimeout<T>(promise: Promise<T>, fallback: T, ms: number) {
@@ -48,9 +58,16 @@ function visitorId(request: NextRequest) {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
-function limited(message: string) {
-  return NextResponse.json({ ok: false, error: "limited", message }, { status: 429 });
+/** Over the try limit. Crisis text still gets the numbers (25 Nov 2026 eval: a 4th try got only "sign up"). */
+function limited(message: string, crisis: CrisisGuidance | null) {
+  return NextResponse.json(
+    crisis ? { ok: false, error: "limited", message: `${crisis.message} ${message}`, crisis } : { ok: false, error: "limited", message },
+    { status: 429 },
+  );
 }
+
+/** Marks a model call that ran out of time, so the route knows no safety check came back. */
+const TIMED_OUT = Symbol("timed-out");
 
 /**
  * Country for crisis numbers: the browser's locale region first ("en-US"), then the country
@@ -69,59 +86,79 @@ function visitorCountry(request: NextRequest, locale: string | undefined) {
 /**
  * Crisis or emergency text gets the numbers to call, never a plan (22 Nov 2026 eval: "I've been
  * saving my tablets" became a Care plan with a check-in tomorrow). 200 with ok:false, so an older
- * page that only knows `message` still shows the numbers as its error line.
+ * page that only knows `message` still shows the numbers as its error line. An emergency card can
+ * be passed with "It isn't an emergency" (`canContinue`): the plan then comes with the numbers.
  */
 function crisisResponse(request: NextRequest, kind: CrisisKind, locale: string | undefined, source: "screen" | "model") {
   const guidance = crisisGuidance(kind, visitorCountry(request, locale));
-  console.info("[try-first] crisis:", kind, source, guidance.country ?? "unknown");
-  return NextResponse.json({ ok: false, error: "crisis", crisis: guidance, message: guidance.message }, { status: 200 });
+  console.info("[try-first] crisis:", kind, source, "block", guidance.country ?? "unknown");
+  return NextResponse.json(
+    { ok: false, error: "crisis", crisis: guidance, message: guidance.message, canContinue: kind === "emergency" },
+    { status: 200 },
+  );
 }
 
 export async function POST(request: NextRequest) {
-  const raw = (await request.json().catch(() => null)) as { text?: unknown; locale?: unknown } | null;
+  const raw = (await request.json().catch(() => null)) as { text?: unknown; locale?: unknown; notEmergency?: unknown } | null;
   const rawLocale = typeof raw?.locale === "string" ? raw.locale.slice(0, 40) : undefined;
+  const notEmergency = raw?.notEmergency === true;
 
-  // Before anything else (length, the probe gate, rate limits): "kill myself" is too short for a
-  // plan and would read as gibberish to the gate, but must still get the numbers. No model call.
+  // Before anything else (length, the probe gate, rate limits): "kms" is too short for a plan and
+  // would read as gibberish to the gate, but must still get the numbers. No model call.
+  // Fail safe (25 Nov 2026): a crisis word that may be a past event, an idiom or a reminder
+  // ("Dad had a heart attack last year") adds the numbers to the plan instead of replacing it.
+  let screen: CrisisScreen | null = null;
   if (typeof raw?.text === "string") {
-    const kind = detectCrisis(raw.text.slice(0, TRY_FIRST_MAX_CHARS * 2));
-    if (kind) return crisisResponse(request, kind, rawLocale, "screen");
+    screen = screenCrisis(raw.text.slice(0, TRY_FIRST_MAX_CHARS * 2));
+    if (screen?.mode === "block" && !(notEmergency && screen.kind === "emergency")) {
+      return crisisResponse(request, screen.kind, rawLocale, "screen");
+    }
   }
+  // Too short, off topic or over the limit: there's no plan to put the numbers next to, so a
+  // crisis word gets the numbers on their own.
+  const noPlanCrisis = () => (screen ? crisisResponse(request, screen.kind, rawLocale, "screen") : null);
 
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "invalid",
-        message: `Write a little about what’s going on (at least ${TRY_FIRST_MIN_CHARS} characters).`,
-      },
-      { status: 400 },
+    return (
+      noPlanCrisis() ??
+      NextResponse.json(
+        {
+          ok: false,
+          error: "invalid",
+          message: `Write a little about what’s going on (at least ${TRY_FIRST_MIN_CHARS} characters).`,
+        },
+        { status: 400 },
+      )
     );
   }
   const text = parsed.data.text;
+  const country = () => visitorCountry(request, parsed.data.locale);
+  const limitCrisis = () => (screen ? crisisGuidance(screen.kind, country()) : null);
 
   // Probes, gibberish and non-care requests get a friendly nudge, not a plan (22 Nov 2026: a
   // "connectivity test" became a Care plan). Before the rate limit, so it costs the visitor
   // nothing, and no model is called. Only the reason is logged, never the text.
   const gate = gateTryFirstText(text);
   if (!gate.ok) {
+    const crisis = noPlanCrisis();
+    if (crisis) return crisis;
     console.info("[try-first] off-topic:", gate.reason);
     return NextResponse.json({ ok: false, error: "off_topic", reason: gate.reason, message: gate.message }, { status: 422 });
   }
 
   if (checkKeyedRateLimit("try-first:instance", PER_INSTANCE_PER_HOUR, 60 * 60).limited) {
-    return limited("Lots of people are trying Nura right now. Please try again in a little while, or sign up free.");
+    return limited("Lots of people are trying Nura right now. Please try again in a little while, or sign up free.", limitCrisis());
   }
   try {
     const supabase = getSupabaseServerClient();
     const mine = await checkRateLimit(supabase, visitorId(request), "try-first", PER_VISITOR_PER_DAY, DAY_SECONDS);
     if (mine.limited) {
-      return limited("You’ve tried Nura a few times today. Sign up free to keep going: your plan will be waiting.");
+      return limited("You’ve tried Nura a few times today. Sign up free to keep going: your plan will be waiting.", limitCrisis());
     }
     const everyone = await checkRateLimit(supabase, EVERYONE_ID, "try-first-all", EVERYONE_PER_DAY, DAY_SECONDS);
     if (everyone.limited) {
-      return limited("Lots of people are trying Nura today. Please try again tomorrow, or sign up free.");
+      return limited("Lots of people are trying Nura today. Please try again tomorrow, or sign up free.", limitCrisis());
     }
   } catch (error) {
     // Rate-limit storage not configured: the per-instance cap above still applies.
@@ -130,9 +167,34 @@ export async function POST(request: NextRequest) {
 
   // Signed out: no person, so the three calls share one anonymous trace.
   const traceCtx = newAiTrace({});
-  const plan = await withTimeout<PlanDraft>(withAiTrace(traceCtx, () => draftPlanFromIntake(text)), inferJourneyDraft(text, []), 20000);
-  // The model's own safety flag, for crisis or emergency wording the screen above missed.
-  if (plan.safety) return crisisResponse(request, plan.safety, parsed.data.locale, "model");
+  const drafted = await withTimeout<PlanDraft | typeof TIMED_OUT>(
+    withAiTrace(traceCtx, () => draftPlanFromIntake(text)),
+    TIMED_OUT,
+    20000,
+  );
+  // The numbers shown next to the plan, if any.
+  let alongside: CrisisKind | null = screen?.kind ?? null;
+  let alongsideSource = "screen";
+  let plan: PlanDraft;
+  if (drafted === TIMED_OUT) {
+    // No safety check came back from the model (25 Nov 2026 eval: the timeout fallback returned a
+    // plan with no safety handling). Show the fallback plan, with the crisis lines (which include
+    // the emergency number) in case the screen missed something.
+    plan = inferJourneyDraft(text, []);
+    if (!alongside) {
+      alongside = "suicide";
+      alongsideSource = "timeout";
+    }
+    console.info("[try-first] plan timed out: crisis lines added");
+  } else {
+    plan = drafted;
+    // The model's own safety flag, for crisis or emergency wording the screen above missed.
+    if (plan.safety) {
+      if (!(notEmergency && plan.safety === "emergency")) return crisisResponse(request, plan.safety, parsed.data.locale, "model");
+      alongside = "emergency";
+      alongsideSource = "model";
+    }
+  }
   const checkIn = await withAiTrace(traceCtx, () => draftFirstCheckInFromIntake({
     plan: {
       title: plan.title,
@@ -151,6 +213,9 @@ export async function POST(request: NextRequest) {
     15000,
   );
 
+  const crisis = alongside ? crisisGuidance(alongside, country(), "alongside") : null;
+  if (crisis) console.info("[try-first] crisis:", crisis.kind, alongsideSource, "alongside", crisis.country ?? "unknown");
+
   return NextResponse.json({
     ok: true,
     plan: {
@@ -160,5 +225,6 @@ export async function POST(request: NextRequest) {
       next_step: plan.next_step,
     },
     checkIn: { when: checkIn.when, channel: checkIn.channel, message },
+    ...(crisis ? { crisis } : {}),
   });
 }

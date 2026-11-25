@@ -15,8 +15,11 @@ const EXAMPLES = [
   "Mum lives on her own now and I’d like a gentle check-in on how she’s doing.",
 ];
 
-/** Crisis or emergency text gets numbers to call instead of a plan (app/api/try/plan). */
-type TryFirstCrisis = { kind: "suicide" | "emergency"; title: string; lead: string; more: string[] };
+/**
+ * Crisis or emergency text gets numbers to call instead of a plan, or above the plan when the
+ * crisis words may be a past event, an idiom or a reminder (app/api/try/plan).
+ */
+type TryFirstCrisis = { kind: "suicide" | "emergency"; mode?: "block" | "alongside"; title: string; lead: string; more: string[] };
 
 function browserLocale() {
   try {
@@ -59,11 +62,15 @@ export function TryFirst() {
   // The error is a gentle "tell me who to check in on" rather than a failure.
   const [offTopic, setOffTopic] = useState(false);
   const [crisis, setCrisis] = useState<TryFirstCrisis | null>(null);
+  // An emergency card the visitor can pass with "It isn't an emergency".
+  const [canContinue, setCanContinue] = useState(false);
+  // Crisis lines shown above the plan.
+  const [crisisNote, setCrisisNote] = useState<TryFirstCrisis | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   const ready = text.trim().length >= TRY_FIRST_MIN_CHARS;
 
-  const submit = async () => {
+  const submit = async (notEmergency = false) => {
     if (loading) return;
     if (!ready) {
       setNudged(true);
@@ -79,15 +86,24 @@ export function TryFirst() {
       const res = await fetch("/api/try/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, locale: browserLocale() }),
+        body: JSON.stringify({ text, locale: browserLocale(), ...(notEmergency ? { notEmergency: true } : {}) }),
       });
       const data = (await res.json().catch(() => null)) as
-        | (TryFirstResult & { ok?: boolean; error?: string; reason?: string; message?: string; crisis?: TryFirstCrisis })
+        | (TryFirstResult & {
+            ok?: boolean;
+            error?: string;
+            reason?: string;
+            message?: string;
+            crisis?: TryFirstCrisis;
+            canContinue?: boolean;
+          })
         | null;
-      if (data?.error === "crisis" && data.crisis) {
+      if ((data?.error === "crisis" || data?.error === "limited") && data.crisis) {
         // Suicidal thoughts, self-harm or a medical emergency: the numbers to call, never a plan.
+        // Also when the visitor is over the try limit: the numbers still come first.
         setCrisis(data.crisis);
-        track("try_first_crisis", { kind: data.crisis.kind });
+        setCanContinue(data.error === "crisis" && data.canContinue === true);
+        track("try_first_crisis", { kind: data.crisis.kind, mode: "block" });
         return;
       }
       if (data?.error === "off_topic") {
@@ -103,6 +119,8 @@ export function TryFirst() {
         return;
       }
       setResult({ plan: data.plan, checkIn: data.checkIn });
+      setCrisisNote(data.crisis ?? null);
+      if (data.crisis) track("try_first_crisis", { kind: data.crisis.kind, mode: "alongside" });
       track("try_first_result", { channel: data.checkIn.channel });
     } catch {
       setError("Nura couldn’t build that just now. Please try again.");
@@ -121,6 +139,8 @@ export function TryFirst() {
   const reset = () => {
     setResult(null);
     setCrisis(null);
+    setCanContinue(false);
+    setCrisisNote(null);
     setError(null);
     track("try_first_reset");
   };
@@ -142,6 +162,21 @@ export function TryFirst() {
           <button type="button" className="try-first-again" onClick={reset}>
             Go back
           </button>
+          {canContinue ? (
+            <button
+              type="button"
+              className="try-first-again"
+              disabled={loading}
+              onClick={() => {
+                track("try_first_not_emergency");
+                setCrisis(null);
+                setCanContinue(false);
+                void submit(true);
+              }}
+            >
+              It isn’t an emergency: show me the plan
+            </button>
+          ) : null}
         </div>
         <p className="try-first-fineprint">Nura is a wellbeing companion, not an emergency service.</p>
       </div>
@@ -152,6 +187,19 @@ export function TryFirst() {
     const channel = CHANNEL_COPY[result.checkIn.channel] ?? CHANNEL_COPY.in_app;
     return (
       <div className="try-first-result" aria-live="polite">
+        {crisisNote ? (
+          <aside className="try-first-crisis-note" role="note">
+            <span className="try-first-label">
+              <LifeBuoy size={14} /> {crisisNote.title}
+            </span>
+            <p className="try-first-crisis-lead">{crisisNote.lead}</p>
+            {crisisNote.more.map((line) => (
+              <p key={line} className="try-first-crisis-more">
+                {line}
+              </p>
+            ))}
+          </aside>
+        ) : null}
         <article className="try-first-plan">
           <span className="try-first-label">Your plan with Nura · preview</span>
           <h3>{result.plan.title}</h3>
