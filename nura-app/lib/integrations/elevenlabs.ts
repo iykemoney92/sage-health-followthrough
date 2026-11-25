@@ -130,6 +130,72 @@ export async function placeOutboundCall({ toNumber, dynamicVariables, agentId, f
   return body;
 }
 
+type PlaceWhatsappCallInput = {
+  /** The person's WhatsApp number: digits only, country code first. */
+  whatsappUserId: string;
+  /** Nura's WhatsApp phone number ID (Meta's ID, not the number). */
+  whatsappPhoneNumberId: string;
+  /** Template ElevenLabs sends first if the person hasn't yet allowed calls. */
+  permissionTemplateName: string;
+  permissionTemplateLanguage: string;
+  dynamicVariables: Record<string, string>;
+  agentId?: string;
+  firstMessage?: string;
+};
+
+/**
+ * Rings the person on WhatsApp instead of their phone line. Only call this once Meta says the
+ * person has allowed calls: without permission ElevenLabs sends the permission template and
+ * holds the call until they answer it, which could be hours later.
+ */
+export async function placeWhatsappCall(input: PlaceWhatsappCallInput) {
+  const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
+  const resolvedAgentId = input.agentId || process.env.ELEVENLABS_AGENT_ID?.trim();
+  if (!apiKey || !resolvedAgentId) {
+    throw new VoiceCallStartError("ElevenLabs WhatsApp calling is not configured.", null);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch("https://api.elevenlabs.io/v1/convai/whatsapp/outbound-call", {
+      method: "POST",
+      headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agent_id: resolvedAgentId,
+        whatsapp_phone_number_id: input.whatsappPhoneNumberId,
+        whatsapp_user_id: input.whatsappUserId,
+        whatsapp_call_permission_request_template_name: input.permissionTemplateName,
+        whatsapp_call_permission_request_template_language_code: input.permissionTemplateLanguage,
+        conversation_initiation_client_data: {
+          dynamic_variables: input.dynamicVariables,
+          ...(input.firstMessage ? { conversation_config_override: { agent: { first_message: input.firstMessage } } } : {}),
+        },
+      }),
+    });
+  } catch (error) {
+    throw new VoiceCallStartError(
+      `ElevenLabs could not be reached (${error instanceof Error ? error.message : "network error"}).`,
+      503,
+    );
+  }
+
+  const body = (await response.json().catch(() => null)) as (OutboundCallResult & { detail?: unknown }) | null;
+  if (!response.ok || !body?.success || !body.conversation_id) {
+    const detail =
+      typeof body?.detail === "string"
+        ? body.detail
+        : body?.detail && typeof body.detail === "object"
+          ? JSON.stringify(body.detail).slice(0, 300)
+          : "";
+    throw new VoiceCallStartError(
+      body?.message || detail || `ElevenLabs WhatsApp call failed (${response.status}).`,
+      response.ok ? null : response.status,
+    );
+  }
+
+  return body;
+}
+
 export type RawConversationBody = {
   status?: string;
   call_successful?: string | boolean | null;

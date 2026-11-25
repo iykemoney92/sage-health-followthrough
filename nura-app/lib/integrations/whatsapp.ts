@@ -114,3 +114,146 @@ export async function sendWhatsappText(to: string, body: string) {
 
   return { skipped: false as const };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Messages and calls Nura starts herself.
+//
+// Meta only delivers a free-form text within 24 hours of the person's last message (the
+// "customer service window"). Outside it the send is accepted and then dropped (error 131047),
+// which is why no WhatsApp check-in was ever delivered before 25 Nov 2026. Outside the window
+// Nura must send an approved template; the person's reply reopens the window.
+// ---------------------------------------------------------------------------------------------
+
+const GRAPH_CALLING_VERSION = "v23.0";
+/** Meta: "More than 24 hours have passed since the recipient last replied". */
+export const META_OUTSIDE_WINDOW_ERROR = 131047;
+
+/** Vercel env values for these carry a trailing newline; a raw one breaks JSON bodies. */
+function whatsappConfig() {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN?.trim();
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
+  return token && phoneNumberId ? { token, phoneNumberId } : null;
+}
+
+export function whatsappPhoneNumberId() {
+  return process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() || null;
+}
+
+export function checkinTemplateName() {
+  return process.env.WHATSAPP_CHECKIN_TEMPLATE?.trim() || "nura_checkin";
+}
+
+export function callPermissionTemplateName() {
+  return process.env.WHATSAPP_CALL_PERMISSION_TEMPLATE?.trim() || "nura_call_permission";
+}
+
+export function whatsappTemplateLanguage() {
+  return process.env.WHATSAPP_TEMPLATE_LANGUAGE?.trim() || "en";
+}
+
+/** The numeric code out of a Graph API error body, e.g. 131047. */
+export function metaErrorCode(errorText: string | null | undefined): number | null {
+  if (!errorText) return null;
+  try {
+    const code = (JSON.parse(errorText) as { error?: { code?: unknown } })?.error?.code;
+    return typeof code === "number" ? code : null;
+  } catch {
+    const match = /\(#(\d{3,6})\)/.exec(errorText);
+    return match ? Number(match[1]) : null;
+  }
+}
+
+/**
+ * Template variables can't hold new lines, tabs or runs of spaces, and Meta rejects empty ones.
+ * Keeps them short so the fixed wording stays the bulk of the message.
+ */
+export function templateParam(value: string | null | undefined, fallback: string, maxLength = 80) {
+  const clean = (value ?? "").replace(/\s+/g, " ").trim();
+  if (!clean) return fallback;
+  return clean.length > maxLength ? `${clean.slice(0, maxLength - 1).trimEnd()}…` : clean;
+}
+
+export async function sendWhatsappTemplate(to: string, templateName: string, bodyParams: string[]) {
+  const config = whatsappConfig();
+  if (!config) {
+    logger.warn("whatsapp.template.skipped_not_configured");
+    return { skipped: true as const };
+  }
+
+  const response = await fetch(`https://graph.facebook.com/${GRAPH_CALLING_VERSION}/${config.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: whatsappTemplateLanguage() },
+        components: [{ type: "body", parameters: bodyParams.map((text) => ({ type: "text", text })) }],
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Could not send WhatsApp template.");
+    logger.error("whatsapp.template.failed", {
+      status: response.status,
+      template: templateName,
+      toSuffix: to.slice(-4),
+      error: errorText.slice(0, 500),
+    });
+    return { skipped: false as const, error: errorText };
+  }
+
+  return { skipped: false as const };
+}
+
+export type WhatsappCallPermission = {
+  /** "no_permission" | "temporary" | "permanent" */
+  status: string;
+  /** The person has said yes and Meta's call limits allow a call now. */
+  canStartCall: boolean;
+  /** Meta's limits (1 a day, 2 a week) allow asking now. */
+  canRequest: boolean;
+};
+
+type CallPermissionResponse = {
+  permission?: { status?: string };
+  actions?: Array<{ action_name?: string; can_perform_action?: boolean }>;
+};
+
+export function parseCallPermission(body: CallPermissionResponse | null): WhatsappCallPermission | null {
+  const status = body?.permission?.status;
+  if (!status) return null;
+  const can = (name: string) => Boolean(body?.actions?.find((a) => a.action_name === name)?.can_perform_action);
+  return {
+    status,
+    canStartCall: (status === "temporary" || status === "permanent") && can("start_call"),
+    canRequest: status === "no_permission" && can("send_call_permission_request"),
+  };
+}
+
+/** Whether Nura may call this person on WhatsApp right now. Null when Meta can't say. */
+export async function getWhatsappCallPermission(userWaId: string): Promise<WhatsappCallPermission | null> {
+  const config = whatsappConfig();
+  if (!config) return null;
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/${GRAPH_CALLING_VERSION}/${config.phoneNumberId}/call_permissions?user_wa_id=${encodeURIComponent(userWaId)}`,
+      { headers: { Authorization: `Bearer ${config.token}` }, signal: AbortSignal.timeout(4_000) },
+    );
+    if (!response.ok) {
+      logger.warn("whatsapp.call_permission.lookup_failed", {
+        status: response.status,
+        error: (await response.text().catch(() => "")).slice(0, 300),
+      });
+      return null;
+    }
+    return parseCallPermission((await response.json().catch(() => null)) as CallPermissionResponse | null);
+  } catch (error) {
+    logger.warn("whatsapp.call_permission.lookup_error", { message: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
+}
