@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { placeOutboundCall, VoiceCallStartError, type ConversationOutcome } from "@/lib/integrations/elevenlabs";
-import { sendWhatsappText } from "@/lib/integrations/whatsapp";
+import { sendProactiveWhatsapp } from "@/lib/domain/whatsapp-outreach";
 import { sendPushToOwner } from "@/lib/integrations/push";
 import {
   missedCheckInEmailHtml,
@@ -170,7 +170,7 @@ async function escalateCheckIn(
   let whatsappError: string | null = null;
   if (phone && allowed.includes("whatsapp")) {
     try {
-      const outcome = await sendWhatsappText(phone.replace(/[^\d]/g, ""), message);
+      const outcome = await sendProactiveWhatsapp(supabase, phone, message, { firstName, topic: planTitle });
       if (outcome.skipped || outcome.error) throw new Error(outcome.error ?? "WhatsApp is not configured.");
       whatsappOk = true;
     } catch (error) {

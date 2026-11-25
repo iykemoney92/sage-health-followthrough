@@ -12,6 +12,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/domain/message-intake", () => ({ composeMissedCallFollowup: mocks.compose }));
 vi.mock("@/lib/integrations/whatsapp", () => ({ sendWhatsappText: mocks.whatsapp }));
+vi.mock("@/lib/domain/whatsapp-outreach", () => ({
+  sendProactiveWhatsapp: (_supabase: unknown, phone: string, body: string) =>
+    (mocks.whatsapp as unknown as (phone: string, body: string) => unknown)(phone.replace(/[^\d]/g, ""), body),
+}));
 vi.mock("@/lib/integrations/push", () => ({ sendPushToOwner: mocks.push }));
 vi.mock("@/lib/integrations/resend", () => ({
   sendAuthEmail: mocks.email,

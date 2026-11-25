@@ -4,7 +4,7 @@ import { getSubscriptionAccess } from "@/lib/billing/subscription";
 import { ownersWhoUsedFreeCheckIn, pickFreeCheckIns } from "@/lib/billing/free-checkin";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { sendPlusSkipNotices } from "@/lib/domain/nudges";
-import { placeOutboundCall, isElevenLabsCallingConfigured, getConversationOutcome, VoiceCallStartError } from "@/lib/integrations/elevenlabs";
+import { isElevenLabsCallingConfigured, getConversationOutcome, VoiceCallStartError } from "@/lib/integrations/elevenlabs";
 import { readVoiceCredits } from "@/lib/integrations/elevenlabs-credits";
 import {
   alertOnCredits,
@@ -17,7 +17,7 @@ import {
 import { buildVoiceCheckinContext, NO_CIRCLE_PASS_ON } from "@/lib/domain/voice-checkin-context";
 import { sendPushToOwner } from "@/lib/integrations/push";
 import { checkInEmailHtml, checkInEmailText, nuraEmailLogoAttachment, sendAuthEmail } from "@/lib/integrations/resend";
-import { sendWhatsappText } from "@/lib/integrations/whatsapp";
+import { placeCheckinCall, sendProactiveWhatsapp } from "@/lib/domain/whatsapp-outreach";
 import { composeCheckinOpener, composeMissedCallFollowup } from "@/lib/domain/message-intake";
 import { scheduleIdleWellnessCheckIns, isWithinQuietHours, nextTimeOutsideQuietHours } from "@/lib/domain/idle-wellness";
 import { scheduleHealthSignalCheckIns } from "@/lib/health/health-signals";
@@ -136,10 +136,14 @@ async function textInsteadOfCall(
   opener: string,
   whatsappStatus: "sent_whatsapp" | "escalated_whatsapp",
   pushTitle: string,
+  firstName?: string,
 ): Promise<{ status: string; via: "whatsapp" | "push" | "email" | null; error: string | null }> {
   if (phoneDigits && allowed.includes("whatsapp")) {
     try {
-      const outcome = await sendWhatsappText(phoneDigits, opener);
+      const outcome = await sendProactiveWhatsapp(supabase, phoneDigits, opener, {
+        firstName,
+        topic: checkIn.nura_plans?.title,
+      });
       if (outcome.skipped || outcome.error) throw new Error(outcome.error ?? "WhatsApp is not configured.");
       await insertOpenerMessage(supabase, checkIn.owner_id, checkIn.plan_id, opener);
       return { status: whatsappStatus, via: "whatsapp", error: null };
@@ -697,7 +701,7 @@ async function runTriggerCheckIns(request: NextRequest) {
         ));
 
         try {
-          const outcome = await sendWhatsappText(phone, opener);
+          const outcome = await sendProactiveWhatsapp(supabase, phone, opener, { firstName, topic: checkIn.nura_plans?.title });
           if (outcome.skipped) throw new Error("WhatsApp is not configured.");
           if (outcome.error) throw new Error(outcome.error);
 
@@ -809,7 +813,7 @@ async function runTriggerCheckIns(request: NextRequest) {
         primary.prompt,
         primary.nura_plans?.category,
       ));
-      const sent = await textInsteadOfCall(supabase, primary, phoneKey, allowed, opener, "sent_whatsapp", "Nura");
+      const sent = await textInsteadOfCall(supabase, primary, phoneKey, allowed, opener, "sent_whatsapp", "Nura", firstName);
       const status = sent.status;
       const callError =
         sent.via === "whatsapp"
@@ -847,7 +851,7 @@ async function runTriggerCheckIns(request: NextRequest) {
       const opener = await withAiTrace({ distinctId: primary.owner_id, sessionId: primary.plan_id }, () =>
         composeCheckinOpener(firstName, planTitle, primary.prompt, primary.nura_plans?.category),
       );
-      const sent = await textInsteadOfCall(supabase, primary, phoneKey, allowed, opener, "sent_whatsapp", "Nura");
+      const sent = await textInsteadOfCall(supabase, primary, phoneKey, allowed, opener, "sent_whatsapp", "Nura", firstName);
       const callError = sent.via
         ? `${note}; sent ${sent.via} instead of calling.`
         : `${note}; no WhatsApp/push/email delivery (${sent.error}).`;
@@ -886,11 +890,15 @@ async function runTriggerCheckIns(request: NextRequest) {
         checkin_goal: primary.prompt || context?.dynamicVariables.checkin_goal || "",
       };
 
-      const call = await placeOutboundCall({
+      // Rings on WhatsApp when this is their linked WhatsApp number and they've allowed calls,
+      // otherwise on the phone line. Calls to someone the owner cares for always use the phone.
+      const call = await placeCheckinCall(supabase, {
         toNumber,
         dynamicVariables,
         agentId: context?.elevenLabsAgentId,
         firstMessage: context?.firstMessage,
+        allowWhatsapp: !recipient,
+        firstName,
       });
 
       await supabase
@@ -920,7 +928,7 @@ async function runTriggerCheckIns(request: NextRequest) {
             },
       ).catch(() => null);
 
-      results.push({ checkInId: primary.id, planTitle, toNumber, status: "placed", conversationId: call.conversation_id });
+      results.push({ checkInId: primary.id, planTitle, toNumber, status: "placed", via: call.via, conversationId: call.conversation_id });
     } catch (error) {
       // The call never started (ElevenLabs refused it, credits gone, network...). The phone never
       // rang, so this is on Nura: record the real reason, tell Ike, text the person instead.
@@ -945,7 +953,7 @@ async function runTriggerCheckIns(request: NextRequest) {
       const opener = await withAiTrace({ distinctId: primary.owner_id, sessionId: primary.plan_id }, () =>
         composeMissedCallFollowup(firstName, planTitle, primary.prompt, "platform_failure"),
       );
-      const sent = await textInsteadOfCall(supabase, primary, phoneKey, allowed, opener, "escalated_whatsapp", "Nura");
+      const sent = await textInsteadOfCall(supabase, primary, phoneKey, allowed, opener, "escalated_whatsapp", "Nura", firstName);
       const callError = sent.via ? `${failNote}; sent ${sent.via} instead.` : `${failNote} (${sent.error})`;
 
       await supabase

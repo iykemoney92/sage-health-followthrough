@@ -5,6 +5,7 @@ import { loadRoutineTimes, saveRoutineTimes } from "@/lib/domain/routine-times";
 import { getSubscriptionAccess, isSubscriptionLockedOut } from "@/lib/billing/subscription";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { sendWhatsappText, downloadWhatsappMedia } from "@/lib/integrations/whatsapp";
+import { recordWhatsappInbound } from "@/lib/domain/whatsapp-outreach";
 import { extractWhatsappLinkCode } from "@/lib/whatsapp-link";
 import { logger } from "@/lib/logger";
 import { processAttachments } from "@/lib/ai/attachments";
@@ -613,11 +614,20 @@ export async function POST(request: NextRequest) {
 
     // Ack Meta immediately. Slow Claude replies were causing timeouts and silent drops.
     after(() =>
-      handleInboundMessage(parsed.data).catch((error) => {
-        logger.error("whatsapp_webhook.background_failed", {
-          message: error instanceof Error ? error.message : String(error),
-        });
-      }),
+      handleInboundMessage(parsed.data)
+        .catch((error) => {
+          logger.error("whatsapp_webhook.background_failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        })
+        // Their message opens Meta's 24h window for free-form replies. Recorded after handling so
+        // a message that just linked the number counts too. Taps on the call-permission request
+        // carry no text or media and don't count.
+        .finally(() =>
+          parsed.data.text || parsed.data.media.length > 0
+            ? recordWhatsappInbound(getSupabaseServerClient(), parsed.data.from)
+            : undefined,
+        ),
     );
 
     return NextResponse.json({ ok: true, accepted: true });

@@ -38,6 +38,24 @@ vi.mock("@/lib/integrations/resend", () => ({
   nuraEmailLogoAttachment: () => [],
 }));
 vi.mock("@/lib/integrations/whatsapp", () => ({ sendWhatsappText: m.whatsapp }));
+// The real module picks text vs template and WhatsApp call vs phone call (covered in
+// lib/domain/whatsapp-outreach.test.ts); here it passes straight through to the same mocks.
+vi.mock("@/lib/domain/whatsapp-outreach", () => ({
+  sendProactiveWhatsapp: (_supabase: unknown, phone: string, body: string) =>
+    (m.whatsapp as unknown as (phone: string, body: string) => unknown)(phone, body),
+  placeCheckinCall: async (
+    _supabase: unknown,
+    input: { toNumber: string; dynamicVariables: unknown; agentId?: string; firstMessage?: string },
+  ) => ({
+    ...(await m.placeCall({
+      toNumber: input.toNumber,
+      dynamicVariables: input.dynamicVariables,
+      agentId: input.agentId,
+      firstMessage: input.firstMessage,
+    })),
+    via: "phone",
+  }),
+}));
 vi.mock("@/lib/domain/message-intake", () => ({ composeCheckinOpener: m.opener, composeMissedCallFollowup: m.followup }));
 vi.mock("@/lib/domain/idle-wellness", () => ({
   scheduleIdleWellnessCheckIns: async () => ({ scheduled: [], skipped: 0 }),
