@@ -111,6 +111,10 @@ async function main() {
           prompt: { prompt: VOICE_PROMPT },
           dynamic_variables: { dynamic_variable_placeholders: DYNAMIC_VARIABLE_PLACEHOLDERS },
         },
+        // 25 Nov 2026 eval: the platform hung up after 30 s of silence, e.g. while someone cried
+        // after hearing the crisis numbers, though the prompt says never end that call. 120 s, as
+        // Vangie's agent (22 Nov). Set live on agent version agtvrsn_0601m88tswz8eettdk7tyb6gchar.
+        turn: { silence_end_call_timeout: 120 },
       },
     }),
   });

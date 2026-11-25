@@ -871,6 +871,19 @@
   color: var(--landing-ink);
   line-height: 1.5;
 }
+.try-first-crisis-note {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 2px solid #9a3b2a;
+  border-radius: 16px;
+}
+.try-first-crisis-note .try-first-label {
+  color: #9a3b2a;
+}
+.try-first-crisis-note .try-first-crisis-lead {
+  margin-top: 8px;
+  font-size: 16px;
+}
 .try-first-fineprint {
   margin: 14px 0 0;
   color: var(--landing-muted);
