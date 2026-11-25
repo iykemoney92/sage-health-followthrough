@@ -97,12 +97,14 @@ describe("urgentCareRule", () => {
     expect(rule).not.toMatch(/does not know where the reader is/);
   });
 
-  it("tells a reader in a country with no confirmed number to call the local emergency number, not 999 or 911", () => {
-    const rule = urgentCareRule({ country: "PH" });
+  // 25 Nov eval, F1: PH now has its confirmed number (911); ZA has none confirmed.
+  it("tells a reader in a country with no confirmed number to call the local emergency number, and never that a number does not work", () => {
+    const rule = urgentCareRule({ country: "ZA" });
     expect(rule).toMatch(/local emergency number/);
-    expect(rule).toMatch(/country code PH/);
+    expect(rule).toMatch(/country code ZA/);
     expect(rule).not.toMatch(/does not know where the reader is/);
-    expect(rule.replace(/Do not give[^.]*\./g, "")).not.toMatch(/999|911/);
+    expect(rule).not.toMatch(/which do not work there/);
+    expect(urgentCareRule({ country: "PH" })).toMatch(/in the Philippines, call 911/);
   });
 });
 
@@ -140,7 +142,7 @@ describe("crisisRule", () => {
   });
 
   it("gives no UK or US numbers to a reader elsewhere", () => {
-    const rule = crisisRule({ country: "PH" });
+    const rule = crisisRule({ country: "ZA" });
     expect(rule).toMatch(/local emergency number/);
     expect(rule).not.toMatch(/116 123|988|999|911/);
   });

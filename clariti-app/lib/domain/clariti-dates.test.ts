@@ -39,11 +39,12 @@ describe("detectDateOrder", () => {
     expect(detectDateOrder("EXPLANATION OF BENEFITS\nNorthside Health, Columbus OH 43215\nDate of service 03/11/2026\nPatient responsibility $120.00")).toBe("mdy");
   });
 
-  it("calls it a toss-up for a US reader when the document says nothing, and day/month for everyone else", () => {
+  it("calls it a toss-up for a US, Philippine or unknown reader when the document says nothing, and day/month for everyone else", () => {
     expect(detectDateOrder("Appointment 03/11/2026", "US")).toBe("either");
+    expect(detectDateOrder("Appointment 03/11/2026", "PH")).toBe("either");
+    expect(detectDateOrder("Appointment 03/11/2026", null)).toBe("either");
     expect(detectDateOrder("Appointment 03/11/2026", "GB")).toBe("dmy");
     expect(detectDateOrder("Appointment 03/11/2026", "DE")).toBe("dmy");
-    expect(detectDateOrder("Appointment 03/11/2026", null)).toBe("dmy");
   });
 });
 
