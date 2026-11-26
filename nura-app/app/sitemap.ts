@@ -40,6 +40,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly" as const,
       priority: 0.6,
     })),
+    { url: `${appUrl}/tools`, changeFrequency: "monthly", priority: 0.6 },
     ...TOOLS.map((tool) => ({
       url: `${appUrl}/tools/${tool.slug}`,
       changeFrequency: "monthly" as const,
