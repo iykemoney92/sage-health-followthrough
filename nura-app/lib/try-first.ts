@@ -5,7 +5,19 @@
  * side until they sign up and finish onboarding.
  */
 export const TRY_FIRST_MIN_CHARS = 12;
+/** Scripts that say more per character (Arabic, Chinese, Hindi…): 12 characters is a full sentence. */
+export const TRY_FIRST_MIN_CHARS_OTHER_SCRIPTS = 4;
 export const TRY_FIRST_MAX_CHARS = 1500;
+
+/**
+ * Too short to make a plan from. Latin-script text needs 12 characters; text in another script
+ * needs 4 (26 Nov 2026: "أريد الموت" is 10 characters and was told to "write a little more").
+ */
+export function tryFirstTooShort(text: string) {
+  const trimmed = text.trim();
+  const otherScript = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(trimmed);
+  return trimmed.length < (otherScript ? TRY_FIRST_MIN_CHARS_OTHER_SCRIPTS : TRY_FIRST_MIN_CHARS);
+}
 
 const STORAGE_KEY = "nura.tryFirst";
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;

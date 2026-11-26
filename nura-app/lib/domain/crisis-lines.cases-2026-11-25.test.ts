@@ -56,7 +56,8 @@ const NEVER_BLOCK: Array<[string, "alongside" | null]> = [
 
 describe("crisis screen: 25 Nov 2026 eval cases", () => {
   it.each(MUST_BLOCK)("shows the numbers alone for %j", (text, kind) => {
-    expect(screenCrisis(text)).toEqual({ kind, mode: "block" });
+    // toMatchObject: Spanish and French hits now also carry the language of the rule that matched.
+    expect(screenCrisis(text)).toMatchObject({ kind, mode: "block" });
   });
 
   it.each(NEVER_BLOCK)("still gives a plan for %j", (text, mode) => {
@@ -69,10 +70,12 @@ describe("crisis screen: 25 Nov 2026 eval cases", () => {
     expect(s.mode).toBe("alongside");
     expect(s.lead).toContain("Samaritans on 116 123");
     expect(s.lead).toContain("999");
+    // Unknown country (26 Nov 2026): the local emergency number leads, UK numbers only as an example.
     const e = crisisGuidance("emergency", null, "alongside");
-    expect(e.lead).toContain("999");
-    expect(e.message).toContain("call your local emergency number");
-    expect(e.message).toContain("NHS 111");
+    expect(e.lead).toContain("call your local emergency number");
+    expect(e.lead).not.toContain("999");
+    expect(e.message).toContain("999 in the UK");
+    expect(crisisGuidance("emergency", "GB", "alongside").message).toContain("NHS 111");
     expect(crisisGuidance("emergency", "US", "alongside").lead).toContain("911");
     expect(crisisGuidance("suicide", "US", "alongside").lead).toContain("988");
   });

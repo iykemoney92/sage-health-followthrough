@@ -9,16 +9,19 @@ import {
   crisisCountry,
   countryFromLocale,
   crisisGuidance,
+  messageLanguage,
   screenCrisis,
+  tryFirstHelpLine,
   type CrisisGuidance,
   type CrisisKind,
+  type CrisisLang,
   type CrisisScreen,
 } from "@/lib/domain/crisis-lines";
 import { checkinOpenerFallback, composeCheckinOpener } from "@/lib/domain/message-intake";
 import { gateTryFirstText } from "@/lib/domain/try-first-gate";
 import { getSupabaseServerClient } from "@/lib/integrations/supabase";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { TRY_FIRST_MAX_CHARS, TRY_FIRST_MIN_CHARS } from "@/lib/try-first";
+import { TRY_FIRST_MAX_CHARS, TRY_FIRST_MIN_CHARS, tryFirstTooShort } from "@/lib/try-first";
 import { newAiTrace, withAiTrace } from "@/lib/ai/trace";
 
 // "Try Nura first" on the home page: no account. Turns what a visitor types into the Care plan and
@@ -37,7 +40,8 @@ const DAY_SECONDS = 24 * 60 * 60;
 const EVERYONE_ID = "00000000-0000-4000-8000-000000007e57";
 
 const bodySchema = z.object({
-  text: z.string().trim().min(TRY_FIRST_MIN_CHARS).max(TRY_FIRST_MAX_CHARS),
+  // Length is checked by tryFirstTooShort (12 characters, or 4 in scripts such as Arabic).
+  text: z.string().trim().min(1).max(TRY_FIRST_MAX_CHARS).refine((value) => !tryFirstTooShort(value)),
   locale: z.string().max(40).optional(),
   /** The visitor tapped "It isn't an emergency: show me the plan" on an emergency card. */
   notEmergency: z.boolean().optional(),
@@ -71,14 +75,14 @@ const TIMED_OUT = Symbol("timed-out");
 
 /**
  * Country for crisis numbers: the browser's locale region first ("en-US"), then the country
- * Vercel sees the request from. Unsupported or unknown → null (UK numbers plus "your local
- * emergency number").
+ * Vercel sees the request from. Unsupported or unknown → null ("your local emergency number" and
+ * findahelpline.com; never another country's numbers as the instruction).
  */
 function visitorCountry(request: NextRequest, locale: string | undefined) {
   const fromLocale = countryFromLocale(locale);
   const fromIp = request.headers.get("x-vercel-ip-country")?.trim().toUpperCase() || null;
   // "en-US" is the default locale on many phones outside the US: when the two disagree, don't
-  // pick one; fall back to UK numbers plus "your local emergency number".
+  // pick one; fall back to "your local emergency number".
   if (fromLocale && fromIp && fromLocale !== fromIp) return null;
   return crisisCountry(fromLocale ?? fromIp);
 }
@@ -89,9 +93,15 @@ function visitorCountry(request: NextRequest, locale: string | undefined) {
  * page that only knows `message` still shows the numbers as its error line. An emergency card can
  * be passed with "It isn't an emergency" (`canContinue`): the plan then comes with the numbers.
  */
-function crisisResponse(request: NextRequest, kind: CrisisKind, locale: string | undefined, source: "screen" | "model") {
-  const guidance = crisisGuidance(kind, visitorCountry(request, locale));
-  console.info("[try-first] crisis:", kind, source, "block", guidance.country ?? "unknown");
+function crisisResponse(
+  request: NextRequest,
+  kind: CrisisKind,
+  locale: string | undefined,
+  source: "screen" | "model",
+  lang: CrisisLang,
+) {
+  const guidance = crisisGuidance(kind, visitorCountry(request, locale), "block", lang);
+  console.info("[try-first] crisis:", kind, source, "block", guidance.country ?? "unknown", lang);
   return NextResponse.json(
     { ok: false, error: "crisis", crisis: guidance, message: guidance.message, canContinue: kind === "emergency" },
     { status: 200 },
@@ -107,16 +117,24 @@ export async function POST(request: NextRequest) {
   // would read as gibberish to the gate, but must still get the numbers. No model call.
   // Fail safe (25 Nov 2026): a crisis word that may be a past event, an idiom or a reminder
   // ("Dad had a heart attack last year") adds the numbers to the plan instead of replacing it.
+  // 26 Nov 2026: the screen also reads Spanish, Portuguese, French, Indonesian and Arabic, and the
+  // card is written in the message's language (its script or commonest words, then the browser's).
   let screen: CrisisScreen | null = null;
-  if (typeof raw?.text === "string") {
-    screen = screenCrisis(raw.text.slice(0, TRY_FIRST_MAX_CHARS * 2));
+  const rawText = typeof raw?.text === "string" ? raw.text.slice(0, TRY_FIRST_MAX_CHARS * 2) : "";
+  const lang = messageLanguage(rawText, rawLocale, null);
+  if (rawText) {
+    screen = screenCrisis(rawText);
     if (screen?.mode === "block" && !(notEmergency && screen.kind === "emergency")) {
-      return crisisResponse(request, screen.kind, rawLocale, "screen");
+      return crisisResponse(request, screen.kind, rawLocale, "screen", messageLanguage(rawText, rawLocale, screen.lang));
     }
   }
+  const cardLang = messageLanguage(rawText, rawLocale, screen?.lang);
   // Too short, off topic or over the limit: there's no plan to put the numbers next to, so a
   // crisis word gets the numbers on their own.
-  const noPlanCrisis = () => (screen ? crisisResponse(request, screen.kind, rawLocale, "screen") : null);
+  const noPlanCrisis = () => (screen ? crisisResponse(request, screen.kind, rawLocale, "screen", cardLang) : null);
+  // A message the screen could not read and the checks below turn away: the nudge is never the
+  // only thing shown. One quiet line with who to call, in the visitor's language.
+  const help = () => tryFirstHelpLine(lang, visitorCountry(request, rawLocale));
 
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
@@ -127,6 +145,7 @@ export async function POST(request: NextRequest) {
           ok: false,
           error: "invalid",
           message: `Write a little about what’s going on (at least ${TRY_FIRST_MIN_CHARS} characters).`,
+          ...(rawText.trim() ? { help: help() } : {}),
         },
         { status: 400 },
       )
@@ -134,7 +153,7 @@ export async function POST(request: NextRequest) {
   }
   const text = parsed.data.text;
   const country = () => visitorCountry(request, parsed.data.locale);
-  const limitCrisis = () => (screen ? crisisGuidance(screen.kind, country()) : null);
+  const limitCrisis = () => (screen ? crisisGuidance(screen.kind, country(), "block", cardLang) : null);
 
   // Probes, gibberish and non-care requests get a friendly nudge, not a plan (22 Nov 2026: a
   // "connectivity test" became a Care plan). Before the rate limit, so it costs the visitor
@@ -144,7 +163,10 @@ export async function POST(request: NextRequest) {
     const crisis = noPlanCrisis();
     if (crisis) return crisis;
     console.info("[try-first] off-topic:", gate.reason);
-    return NextResponse.json({ ok: false, error: "off_topic", reason: gate.reason, message: gate.message }, { status: 422 });
+    return NextResponse.json(
+      { ok: false, error: "off_topic", reason: gate.reason, message: gate.message, help: help() },
+      { status: 422 },
+    );
   }
 
   if (checkKeyedRateLimit("try-first:instance", PER_INSTANCE_PER_HOUR, 60 * 60).limited) {
@@ -190,7 +212,9 @@ export async function POST(request: NextRequest) {
     plan = drafted;
     // The model's own safety flag, for crisis or emergency wording the screen above missed.
     if (plan.safety) {
-      if (!(notEmergency && plan.safety === "emergency")) return crisisResponse(request, plan.safety, parsed.data.locale, "model");
+      if (!(notEmergency && plan.safety === "emergency")) {
+        return crisisResponse(request, plan.safety, parsed.data.locale, "model", cardLang);
+      }
       alongside = "emergency";
       alongsideSource = "model";
     }
@@ -213,7 +237,7 @@ export async function POST(request: NextRequest) {
     15000,
   );
 
-  const crisis = alongside ? crisisGuidance(alongside, country(), "alongside") : null;
+  const crisis = alongside ? crisisGuidance(alongside, country(), "alongside", cardLang) : null;
   if (crisis) console.info("[try-first] crisis:", crisis.kind, alongsideSource, "alongside", crisis.country ?? "unknown");
 
   return NextResponse.json({

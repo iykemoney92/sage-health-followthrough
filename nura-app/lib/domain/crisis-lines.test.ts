@@ -58,7 +58,12 @@ describe("crisis and emergency screen (22 Nov 2026 eval)", () => {
   });
 
   it("is checked before the probe gate, which would call short crisis text gibberish", () => {
-    expect(gateTryFirstText("kill myself").ok).toBe(false);
+    // One word is still gibberish to the gate, so the screen must run first.
+    expect(gateTryFirstText("kms").ok).toBe(false);
+    expect(detectCrisis("kms")).toBe("suicide");
+    // 26 Nov 2026: two real words are no longer called gibberish (they could be another language),
+    // so even if the screen missed them they would reach the model's safety check.
+    expect(gateTryFirstText("kill myself").ok).toBe(true);
     expect(detectCrisis("kill myself")).toBe("suicide");
   });
 });
@@ -72,13 +77,14 @@ describe("crisis numbers by country", () => {
     expect(crisisGuidance("emergency", "US").lead).toContain("call 911 right now");
   });
 
-  it("gives UK numbers plus 'your local emergency number' when the country is unknown", () => {
+  // 26 Nov 2026: an unknown country used to lead with Samaritans and 999, wherever the visitor was.
+  it("leads with 'your local emergency number' and findahelpline.com when the country is unknown", () => {
     const g = crisisGuidance("suicide", null);
-    expect(g.lead).toContain("Samaritans on 116 123");
-    expect(g.message).toContain("call your local emergency number");
+    expect(g.lead).toContain("call your local emergency number");
+    expect(g.lead).toContain("https://findahelpline.com");
+    expect(g.lead).not.toMatch(/116 123|999/);
     const e = crisisGuidance("emergency", null);
-    expect(e.lead).toContain("999");
-    expect(e.message).toContain("call your local emergency number");
+    expect(e.lead).toBe("Please call your local emergency number right now, or ask someone with you to call.");
   });
 
   it("reads the country from a locale or a phone number", () => {
@@ -97,7 +103,9 @@ describe("crisis numbers by country", () => {
     expect(voiceCountryNote("17065550100")).toContain("not the UK ones");
     expect(voiceCountryNote("447700900123")).toContain("Samaritans on 116 123");
     expect(voiceCountryNote("2348012345678")).toContain("112");
-    expect(voiceCountryNote("33612345678")).toContain("local emergency number");
+    expect(voiceCountryNote("33612345678")).toContain("3114");
+    expect(voiceCountryNote("5511912345678")).toContain("CVV on 188");
+    expect(voiceCountryNote("4915112345678")).toContain("local emergency number");
     expect(voiceCountryNote(null)).toContain("ask where they are");
   });
 });

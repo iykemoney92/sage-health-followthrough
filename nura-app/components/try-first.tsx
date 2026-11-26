@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, LifeBuoy, Loader2, MessageCircle, Phone, Smartphone } from "lucide-react";
 import { track } from "@/lib/analytics";
 import { NURA_PRODUCT } from "@/lib/product/nura-story";
-import { saveTryFirst, TRY_FIRST_MAX_CHARS, TRY_FIRST_MIN_CHARS, type TryFirstResult } from "@/lib/try-first";
+import { saveTryFirst, TRY_FIRST_MAX_CHARS, tryFirstTooShort, type TryFirstResult } from "@/lib/try-first";
 
 // Companion first: everyday wellbeing and the people you look out for, not clinics or drugs.
 const EXAMPLES = [
@@ -19,7 +19,34 @@ const EXAMPLES = [
  * Crisis or emergency text gets numbers to call instead of a plan, or above the plan when the
  * crisis words may be a past event, an idiom or a reminder (app/api/try/plan).
  */
-type TryFirstCrisis = { kind: "suicide" | "emergency"; mode?: "block" | "alongside"; title: string; lead: string; more: string[] };
+type TryFirstCrisis = {
+  kind: "suicide" | "emergency";
+  mode?: "block" | "alongside";
+  title: string;
+  lead: string;
+  more: string[];
+  // The card is written in the language of the message (26 Nov 2026), with its own fixed words.
+  lang?: string;
+  dir?: "ltr" | "rtl";
+  labels?: { tagSuicide: string; tagEmergency: string; back: string; notEmergency: string; fineprint: string };
+};
+
+const HELPLINE_URL = "https://findahelpline.com";
+
+/** A line of the card, with findahelpline.com as a link. */
+function CrisisLine({ text }: { text: string }) {
+  const at = text.indexOf(HELPLINE_URL);
+  if (at === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, at)}
+      <a href={HELPLINE_URL} target="_blank" rel="noopener noreferrer" dir="ltr">
+        findahelpline.com
+      </a>
+      {text.slice(at + HELPLINE_URL.length)}
+    </>
+  );
+}
 
 function browserLocale() {
   try {
@@ -66,9 +93,12 @@ export function TryFirst() {
   const [canContinue, setCanContinue] = useState(false);
   // Crisis lines shown above the plan.
   const [crisisNote, setCrisisNote] = useState<TryFirstCrisis | null>(null);
+  // Who to call, shown under a "write a little more" or off-topic nudge so the nudge is never
+  // the only thing someone in distress sees.
+  const [help, setHelp] = useState<string | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
-  const ready = text.trim().length >= TRY_FIRST_MIN_CHARS;
+  const ready = !tryFirstTooShort(text);
 
   const submit = async (notEmergency = false) => {
     if (loading) return;
@@ -76,12 +106,16 @@ export function TryFirst() {
       setNudged(true);
       textRef.current?.focus();
       track("try_first_blocked_tap", { length: text.trim().length });
-      return;
+      // Nothing written: just the hint. Something short ("mau mati", "kms") still goes to the
+      // server, which screens it for a crisis before any length check and never calls a model
+      // for it (26 Nov 2026: short crisis text never left the browser).
+      if (text.trim().length < 2) return;
     }
     setLoading(true);
     setError(null);
     setOffTopic(false);
-    track("try_first_submit", { length: text.trim().length });
+    setHelp(null);
+    if (ready) track("try_first_submit", { length: text.trim().length });
     try {
       const res = await fetch("/api/try/plan", {
         method: "POST",
@@ -94,10 +128,16 @@ export function TryFirst() {
             error?: string;
             reason?: string;
             message?: string;
+            help?: string;
             crisis?: TryFirstCrisis;
             canContinue?: boolean;
           })
         | null;
+      setHelp(typeof data?.help === "string" ? data.help : null);
+      if (data?.error === "invalid") {
+        // Too short for a plan and not a crisis: the "write a sentence" hint stays, with the help line.
+        return;
+      }
       if ((data?.error === "crisis" || data?.error === "limited") && data.crisis) {
         // Suicidal thoughts, self-harm or a medical emergency: the numbers to call, never a plan.
         // Also when the visitor is over the try limit: the numbers still come first.
@@ -142,25 +182,29 @@ export function TryFirst() {
     setCanContinue(false);
     setCrisisNote(null);
     setError(null);
+    setHelp(null);
     track("try_first_reset");
   };
 
   if (crisis) {
     return (
-      <div className="try-first-result try-first-crisis" role="alert" aria-live="assertive">
+      <div className="try-first-result try-first-crisis" role="alert" aria-live="assertive" lang={crisis.lang} dir={crisis.dir}>
         <span className="try-first-label">
-          <LifeBuoy size={14} /> {crisis.kind === "emergency" ? "Get help now" : "You’re not alone"}
+          <LifeBuoy size={14} />{" "}
+          {crisis.kind === "emergency" ? (crisis.labels?.tagEmergency ?? "Get help now") : (crisis.labels?.tagSuicide ?? "You’re not alone")}
         </span>
         <h3>{crisis.title}</h3>
-        <p className="try-first-crisis-lead">{crisis.lead}</p>
+        <p className="try-first-crisis-lead">
+          <CrisisLine text={crisis.lead} />
+        </p>
         {crisis.more.map((line) => (
           <p key={line} className="try-first-crisis-more">
-            {line}
+            <CrisisLine text={line} />
           </p>
         ))}
         <div className="try-first-actions">
           <button type="button" className="try-first-again" onClick={reset}>
-            Go back
+            {crisis.labels?.back ?? "Go back"}
           </button>
           {canContinue ? (
             <button
@@ -174,11 +218,11 @@ export function TryFirst() {
                 void submit(true);
               }}
             >
-              It isn’t an emergency: show me the plan
+              {crisis.labels?.notEmergency ?? "It isn’t an emergency: show me the plan"}
             </button>
           ) : null}
         </div>
-        <p className="try-first-fineprint">Nura is a wellbeing companion, not an emergency service.</p>
+        <p className="try-first-fineprint">{crisis.labels?.fineprint ?? "Nura is a wellbeing companion, not an emergency service."}</p>
       </div>
     );
   }
@@ -188,14 +232,16 @@ export function TryFirst() {
     return (
       <div className="try-first-result" aria-live="polite">
         {crisisNote ? (
-          <aside className="try-first-crisis-note" role="note">
+          <aside className="try-first-crisis-note" role="note" lang={crisisNote.lang} dir={crisisNote.dir}>
             <span className="try-first-label">
               <LifeBuoy size={14} /> {crisisNote.title}
             </span>
-            <p className="try-first-crisis-lead">{crisisNote.lead}</p>
+            <p className="try-first-crisis-lead">
+              <CrisisLine text={crisisNote.lead} />
+            </p>
             {crisisNote.more.map((line) => (
               <p key={line} className="try-first-crisis-more">
-                {line}
+                <CrisisLine text={line} />
               </p>
             ))}
           </aside>
@@ -265,6 +311,7 @@ export function TryFirst() {
           setText(event.target.value);
           setError(null);
           setNudged(false);
+          setHelp(null);
         }}
       />
       <div className="try-first-examples" role="group" aria-label="Examples">
@@ -314,6 +361,11 @@ export function TryFirst() {
           </p>
         ) : null}
       </div>
+      {help ? (
+        <p className="try-first-help" role="note" dir="auto">
+          <LifeBuoy size={14} aria-hidden="true" /> <CrisisLine text={help} />
+        </p>
+      ) : null}
       <p className="try-first-fineprint">
         No account needed. To draft this, what you write is sent to Anthropic’s Claude model, and a copy of the
         request and reply goes to PostHog (EU) so we can check the quality of Nura’s answers; nothing is saved to an
