@@ -89,7 +89,9 @@ describe("urgentCareRule", () => {
     ["NG", /call 112/, /999|911/],
     ["CA", /call 911/, /999|111/],
     ["AU", /call 000/, /999|911/],
-    ["FR", /give 112/, /call 999|call 911/],
+    // FR has its own entry since 26 Nov (3114 / 112); DE keeps the EU 112 path covered.
+    ["FR", /in France, call 112/, /call 999|call 911/],
+    ["DE", /give 112/, /call 999|call 911/],
   ])("uses the reader's known country %s", (country, wanted, wrong) => {
     const rule = urgentCareRule({ country });
     expect(rule).toMatch(wanted);

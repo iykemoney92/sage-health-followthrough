@@ -3,7 +3,7 @@ import { generateObject, type LanguageModel } from "ai";
 import { z } from "zod";
 import { buildFallbackAnalysis } from "@/lib/domain/clariti-fallback-analysis";
 import { getClaritiKindMeta } from "@/lib/domain/clariti-document-kinds";
-import { DOSE_RULE, SCAM_RULE, crisisRule, dateOrderFor, dateRule, safetyFlagsFor, urgentCareRule, type ClaritiReader } from "@/lib/ai/clariti-safety";
+import { ANALYSIS_LANGUAGE_RULE, DOSE_RULE, SCAM_RULE, crisisRule, dateOrderFor, dateRule, safetyFlagsFor, urgentCareRule, type ClaritiReader } from "@/lib/ai/clariti-safety";
 
 export const claritiDocumentKindSchema = z.enum([
   "medical_bill",
@@ -112,6 +112,7 @@ export async function analyzeClaritiDocument(input: AnalyzeInput, wrapModel: Wra
         "Flag labels are short headlines the user sees first, so keep them calm and specific rather than blunt or alarming — " +
         "prefer 'Some changes since your last scan' over 'Things have gotten worse', and 'A nerve is being touched' over dramatic phrasing. " +
         "Reserve severity 'urgent' only for findings that need prompt medical attention; use 'check' for things worth discussing with a clinician, and 'info' for reassuring or purely informational notes. " +
+        ANALYSIS_LANGUAGE_RULE + " " +
         urgentCareRule(input.reader) + " " +
         crisisRule(input.reader) + " When that applies to this analysis: summary is the warm sentence with the crisis number, the first flag has severity 'urgent' and gives the same numbers, and safetyNote repeats the number. " +
         SCAM_RULE + " When that applies to this analysis: the summary says it looks like a scam, the first flag has severity 'urgent' and says not to click, call or pay, and nextActions say to contact the organisation through its official website. " +
