@@ -48,6 +48,17 @@ describe("tools list", () => {
     }
   });
 
+  it("lists the /tools hub in llms.txt and the sitemap", () => {
+    const llms = readFileSync(join(__dirname, "../../public/llms.txt"), "utf8");
+    expect(llms).toContain("https://usenura.app/tools)");
+    expect(sitemap().map((entry) => entry.url)).toContain("https://usenura.app/tools");
+  });
+
+  it("links each guide to at most one tool", () => {
+    const slugs = TOOLS.flatMap((tool) => tool.guides);
+    expect(new Set(slugs).size).toBe(slugs.length);
+  });
+
   it("tags the call to action for this tool", () => {
     expect(toolSignupHref(TOOLS[0])).toBe(
       "/signup?utm_source=site&utm_medium=web&utm_campaign=nura_nov26&utm_content=tool-medicine-schedule",

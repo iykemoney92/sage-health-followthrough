@@ -97,9 +97,11 @@ Plain-English guides on everyday wellbeing and caring: an AI companion that chec
 
 ## Free tools
 
-Free tools that run in your browser, with no sign-up. Nothing you type is uploaded.
+Free tools that run in your browser, with no sign-up. Nothing you type is uploaded. All of them are listed at [Free tools](https://usenura.app/tools).
 
 - [Printable medicine schedule maker](https://usenura.app/tools/medicine-schedule): add each medicine, dose, times of day and days, and print a weekly tick-box chart (A4 or US Letter) or save it as a PDF. A personal reminder chart, not medical advice; it has no drug data and gives no dose advice.
+- [Is this a scam? Scam message and call checker](https://usenura.app/tools/is-this-a-scam): paste a text, email, WhatsApp or social message, or describe a call, answer a few questions, and see common warning signs (pressure, unusual payment requests, "Hi Mum, new number", parcel fees, passcode requests, lookalike links) highlighted, with official UK and US reporting steps. Rule-based, runs in the browser, no AI; it never says a message is safe.
+- [Free brain games for older adults](https://usenura.app/tools/brain-games): a memory match, a daily seven-letter word puzzle and number games at three levels, with large text and no timer unless chosen. Streaks stay in the browser. No health claims.
 
 ## Links
 
