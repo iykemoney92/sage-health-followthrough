@@ -884,6 +884,19 @@
   margin-top: 8px;
   font-size: 16px;
 }
+.try-first-crisis a,
+.try-first-crisis-note a,
+.try-first-help a {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+}
+.try-first-help {
+  margin: 12px 0 0;
+  color: var(--landing-ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
 .try-first-fineprint {
   margin: 14px 0 0;
   color: var(--landing-muted);

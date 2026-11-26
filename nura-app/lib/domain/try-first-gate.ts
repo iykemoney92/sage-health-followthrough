@@ -6,6 +6,16 @@
  *
  * Deterministic and deliberately cautious: anything that mentions a person, a feeling or a part of
  * everyday wellbeing goes through, so a real (if short or odd) message is never turned away.
+ *
+ * 26 Nov 2026 (non-English safety check): "mau mati", "quero sumir", "أريد الموت" and "بدي موت"
+ * were turned away as gibberish (fewer than three words) with no model call and no numbers. Order
+ * of the checks on a try-first message now:
+ *   1. the crisis screen (crisis-lines.ts), in six languages, before this gate and the length check;
+ *   2. this gate, which no longer calls a short message gibberish when it could be another language
+ *      (any non-ASCII letter, or two real-looking words that aren't English filler): it goes to the
+ *      model, whose safety check is by meaning, not keywords;
+ *   3. anything still turned away, or too short, is shown `tryFirstHelpLine` under the nudge, so
+ *      the nudge is never the only thing a person in distress sees.
  */
 
 export type TryFirstGateReason = "probe" | "gibberish" | "not_care";
@@ -56,6 +66,24 @@ const CARE_SIGNAL = new RegExp(
 
 const VOWEL = /[aeiouy]/i;
 
+/** English words that make a two-word message a greeting or a shrug, not something to plan from. */
+const ENGLISH_FILLER = new Set(
+  "hello hi hey hiya yo sup there ok okay yes no nope yeah yep thanks thank you please good great fine cool nice lol haha hmm what whats who why how when where is are it this that the and or so just nothing idk dunno bye nura ai app chatgpt claude bot test testing"
+    .split(" "),
+);
+
+/**
+ * A message of one or two words that may be real words in another language, so it must not be
+ * called gibberish: it has a letter outside ASCII (another script, or an accent), or it is two
+ * different words with vowels that are not English filler ("mau mati", "quero sumir").
+ */
+function couldBeAnotherLanguage(text: string, distinct: Set<string>) {
+  if (/[^\x00-\x7F]/.test(text.replace(/[^\p{L}]/gu, ""))) return true;
+  if (distinct.size < 2) return false;
+  const list = [...distinct];
+  return list.every((w) => VOWEL.test(w)) && list.some((w) => !ENGLISH_FILLER.has(w.replace(/[’']/g, "")));
+}
+
 function words(text: string) {
   return text.toLowerCase().match(/[\p{L}\p{M}’']+/gu) ?? [];
 }
@@ -75,7 +103,7 @@ function looksLikeGibberish(text: string) {
     if (noVowel.length > 0 && noVowel.length / latin.length >= 0.3) return true;
   }
   const distinct = new Set(all.filter((w) => w.length >= 2));
-  if (distinct.size < 3) return true;
+  if (distinct.size < 3 && !couldBeAnotherLanguage(text, distinct)) return true;
   // The same letter five or more times in a row, in more than one place ("aaaaa bbbbb").
   if ((text.match(/(\p{L})\1{4,}/gu) ?? []).length >= 2) return true;
   return false;

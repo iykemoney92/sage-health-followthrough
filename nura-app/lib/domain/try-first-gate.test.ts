@@ -64,3 +64,35 @@ describe("try-first gate: lets real messages through", () => {
     expect(gateTryFirstText(text)).toEqual({ ok: true });
   });
 });
+
+// 26 Nov 2026 non-English safety check: short messages in other languages were turned away as
+// gibberish ("fewer than three words") with no model call. The crisis screen catches the crisis
+// ones first; the rest must reach the model, whose safety check is by meaning.
+describe("try-first gate: short messages that could be another language go through", () => {
+  it.each([
+    // The six from the check (the crisis screen catches these before the gate; the gate must not
+    // be what stops them if the screen ever misses).
+    "mau mati",
+    "capek hidup",
+    "quero sumir",
+    "quiero desaparecer",
+    "أريد الموت",
+    "بدي موت",
+    // Other scripts and accents, one or two words.
+    "死にたい",
+    "मुझे मदद चाहिए",
+    "помогите мне",
+    "não aguento",
+    "estoy fatal",
+    "sakit hati banget",
+  ])("lets %j through", (text) => {
+    expect(gateTryFirstText(text)).toEqual({ ok: true });
+  });
+
+  it.each(["hello there", "ok thanks", "hey nura", "yes please", "asdf qwer", "sdfsdf sdfsdf", "bcdfg hjklm", "hello", "sumir", "aaaaa bbbbb"])(
+    "still turns away %j",
+    (text) => {
+      expect(gateTryFirstText(text).ok).toBe(false);
+    },
+  );
+});

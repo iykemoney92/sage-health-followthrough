@@ -17,7 +17,7 @@ import {
 export type PlanDraft = JourneyDraftFields & { safety?: CrisisKind };
 
 const SAFETY_RULE =
-  "Safety first: if the text mentions suicide, wanting to die or not wanting to be here, self-harm, an overdose, or saving up or stockpiling tablets, add \"safety\": \"suicide\". " +
+  "Safety first, in whatever language the text is written (judge by meaning, not by English keywords): if the text mentions suicide, wanting to die or not wanting to be here, self-harm, an overdose, or saving up or stockpiling tablets, add \"safety\": \"suicide\". " +
   "If it describes a medical emergency happening now (chest pain or pressure, signs of a stroke such as a drooping face, arm weakness or slurred speech, can't breathe, blue lips, choking, a fall with a head injury or can't get up, someone collapsed or unconscious, a seizure, a swelling throat or tongue after eating, heavy bleeding that won't stop), add \"safety\": \"emergency\". " +
   "Never turn a crisis or an emergency into a routine plan or a later check-in. Otherwise leave \"safety\" out. " +
   "A past event (\"Dad had a heart attack last year\", \"my son used to self-harm\"), a figure of speech (\"killing myself with these shifts\", \"choking up\"), a song or film title, or taking medicines as prescribed (\"took all my pills this morning, remind me tomorrow\") is not a crisis: make the plan and leave \"safety\" out. ";
