@@ -26,8 +26,14 @@ vi.mock("@/lib/integrations/supabase-server", () => ({
   getSupabaseSessionClient: async () => fakeClient,
 }));
 vi.mock("@/lib/ai-consent", () => ({ hasAiConsent: () => true, aiConsentRequiredResponse: () => new Response(null, { status: 403 }) }));
-vi.mock("@/lib/rate-limit", () => ({ enforceRateLimit: async () => null }));
-vi.mock("@/lib/billing/card-first", () => ({ requireTrialOrPlus: async () => null }));
+let gate: "none" | "rate" | "trial" = "none";
+vi.mock("@/lib/rate-limit", () => ({
+  enforceRateLimit: async () => (gate === "rate" ? new Response(JSON.stringify({ ok: false, error: "rate" }), { status: 429 }) : null),
+}));
+vi.mock("@/lib/billing/card-first", () => ({
+  requireTrialOrPlus: async () => (gate === "trial" ? new Response(JSON.stringify({ ok: false, error: "plus_required" }), { status: 402 }) : null),
+}));
+let modelCalls = 0;
 
 let reply = "";
 let lastSystem = "";
@@ -38,6 +44,7 @@ vi.mock("@/lib/ai/trace", () => ({
       provider: "anthropic.messages",
       modelId: "claude-opus-5",
       doGenerate: async (options) => {
+        modelCalls += 1;
         const prompt = options.prompt as Array<{ role: string; content: unknown }>;
         lastSystem = String(prompt.find((message) => message.role === "system")?.content ?? "");
         return {
@@ -104,5 +111,71 @@ describe("POST /api/messages safety rules", () => {
     reply = "Your review is dated l2/ll/2026 on this copy, which reads as 12 November 2026. It lists metformin 5OOmg, which looks like 500mg: check it against your copy or ask your pharmacist.";
     const body = await (await POST(request("When was my review?", "GB"))).json();
     expect(body.assistant).toBe(reply);
+  });
+});
+
+describe("POST /api/messages crisis backstop (26 Nov non-English check)", () => {
+  beforeEach(() => {
+    process.env.AI_GATEWAY_API_KEY = "test-only";
+    for (const key of Object.keys(rows)) delete rows[key];
+    rows.clariti_session_documents = [{ document_id: "d1" }];
+    rows.clariti_documents = [{ id: "d1", file_name: "scan_0042.jpg", kind: "medication_context", extracted_text: a7.documentText, created_at: "2026-11-12T09:00:00Z" }];
+    gate = "none";
+    modelCalls = 0;
+  });
+  afterEach(() => {
+    delete process.env.AI_GATEWAY_API_KEY;
+    gate = "none";
+  });
+
+  it("tells the model to answer in the user's language", async () => {
+    reply = "Su revisión enumera cuatro medicamentos.";
+    await POST(request("¿Qué medicamentos tomo?", "US"));
+    expect(lastSystem).toMatch(/LANGUAGE: reply in the language the user writes in/);
+  });
+
+  it("appends Brazil's lines in Portuguese when the model answers the paperwork and misses the crisis", async () => {
+    reply = "Sua revisão lista quatro remédios.";
+    const body = await (await POST(request("Não aguento mais. Vou me matar hoje à noite, já separei os remédios.", "BR"))).json();
+    expect(body.assistant.startsWith(reply)).toBe(true);
+    expect(body.assistant).toMatch(/ligue para o CVV no 188/);
+    expect(body.assistant).toMatch(/192/);
+    expect(body.assistant).not.toMatch(/116 123|\b999\b|\b911\b/);
+  });
+
+  it("leaves a reply that already gives the US numbers", async () => {
+    reply = "Siento mucho que estés pasando por esto. Llama o escribe al 988 ahora, o al 911 si estás en peligro.";
+    const body = await (await POST(request("Ya no aguanto más. Esta noche me voy a quitar la vida.", "US"))).json();
+    expect(body.assistant).toBe(reply);
+  });
+
+  it("appends Indonesia's emergency number in Indonesian for a stroke described in Indonesian", async () => {
+    reply = "Your review lists four medicines.";
+    const body = await (await POST(request("Ibu saya tiba-tiba mulutnya mencong, tangan kanannya lemas tidak bisa diangkat, dan bicaranya pelo. Saya harus bagaimana?", "ID"))).json();
+    expect(body.assistant).toMatch(/Hubungi 119 sekarang juga/);
+  });
+
+  it("adds nothing to a question about chest pain written on the document", async () => {
+    reply = "Chest pain is listed as the reason you came in. The summary does not say it is happening now.";
+    const body = await (await POST(request("What does chest pain mean on my discharge summary?", "US"))).json();
+    expect(body.assistant).toBe(reply);
+  });
+
+  it.each(["rate", "trial"] as const)("a crisis message that hits the %s gate still gets the lines, with no model call", async (which) => {
+    gate = which;
+    const res = await POST(request("أشعر أنني عبء على الجميع، وأتمنى أن أنام ولا أستيقظ أبداً.", "SA"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.assistant).toMatch(/997/);
+    expect(body.assistant).toMatch(/شكراً لأنك أخبرتني/);
+    expect(modelCalls).toBe(0);
+    expect(rows.clariti_messages).toBeUndefined();
+  });
+
+  it("an ordinary message at the gate gets the gate as before", async () => {
+    gate = "trial";
+    const res = await POST(request("What medicines am I on?", "GB"));
+    expect(res.status).toBe(402);
   });
 });

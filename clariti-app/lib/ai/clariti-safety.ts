@@ -10,6 +10,10 @@
  *   in Malaysia, 111 in New Zealand, 112 in India), "your local emergency number"
  *   elsewhere, never a claim that some number "does not work" there, or both when
  *   Clariti does not know;
+ * - 26 Nov: Brazil, Spain, Portugal, Argentina, Colombia, Chile, Indonesia, France, Saudi
+ *   Arabia, UAE and Pakistan added, and crisis lines for Mexico and India, from the table Nura
+ *   verified that day; the chat route also screens each message in code
+ *   (lib/domain/clariti-crisis.ts) and appends the numbers when the model leaves them out;
  * - crisis and scams (22 Nov): crisis numbers for the reader's country first; scam
  *   letters and texts called what they look like, never explained as genuine;
  * - doses from a rough scan: repeat them as printed and send the reader to their copy
@@ -105,7 +109,8 @@ const COUNTRY_NUMBERS: Record<string, CountryNumbers> = {
     place: "Nigeria",
     emergency: "in Nigeria, call 112 in an emergency. Do not give 999 or 911",
     crisis: "in Nigeria, call 112 now if they are in danger",
-  },  PH: {
+  },
+  PH: {
     place: "the Philippines",
     emergency: "in the Philippines, call 911, the national emergency number",
     crisis: "call 911 if they are in immediate danger, or a local crisis line (the reader appears to be in the Philippines)",
@@ -113,7 +118,7 @@ const COUNTRY_NUMBERS: Record<string, CountryNumbers> = {
   MX: {
     place: "Mexico",
     emergency: "in Mexico, call 911, the national emergency number",
-    crisis: "call 911 if they are in immediate danger, or a local crisis line (the reader appears to be in Mexico)",
+    crisis: "in Mexico, Línea de la Vida on 800 911 2000 (free, day or night), or 911 if they are in immediate danger",
   },
   KE: {
     place: "Kenya",
@@ -133,7 +138,65 @@ const COUNTRY_NUMBERS: Record<string, CountryNumbers> = {
   IN: {
     place: "India",
     emergency: "in India, call 112, the national emergency number",
-    crisis: "call 112 if they are in immediate danger, or a local crisis line (the reader appears to be in India)",
+    crisis: "in India, Tele MANAS on 14416 (free, day or night), or 112 if they are in immediate danger",
+  },
+  // 26 Nov 2026: the countries Nura's crisis table verified that day (nura-app/lib/domain/crisis-lines.ts,
+  // sources in its header and in lib/domain/crisis-lines.ts here). Spain, Portugal and France were on
+  // the EU 112 line before; their crisis lines are new. Egypt is left out: not confirmed.
+  BR: {
+    place: "Brazil",
+    emergency: "in Brazil, call 192 (SAMU ambulance) in an emergency. Do not give 999 or 911",
+    crisis: "in Brazil, CVV on 188 (free, day or night), or 192 (SAMU ambulance) if they are in immediate danger",
+  },
+  ES: {
+    place: "Spain",
+    emergency: "in Spain, call 112 in an emergency. Do not give 999 or 911",
+    crisis: "in Spain, call 024 (free, day or night), or 112 if they are in immediate danger",
+  },
+  PT: {
+    place: "Portugal",
+    emergency: "in Portugal, call 112 in an emergency. Do not give 999 or 911",
+    crisis: "in Portugal, call 1411 (the SNS 24 suicide prevention line, free, day or night), or 112 if they are in immediate danger",
+  },
+  AR: {
+    place: "Argentina",
+    emergency: "in Argentina, call 911 in an emergency. Do not give 999 or 112",
+    crisis: "in Argentina, call 0800 999 0091 (free, day or night), or 911 if they are in immediate danger",
+  },
+  CO: {
+    place: "Colombia",
+    emergency: "in Colombia, call 123 in an emergency. Do not give 999 or 911",
+    crisis: "in Colombia, Línea 106 (dial 106, free, day or night), or 123 if they are in immediate danger",
+  },
+  CL: {
+    place: "Chile",
+    emergency: "in Chile, call 131 (SAMU ambulance) in an emergency. Do not give 999 or 911",
+    crisis: "in Chile, call *4141 (free, day or night), or 131 (SAMU ambulance) if they are in immediate danger",
+  },
+  ID: {
+    place: "Indonesia",
+    emergency: "in Indonesia, call 119 in an emergency. Do not give 999 or 911",
+    crisis: "in Indonesia, call 119 and choose extension 8 (free, day or night), or 119 if they are in immediate danger",
+  },
+  FR: {
+    place: "France",
+    emergency: "in France, call 112 in an emergency. Do not give 999 or 911",
+    crisis: "in France, call 3114 (free, day or night), or 112 if they are in immediate danger",
+  },
+  SA: {
+    place: "Saudi Arabia",
+    emergency: "in Saudi Arabia, call 997 (Red Crescent ambulance) in an emergency. Do not give 999 or 911",
+    crisis: "in Saudi Arabia, call 997 (ambulance) if they are in immediate danger, and stay with someone they trust (no crisis line is confirmed there)",
+  },
+  AE: {
+    place: "the UAE",
+    emergency: "in the UAE, call 998 (ambulance) or 999 (police) in an emergency. Do not give 911",
+    crisis: "in the UAE, call 998 (ambulance) or 999 (police) if they are in immediate danger, and stay with someone they trust (no crisis line is confirmed there)",
+  },
+  PK: {
+    place: "Pakistan",
+    emergency: "in Pakistan, call 1122 in an emergency. Do not give 999 or 911",
+    crisis: "in Pakistan, call 1122 if they are in immediate danger, and stay with someone they trust (no 24-hour crisis line is confirmed there)",
   },
 };
 
@@ -224,6 +287,20 @@ export function crisisRule(reader?: ClaritiReader | null) {
     (abuse ? ` If they mention abuse or someone hurting them, give ${abuse}.` : "")
   );
 }
+
+/**
+ * Reply language (26 Nov 2026 non-English check): no prompt said which language to answer in, so a
+ * US reader asking in Spanish about an English discharge summary depended on the model's habit.
+ */
+export const LANGUAGE_RULE =
+  "LANGUAGE: reply in the language the user writes in, even when the document is in another language (a question in Spanish about an English bill gets a Spanish answer). " +
+  "Keep amounts, codes, dates, names, phone numbers and any wording you quote from the document exactly as printed, and explain them in the user's language. " +
+  "Crisis and urgent-care replies are in the user's language too.";
+
+/** The same rule for the analysis, where the user's question may be the default English request. */
+export const ANALYSIS_LANGUAGE_RULE =
+  "LANGUAGE: write every text field in the language of the user's question when they typed one in their own words; otherwise in the language of the document. " +
+  "Keep amounts, codes, dates, names, phone numbers and every sourceAnchor exactly as printed in the document (sourceAnchors are quotes and are never translated).";
 
 /**
  * SCAM rule (22 Nov Claude Code eval, F4): fake HMRC refunds and NHS fee texts were

@@ -19,6 +19,7 @@ import { getSessionUser, getSupabaseSessionClient } from "@/lib/integrations/sup
 import { tracedModel, withAiTrace } from "@/lib/ai/trace";
 import {
   DOSE_RULE,
+  LANGUAGE_RULE,
   SCAM_RULE,
   chatReplySafetyNote,
   crisisRule,
@@ -28,6 +29,7 @@ import {
   urgentCareRule,
   type ClaritiReader,
 } from "@/lib/ai/clariti-safety";
+import { crisisLinesText, screenClaritiMessage, withCrisisLines, type ClaritiCrisisHit } from "@/lib/domain/clariti-crisis";
 
 const requestSchema = z.object({
   sessionId: z.string().uuid(),
@@ -46,17 +48,27 @@ export async function POST(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
+  // The reader's country picks the date order and the emergency numbers.
+  const reader = readerFromHeaders(request.headers);
+  const body = await request.json().catch(() => null);
+  // Crisis and emergency screen, in code (26 Nov 2026): runs before every gate, calls no model
+  // and charges nothing, so a reader who writes it is never left without the numbers.
+  const crisis = typeof body?.content === "string" ? screenClaritiMessage(body.content, reader.language) : null;
+  if (crisis) {
+    // Kind, level and language only: never the message.
+    console.info("[clariti-crisis] screen hit", { kind: crisis.kind, level: crisis.level, lang: crisis.lang, country: reader.country ?? "unknown" });
+  }
+
   if (!hasAiConsent(user)) {
-    return aiConsentRequiredResponse();
+    return crisisOnlyResponse(crisis, reader) ?? aiConsentRequiredResponse();
   }
 
   const limited = await enforceRateLimit(await getSupabaseSessionClient(), "messages");
-  if (limited) return limited;
+  if (limited) return crisisOnlyResponse(crisis, reader) ?? limited;
   // Card-first: no trial or plan, no model call (lib/billing/card-first.ts).
   const trialGate = await requireTrialOrPlus(request, await getSupabaseSessionClient(), user.id);
-  if (trialGate) return trialGate;
+  if (trialGate) return crisisOnlyResponse(crisis, reader) ?? trialGate;
 
-  const body = await request.json().catch(() => null);
   const parsed = requestSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
 
@@ -104,16 +116,19 @@ export async function POST(request: NextRequest) {
     // still answered "that is a Clariti Plus feature".
   }
 
-  const assistantContent = await withAiTrace({ distinctId: user.id, sessionId }, () => generateGroundedFollowUp(
+  const groundedReply = await withAiTrace({ distinctId: user.id, sessionId }, () => generateGroundedFollowUp(
     content,
     analysis,
     threadDocuments,
     recoveredDraft,
     compareCandidates,
     savedArtifact?.documentId ?? null,
-    // The reader's country picks the date order and the emergency number in the prompt.
-    readerFromHeaders(request.headers),
+    reader,
   ));
+  // Backstop: the model is told what to do with a crisis message, but nothing used to check. When
+  // the screen fired and the reply lacks the reader's numbers, they are added in the reader's own
+  // language. The answer about the document is kept as it is.
+  const assistantContent = withCrisisLines(groundedReply, crisis, reader.country);
   const userMessageCreatedAt = new Date();
   const assistantMessageCreatedAt = new Date(userMessageCreatedAt.getTime() + 1);
 
@@ -128,6 +143,17 @@ export async function POST(request: NextRequest) {
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, messages: data, assistant: assistantContent });
+}
+
+/**
+ * A message the screen flagged that cannot reach the model (no AI consent, the hourly ceiling, or
+ * no trial yet): the reader gets the lines in their language instead of a paywall or an error. No
+ * model call, nothing saved, nothing counted against a plan. Only for a crisis or emergency
+ * statement; a gentle hit (a past event, a figure of speech) goes through the normal gates.
+ */
+function crisisOnlyResponse(crisis: ClaritiCrisisHit | null, reader: ClaritiReader) {
+  if (crisis?.level !== "urgent") return null;
+  return NextResponse.json({ ok: true, messages: null, assistant: crisisLinesText(crisis, reader.country, true), crisis: crisis.kind });
 }
 
 type FollowUpDraft = NonNullable<z.infer<typeof requestSchema>["followUpDraft"]>;
@@ -589,6 +615,7 @@ async function generateGroundedFollowUp(
         "(5) a note flagging any contradiction between the current and an earlier saved document (e.g. two different amounts owed) so the user can ask about it. " +
         "Include one short Source phrase when useful. " +
         "Write plain text only: no markdown, emoji, bold markers, or headings. Numbered lists are allowed only when the user asked for a list, timeline, or questions. " +
+        LANGUAGE_RULE + " " +
         urgentCareRule(reader) + " " +
         crisisRule(reader) + " " +
         SCAM_RULE + " " +
