@@ -58,10 +58,13 @@ export const FOREIGN_SUICIDE: LangRule[] = [
   // Spanish
   ...rules("es", [
     [
-      "\\b(me )?(quiero|quisiera|querría|quería|voy a|pienso|pensando en|pensado en|ganas de|deseo|prefiero|preferiría) (morir|morirme|matarme|suicidarme|quitarme la vida|acabar con (mi vida|todo)|terminar con (mi vida|todo)|dejar de (vivir|existir))\\b",
+      "\\b(me )?(quiero|kiero|qiero|kero|quisiera|querría|quería|voy a|pienso|pensando en|pensado en|ganas de|deseo|prefiero|preferiría) (morir|morirme|matarme|suicidarme|quitarme la vida|acabar con (mi vida|todo)|terminar con (mi vida|todo)|dejar de (vivir|existir))\\b",
       ES_KILL_IDIOM,
     ],
-    ["\\bme (quiero|voy a|quisiera|quería|pienso) (morir|matar|suicidar|quitar la vida)\\b", ES_KILL_IDIOM],
+    ["\\bme (quiero|kiero|qiero|kero|voy a|quisiera|quería|pienso) (morir|matar|suicidar|quitar la vida)\\b", ES_KILL_IDIOM],
+    // 28 Nov 2026: texting spellings ("kiero morirme") and "leave this world".
+    "\\b(mejor me muero|ojala me muera|ojalá me muera)\\b",
+    "\\b(irme|desaparecer|salir) de este mundo\\b",
     "\\b(quitarme|me quito|me quité) la vida\\b",
     ["\\b(suicidarme|me suicido|matarme)\\b", ES_KILL_IDIOM],
     "\\bno quiero (seguir )?(viviendo|vivir|existir|estar aquí)( más| así)?\\b(?! (en|con|sin|solo|sola|allí|ahí|lejos|cerca|de|para)\\b)",

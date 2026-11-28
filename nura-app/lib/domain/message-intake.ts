@@ -11,6 +11,7 @@ import {
   type PlanCategory,
 } from "@/lib/domain/journey-naming";
 import { NURA_CORE_IDENTITY, NURA_SAFETY_BOUNDARIES, NURA_TONE } from "@/lib/domain/nura-persona";
+import { crisisChatText, screenChatMessage, withCrisisLines } from "@/lib/domain/chat-crisis";
 import { primaryCheckinChannel } from "@/lib/domain/checkin-channel";
 import { withTimeout } from "@/lib/domain/with-timeout";
 import { describeRoutineTimes, normalizeRoutineTimes, type RoutineTimes } from "@/lib/domain/routine-times";
@@ -444,9 +445,18 @@ export async function resolveDecision(
   routineTimes: RoutineTimes = {},
   checkInAccess: CheckInAccess | null = null,
 ): Promise<NuraDecision> {
+  // The try-first crisis screen, before the model (28 Nov 2026 eval: signed-in chat and WhatsApp
+  // had no code screen). A suicide statement gets the numbers as the whole reply, with no model
+  // call and no plan change; everything else the screen catches gets the numbers next to the reply.
+  const crisis = screenChatMessage(content, phoneOnFile, timeZone);
+  if (crisis) console.info("[chat] crisis:", crisis.guidance.kind, crisis.guidance.mode, crisis.guidance.country ?? "unknown", sourceChannel);
+  if (crisis?.modelSkipped) {
+    return outageDecision(crisisChatText(crisis.guidance), requestedPlan?.id ?? null);
+  }
+
   const fallback = outageDecision(AI_SLOW_REPLY, requestedPlan?.id ?? null);
 
-  return withTimeout(
+  const decision = await withTimeout(
     classifyWithClaude(
       content,
       plans,
@@ -468,6 +478,8 @@ export async function resolveDecision(
     DECISION_TIMEOUT_MS,
     () => console.error(`${AI_DOWN_LOG_TAG} resolveDecision timed out after ${DECISION_TIMEOUT_MS}ms; sent the slow-reply message`),
   );
+  // Also on the outage and slow replies, so a crisis message never gets only "try again".
+  return crisis ? { ...decision, reply: withCrisisLines(decision.reply, crisis) } : decision;
 }
 
 export async function applyPlanDecision(

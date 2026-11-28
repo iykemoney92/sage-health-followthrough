@@ -253,7 +253,7 @@ export type CrisisScreen = { kind: CrisisKind; mode: CrisisMode; lang?: CrisisLa
 type Rule = {
   re: RegExp;
   /** When this also matches, the hit only adds the lines (it never blocks on its own). */
-  soft?: RegExp;
+  soft?: { test(text: string): boolean };
 };
 
 const PILLS =
@@ -271,17 +271,45 @@ const BREATH_CONTEXT =
 const KILL_IDIOM =
   /\bkill(ing|ed)? (my|him|her|them) ?sel(f|ves) (with|at|over|doing|for|on|trying|working|laughing|to (get|make|finish|keep|pay))\b/;
 
+/**
+ * "gonna kms if this sprint doesn't end lol", "I'll kill myself if I eat another salad": a
+ * conditional about work, food or study, or one marked as a joke. Never blocks on its own; the
+ * numbers still go next to the answer (28 Nov 2026 eval: these got a suicide card with no way
+ * through). "I'll kill myself if he leaves" has no such marker and still blocks.
+ */
+const FIGURATIVE_IF = {
+  test(t: string) {
+    return (
+      /\b(kms+|kill(ing)? (my|him|her) ?self) if\b/.test(t) &&
+      /\b(lol|lmao|lmfao|haha\w*|jk|joking|kidding|sprint|meetings?|deadlines?|stand-?ups?|zoom|teams call|emails?|inbox|boss|manager|work|job|shifts?|commute|traffic|salad|diet|gym|exams?|homework|assignments?|essay|revision|lecture|spreadsheet|excel|client|monday)\b|😂|🤣|💀|😭/u.test(t)
+    );
+  },
+};
+const SUICIDE_SOFT = { test: (t: string) => KILL_IDIOM.test(t) || FIGURATIVE_IF.test(t) };
+
 const SUICIDE_RULES: Rule[] = [
   { re: /\b(suicid\w*|suicde\w*|sucid\w*|sucide\w*|suiside\w*|suisid\w*)/ },
-  { re: /\bkill?(ing|ed|s)? (my|him|her|them) ?sel(f|ves)\b/, soft: KILL_IDIOM },
-  { re: /\b(kms|unalive\w*|un-alive\w*)\b/ },
+  // Filter-dodging spellings (28 Nov 2026 eval): "sewerslide", "self delete", "unalive".
+  { re: /\b(sewer ?slide\w*|sooicide|su1c1de|s\*icide|self[- ]?delet\w*)/ },
+  { re: /\bkill?(ing|ed|s)? (my|him|her|them) ?sel(f|ves)\b/, soft: SUICIDE_SOFT },
+  { re: /\b(kms+|unalive\w*|un-alive\w*)\b/, soft: FIGURATIVE_IF },
   { re: /\bend(ing)? (it all|my life|my own life|his life|her life|it tonight|things tonight)\b/ },
+  // "i just want to end it" (but not "end it with him").
+  { re: /\b(want|wanna|wana|going|gonna|ready|need) (to )?end it\b(?! (with|between|off))/ },
+  { re: /\b(done|finished) with (life|living|being alive)\b(?! (admin|hacks?|stuff))/ },
+  // "got the rope ready", but not a skipping, jump or climbing rope.
+  { re: /(?<!\b(skipping|jump|jumping|climbing|battle|tow) )\brope\b[^.!?]{0,30}\b(ready|tonight|neck|tie|tied|hang)\b/ },
+  {
+    re: /\bso (that )?(i|he|she) (don't|dont|do not|won't|wont|will not|never) wake up\b(?! (late|tired|groggy|early|at|in|with|feeling|during|every|hungry|sore|stiff|thirsty))/,
+  },
   { re: /\b(want|wants|wanted|wanting|going|plan|plans|planning|ready|trying|deserve) to die\b/ },
   { re: /\b(wanna|gonna|wan|wana) die\b/ },
   { re: /\b(wish|wishing) (i|he|she) (was|were) dead\b/ },
   { re: /\b(i'd|i would|id) rather be dead\b/ },
   { re: /\bbetter off (dead|without me|if i (was|were) gone)\b/ },
-  { re: /\b(don't|do not|dont|doesn't|does not|doesnt) want to (be here|be alive|live|wake up|exist|go on)\b/ },
+  {
+    re: /\b(don't|do not|dont|doesn't|does not|doesnt) (even |really )?(want to|wanna|wana|want ta) (be here|be alive|live|wake up|exist|go on)\b/,
+  },
   { re: /\b(want|wish|wishing|hope|hoping)\w* to (go to )?sleep and (never|not) wake up\b/ },
   { re: /\bno (reason|point) (to|in) (live|living|being alive|going on)\b/ },
   { re: /\blife (isn't|is not|isnt|ain't|aint) worth (living|it anymore|it any more)\b/ },
@@ -318,6 +346,9 @@ const SUICIDE_RULES: Rule[] = [
 /** Suicide wording that may be distress rather than a plan: adds the lines next to a plan. */
 const SUICIDE_WEAK: RegExp[] = [
   /\b(want|wants|wanted|wanna) to disappear\b/,
+  // 28 Nov 2026: "there's no point anymore", "what's the point anymore", "done with it all".
+  /\b(no|the) point (anymore|any more|in anything|of anything)\b/,
+  /\b(done|finished) with (everything|it all)\b/,
   /\b(can't|cannot|cant|can not) go on\b/,
   /\b(can't|cannot|cant) (do|take) (this|it) any ?more\b/,
 ];
