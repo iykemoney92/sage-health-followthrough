@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { checkKeyedRateLimit, clientIpFromRequest } from "@/lib/auth/rate-limit";
 import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
-import { lookupReferralCode, REFERRAL_COOKIE, REFERRAL_COOKIE_DAYS } from "@/lib/referrals";
+import { getSessionUser } from "@/lib/integrations/supabase-server";
+import { lookupReferralCode, REFERRAL_COOKIE, REFERRAL_COOKIE_DAYS, shouldRememberInvite } from "@/lib/referrals";
 
 // Relative on purpose: the cookie is set on whatever host the visitor typed, and an absolute
 // URL built from request.url can name a different one (www vs apex, the dev server's own host),
@@ -23,6 +24,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ code
 
   const owner = await lookupReferralCode(getSupabaseAdminClient(), rawCode).catch(() => null);
   if (!owner) return redirectTo("/invited?invalid=1");
+
+  const visitor = await getSessionUser().catch(() => null);
+  if (!shouldRememberInvite(owner.ownerId, visitor?.id)) {
+    const own = redirectTo("/invited?own=1");
+    // A cookie left by an earlier tap on the same link would do the same harm.
+    own.cookies.delete(REFERRAL_COOKIE);
+    return own;
+  }
 
   const response = redirectTo("/invited");
   response.cookies.set(REFERRAL_COOKIE, owner.code, {

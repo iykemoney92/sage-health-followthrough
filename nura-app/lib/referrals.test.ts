@@ -7,6 +7,7 @@ import {
   REFERRAL_CODE_PATTERN,
   REFERRER_MONTHLY_LIMIT,
   referralUrl,
+  shouldRememberInvite,
 } from "@/lib/referrals";
 
 const now = new Date("2026-10-24T12:00:00Z");
@@ -37,6 +38,18 @@ describe("referral codes", () => {
 
   it("builds the link without a double slash", () => {
     expect(referralUrl("https://usenura.app/", "K7MQ2XPA")).toBe("https://usenura.app/r/K7MQ2XPA");
+  });
+});
+
+describe("shouldRememberInvite", () => {
+  it("remembers the link for a signed-out visitor or someone else's account", () => {
+    expect(shouldRememberInvite("owner", null)).toBe(true);
+    expect(shouldRememberInvite("owner", undefined)).toBe(true);
+    expect(shouldRememberInvite("owner", "someone-else")).toBe(true);
+  });
+
+  it("never remembers it for the owner opening their own link", () => {
+    expect(shouldRememberInvite("owner", "owner")).toBe(false);
   });
 });
 
